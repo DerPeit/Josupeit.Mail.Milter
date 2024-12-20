@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="Example/Example.csproj" />
+  <Project Path="Josupeit.Mail.Milter.Generator/Josupeit.Mail.Milter.Generator.csproj" />
+  <Project Path="Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj" />
+  <Project Path="Josupeit.Mail.Milter.Tests/Josupeit.Mail.Milter.Tests.csproj" />
+</Solution>
