@@ -1,0 +1,90 @@
+﻿using System;
+using System.Buffers;
+using System.Buffers.Binary;
+using System.IO.Pipelines;
+using System.Threading;
+using System.Threading.Tasks;
+
+namespace Josupeit.Mail.Milter.Link;
+
+public class LinkReader : ILinkReader
+{
+    private readonly PipeReader _pipeReader;
+
+    public LinkReader(PipeReader pipeReader)
+    {
+        _pipeReader = pipeReader ?? throw new ArgumentNullException(nameof(pipeReader));
+    }
+
+    public virtual async ValueTask<uint> ReadUInt32(CancellationToken cancellationToken)
+    {
+        var (memory, dataRange) = await ReadData(length: 4, cancellationToken).ConfigureAwait(false);
+
+        using (memory)
+        {
+            var result = BinaryPrimitives.ReadUInt32BigEndian(memory!.Memory.Span[dataRange]);
+
+            return result;
+        }
+    }
+
+    public virtual async ValueTask<CommandCode> ReadCommandCode(CancellationToken cancellationToken)
+    {
+        var (memory, dataRange) = await ReadData(length: 1, cancellationToken).ConfigureAwait(false);
+
+        using (memory)
+        {
+            var result = (CommandCode)memory!.Memory.Span[dataRange][0];
+
+            return result;
+        }
+    }
+
+    public virtual async ValueTask<(IMemoryOwner<byte>? Memory, Range DataRange)> ReadData(uint length, CancellationToken cancellationToken)
+    {
+        if (length == 0)
+            return default;
+
+        ReadOnlySequence<byte> buffer;
+
+        while (true)
+        {
+            var readResult = await _pipeReader.ReadAsync(cancellationToken).ConfigureAwait(false);
+
+            if (readResult.IsCanceled)
+                throw new InvalidOperationException(
+                    $"Unable to read from {typeof(PipeReader)}. {typeof(PipeReader)}.{nameof(PipeReader.CancelPendingRead)} has been called.");
+
+            buffer = readResult.Buffer;
+
+            if (buffer.Length >= length)
+                break;
+
+            _pipeReader.AdvanceTo(buffer.Start, buffer.End);
+
+            if (readResult.IsCompleted)
+                throw new InvalidOperationException(
+                    $"Unable to read from {typeof(PipeReader)}. Underlying stream reached its end.");
+        }
+
+        if (buffer.Length > length)
+            buffer = buffer.Slice(start: 0, length);
+
+        var memory = MemoryPool<byte>.Shared.Rent(minBufferSize: checked((int)length));
+
+        try
+        {
+            buffer.CopyTo(memory.Memory.Span);
+
+            _pipeReader.AdvanceTo(buffer.End);
+
+            return (memory, new Range(new Index(0), new Index((int)length)));
+        }
+        catch
+        {
+            memory.Dispose();
+
+            throw;
+        }
+    }
+}
