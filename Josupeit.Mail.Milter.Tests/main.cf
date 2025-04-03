@@ -1,0 +1,10 @@
+compatibility_level = 3.6
+maillog_file = /dev/stdout
+smtpd_relay_restrictions = reject_unauth_destination
+myhostname = localhost
+mydestination = localhost.localdomain
+alias_maps = 
+mailbox_transport = tcp-loopback
+milter_protocol = 2
+smtpd_milters = inet:host.docker.internal:34000
+non_smtpd_milters = inet:host.docker.internal:34000

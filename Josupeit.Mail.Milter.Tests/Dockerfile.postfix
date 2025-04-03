@@ -1,0 +1,9 @@
+FROM ubuntu
+
+RUN export DEBIAN_FRONTEND=noninteractive \
+ && apt -yq update \
+ && apt -yq install postfix netcat-traditional
+
+CMD [ "/usr/sbin/postfix", "start-fg" ]
+EXPOSE 25 465 587
+VOLUME [ "/var/spool/mail", "/var/spool/postfix", "/var/lib/postfix" ]
