@@ -1,7 +1,3 @@
-using System.Runtime.CompilerServices;
-
-[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
-
 namespace Josupeit.Mail.Milter.Tests;
 
 internal abstract class MilterContextAdapter : IMilterContext

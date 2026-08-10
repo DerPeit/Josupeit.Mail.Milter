@@ -83,7 +83,7 @@ Bridges protocol packets and the user's context. Lazily creates **one** context 
 
 ## Conventions & gotchas
 
-- `[assembly: InternalsVisibleTo("Josupeit.Mail.Milter.Tests")]` is declared in `Milter.cs` - the tests reach straight into the internal pipeline.
+- Internals are exposed to the test project through `<InternalsVisibleTo Include="Josupeit.Mail.Milter.Tests" />` in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
 - NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that *can* be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
