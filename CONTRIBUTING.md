@@ -1,0 +1,97 @@
+# Contributing
+
+Conventions for this repository: **how code is written** and **how commits are worded**.
+For what the project *is* and how it is built, see [CLAUDE.md](CLAUDE.md).
+
+There is no `.editorconfig` or analyzer ruleset yet - apart from `ConfigureAwaitChecker.Analyzer`, nothing here is machine-enforced. The rules below describe what the existing code does; follow it.
+
+## Code style
+
+### Files & layout
+
+- **One type per file**, file name == type name.
+- **Folders mirror namespaces** (`Link/`, `Protocol/`, `Session/`, `Session/ProtocolEnforcement/`).
+- **File-scoped namespaces** (`namespace X;`).
+- `using` directives **outside** the namespace, `System.*` first, then the rest, each block alphabetical. **No** global or implicit usings.
+- **4 spaces**, no tabs. **Allman** braces.
+- Line endings: **CRLF** in the working tree (Git normalizes to LF in the repository).
+
+### Naming & visibility
+
+- **`internal sealed` by default.** Only the user-facing surface is public: `Milter<T>`, `IMilterContext`, `IMilterCallbacks`, `Action` and its subtypes, the `*Information` types, the requirement enums.
+- Private fields `_camelCase`; locals and parameters `camelCase`; everything else `PascalCase`.
+- Interfaces are `I`-prefixed.
+- **No `Async` suffix** on async methods - `Session.Run`, `Milter.Stop` and `LinkWriter.WriteData` are all async. Exception: names dictated by a framework contract (`DisposeAsync`).
+- Names spell out the domain term rather than the wire mnemonic: `OnConnectionEstablished`, not `OnConnect`; `ContentBypassDiscriminator`, not `SmfipFlags`. Map the `SMFI*` name in a comment or enum member instead.
+
+### Language features
+
+`LangVersion` is `latest`, `Nullable` is `enable`. Use modern C# freely:
+
+- **`var`** for locals; **target-typed `new()`** for returns and field initializers.
+- **Primary constructors** for injected dependencies, e.g. `internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory)` - **only where readability does not suffer**:
+  - The parameter list must **fit on the declaration line**. If it would wrap, write an explicit constructor instead.
+  - As soon as a **second constructor** is needed, **all** constructors are explicit. Never mix a primary constructor with an overload.
+- **Records** for data: `abstract record` / `sealed record` for the `Action` hierarchy, **`readonly record struct`** for the small `*Information` payloads handed to callbacks.
+- **Switch expressions** with a trailing comma on the last arm; blank line between the arms of a switch *statement*.
+- Nullable annotations and `??=`, `?.` where they shorten the code.
+- **Omit braces** for single-statement `if` / `foreach` / `await foreach` bodies. Braces once the body spans more than one line.
+- Package references use **bounded version ranges** (`[8,9)`), not floating versions.
+
+### Statement grouping
+
+**Insert a blank line at every transition between statement groups; no blank line within a group.**
+
+| Group                  | Examples                                     |
+| ---------------------- | -------------------------------------------- |
+| Variable declarations  | `var x = ...;`  `Type x = ...;`              |
+| Assignments            | `x = ...;`  `x.Prop = ...;`                  |
+| Invocations            | `x.Method(...);` (local-variable receiver)    |
+| Static invocations     | `Type.Method(...);`                          |
+| Keywords               | `return` / `await` / `throw` / `yield`       |
+| Multi-line statements  | always alone - blank line before *and* after |
+
+Classify by the **outermost** construct:
+
+- `await x.Foo()` -> keyword (not an invocation)
+- `var x = await x.Foo()` -> variable declaration
+- `var x = new Foo { ... }` spanning lines -> multi-line statement
+
+An extra blank line between two groups of the *same* kind is fine when it separates logical steps.
+
+### Async
+
+- **`ConfigureAwait(false)` on every await** - enforced by `ConfigureAwaitChecker.Analyzer`; do not omit it.
+- Prefer **`ValueTask` / `ValueTask<T>`** on paths that usually complete synchronously - the callback surface is the hot path.
+- `CancellationToken` is the **last parameter** and is always passed on. Async iterators take `[EnumeratorCancellation] CancellationToken`.
+
+### Performance mindset
+
+Not rigid rules - lenses. When writing, reading or reviewing code here, actively look for these and **surface the opportunity even when not taking it**:
+
+- **struct vs class**: is this copied on a hot path? Would `in` / `ref readonly` remove copies without mangling the call chain? Does `Span<T>`, `stackalloc` or `CollectionsMarshal` fit? Think past the obvious - array-of-structs vs struct-of-arrays.
+- **`ValueTask` vs `Task`**: a hot inner method returning `Task` allocates per call even when the outer path is synchronous.
+- **Allocation**: object pooling, `ArrayPool<T>`, closures captured in loops, boxing through interface calls on value types, `SearchValues`, frozen collections.
+- **Readability wins.** No manual state machines, no avoiding LINQ where it is clearly right, no `unsafe` for marginal gains. If an optimization meaningfully hurts readability, say so and weigh the trade-off explicitly rather than silently skipping it.
+
+### Tests
+
+- **Arrange / Act / Assert**, always separated by blank lines. A comment block is always preceded by a blank line.
+- Tests are integration-only and need Docker; see [CLAUDE.md](CLAUDE.md) for the Postfix/milter fixtures.
+
+## Commit style
+
+Commits follow [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/#specification): `<type>[optional scope]: <description>`, optionally followed by a body and footers.
+
+- Common types here: `feat`, `fix`, `refactor`, `perf`, `test`, `docs`, `build`, `chore`.
+- The description is **third-person present** ("adds", "fixes", "moves"), lowercase, no trailing period.
+- Write a body in most cases: the **reasoning** behind the change, not a restatement of the diff. Keep it brief - one or two sentences.
+- Breaking changes: `!` after the type/scope and/or a `BREAKING CHANGE:` footer.
+- No `Co-Authored-By` trailers.
+
+```
+feat(generator): adds source generator for protocol requirements
+
+Deriving the bitmask from the overridden callbacks removes a manual step
+that easily falls out of sync with the implementation.
+```
