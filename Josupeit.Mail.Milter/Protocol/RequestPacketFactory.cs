@@ -65,26 +65,43 @@ public class RequestPacketFactory : IRequestPacketFactory
         var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
 
         var hasReadEverything = TryGetNextStringVariableLength(reader, out var hostName)
-                                & TryGetNextChar(reader, out var family)
-                                & TryGetNextUInt16(reader, out var port)
-                                & TryGetNextStringVariableLength(reader, out var address);
+                                & TryGetNextChar(reader, out var family);
 
         EnsureHasReadEverything(hasReadEverything);
+
+        var addressFamily = (ProtocolFamily)family switch
+        {
+            ProtocolFamily.Unknown => AddressFamily.Unknown,
+            ProtocolFamily.UnixSocket => AddressFamily.Unix,
+            ProtocolFamily.Ip4 => AddressFamily.InterNetwork,
+            ProtocolFamily.Ip6 => AddressFamily.InterNetworkV6,
+
+            _ => throw new InvalidOperationException("Protocol violation: Unrecognized family code in connect packet."),
+        };
+
+        ushort port = 0;
+        var address = IPAddress.None;
+
+        // SMFIA_UNKNOWN carries neither port nor address; every other family carries both.
+        // For SMFIA_UNIX the address is a socket path, and an internet address may be the
+        // literal "unknown" (Postfix XCLIENT ADDR=[UNAVAILABLE]) - neither is an IPAddress.
+        if (addressFamily != AddressFamily.Unknown)
+        {
+            hasReadEverything = TryGetNextUInt16(reader, out port)
+                                & TryGetNextStringVariableLength(reader, out var addressText);
+
+            EnsureHasReadEverything(hasReadEverything);
+
+            if (addressFamily is AddressFamily.InterNetwork or AddressFamily.InterNetworkV6)
+                address = IPAddress.TryParse(addressText, out var parsedAddress) ? parsedAddress : IPAddress.None;
+        }
 
         var packet = new ConnectRequestPacket
         {
             HostName = hostName!,
-            Family = (ProtocolFamily)family switch
-            {
-                ProtocolFamily.Unknown => AddressFamily.Unknown,
-                ProtocolFamily.UnixSocket => AddressFamily.Unix,
-                ProtocolFamily.Ip4 => AddressFamily.InterNetwork,
-                ProtocolFamily.Ip6 => AddressFamily.InterNetworkV6,
-
-                _ => throw new InvalidOperationException("Protocol violation: Unknown family code in negotiation packet."),
-            },
+            Family = addressFamily,
             Port = port,
-            Address = IPAddress.Parse(address!),
+            Address = address,
         };
 
         return packet;

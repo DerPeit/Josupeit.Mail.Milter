@@ -8,3 +8,4 @@ mailbox_transport = tcp-loopback
 milter_protocol = 2
 smtpd_milters = inet:host.docker.internal:34000
 non_smtpd_milters = inet:host.docker.internal:34000
+smtpd_authorized_xclient_hosts = static:all

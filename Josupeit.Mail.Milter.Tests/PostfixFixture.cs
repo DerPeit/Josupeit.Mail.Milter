@@ -30,8 +30,9 @@ public abstract class PostfixFixture
             .WithPortBinding(25, assignRandomHostPort: true)
             .WithWaitStrategy(Wait.ForUnixContainer().UntilPortIsAvailable(25, o => o.WithTimeout(TimeSpan.FromSeconds(30))))
             .WithExtraHost("host.docker.internal", "host-gateway")
-            .WithResourceMapping("master.cf", "/etc/postfix/", UnixFileModes.UserRead)
-            .WithResourceMapping("main.cf", "/etc/postfix/", UnixFileModes.UserRead)
+            // Readable by everyone, because submitting mail as the postfix user has to read them too.
+            .WithResourceMapping("master.cf", "/etc/postfix/", UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
+            .WithResourceMapping("main.cf", "/etc/postfix/", UnixFileModes.UserRead | UnixFileModes.GroupRead | UnixFileModes.OtherRead)
             .WithVolumeMount(_spoolVolume, "/var/spool/postfix")
             .WithVolumeMount(_libVolume, "/var/lib/postfix")
             .Build();
@@ -82,6 +83,51 @@ public abstract class PostfixFixture
     protected Task SendMail(MailMessage message)
     {
         return _smtpClient.SendMailAsync(message, TestContext.CurrentContext.CancellationToken);
+    }
+
+    protected async Task<string> SubmitMailLocally(string shellCommand)
+    {
+        var result = await _container.ExecAsync(["/bin/sh", "-c", shellCommand], TestContext.CurrentContext.CancellationToken);
+
+        // A misfiring submission would otherwise show up as a test that hangs until it is cancelled.
+        Assert.That(result.ExitCode, Is.EqualTo(0L), $"Local submission failed: {result.Stderr}{result.Stdout}");
+
+        return result.Stdout;
+    }
+
+    protected async Task<string> Converse(params string[] commands)
+    {
+        using var client = new TcpClient(_container.Hostname, _container.GetMappedPublicPort(25));
+        await using var stream = client.GetStream();
+        using var reader = new StreamReader(stream, Encoding.ASCII, leaveOpen: true);
+        await using var writer = new StreamWriter(stream, Encoding.ASCII, leaveOpen: true) { AutoFlush = true, NewLine = "\r\n" };
+
+        var transcript = new StringBuilder();
+
+        await ReadReply(reader, transcript);
+
+        foreach (var command in commands)
+        {
+            await writer.WriteLineAsync(command);
+
+            await ReadReply(reader, transcript);
+        }
+
+        return transcript.ToString();
+    }
+
+    private static async Task ReadReply(StreamReader reader, StringBuilder transcript)
+    {
+        // A reply continues while its code is followed by a hyphen, as in "250-PIPELINING". Reading only
+        // the first line would leave the rest buffered and desynchronize the conversation, which Postfix
+        // reports as improper command pipelining.
+        while (await reader.ReadLineAsync(TestContext.CurrentContext.CancellationToken) is { } line)
+        {
+            transcript.AppendLine(line);
+
+            if (line.Length < 4 || line[3] != '-')
+                return;
+        }
     }
 
     protected async Task<string> ReceiveMail()

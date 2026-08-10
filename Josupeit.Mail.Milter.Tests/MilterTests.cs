@@ -1,4 +1,5 @@
-﻿using System.Net.Mail;
+﻿using System.Net;
+using System.Net.Mail;
 using System.Net.Sockets;
 using System.Text;
 using NSubstitute;
@@ -104,6 +105,79 @@ public class MilterTests : MilterFixture
         Assert.That(observedInfo.Value.Family, Is.EqualTo(AddressFamily.InterNetwork));
         Assert.That(observedInfo.Value.Hostname, Is.Not.Empty);
         Assert.That(observedInfo.Value.Port, Is.Not.EqualTo(0));
+    }
+
+    // Postfix never reports SMFIA_UNIX ('L'): a real unix socket peer is downgraded to AF_UNSPEC by
+    // smtpd_peer_sockaddr_to_hostaddr(), which arrives here as SMFIA_UNKNOWN. Only sendmail emits 'L',
+    // so that branch of the connect parser cannot be covered from this fixture.
+    [Test]
+    public async Task Milter_receives_connection_information_for_unknown_family()
+    {
+        MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Connect;
+        MilterContextAdapter.ActionRequirements = ActionRequirements.None;
+
+        ConnectionInformation? observedInfo = null;
+
+        _ = ContextAdapter.OnConnectionEstablished(Arg.Do<ConnectionInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+
+        // Stand-alone smtpd reads SMTP from a pipe, so Postfix cannot determine a peer address and
+        // reports SMFIA_UNKNOWN. It must run as the postfix user: SMTPD_STAND_ALONE() skips milter
+        // setup entirely for any other user, and the milter would never be called.
+        await SubmitMailLocally(
+            "printf 'EHLO test\\r\\nMAIL FROM:<random@example.com>\\r\\nRCPT TO:<root@localhost.localdomain>\\r\\n"
+            + "DATA\\r\\nSubject: Subject\\r\\n\\r\\nBody\\r\\n.\\r\\nQUIT\\r\\n'"
+            + " | runuser -u postfix -- /usr/sbin/sendmail -bs");
+
+        await ReceiveMail();
+
+        Assert.That(observedInfo, Is.Not.Null);
+
+        Assert.That(observedInfo.Value.Family, Is.EqualTo(AddressFamily.Unknown));
+        Assert.That(observedInfo.Value.Address, Is.EqualTo(IPAddress.None));
+        Assert.That(observedInfo.Value.Port, Is.EqualTo(0));
+        Assert.That(observedInfo.Value.Hostname, Is.Not.Empty);
+    }
+
+    [Test]
+    public async Task Milter_receives_connection_information_for_unavailable_address()
+    {
+        MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Connect;
+        MilterContextAdapter.ActionRequirements = ActionRequirements.None;
+
+        ConnectionInformation? observedInfo = null;
+
+        _ = ContextAdapter.OnConnectionEstablished(Arg.Do<ConnectionInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+
+        // XCLIENT leaves the address family at AF_INET but replaces the address with the literal
+        // "unknown", and it restarts the session, so the milter sees a second connect event.
+        await Converse("EHLO test", "XCLIENT ADDR=[UNAVAILABLE] NAME=[UNAVAILABLE]", "QUIT");
+
+        Assert.That(observedInfo, Is.Not.Null);
+
+        Assert.That(observedInfo.Value.Family, Is.EqualTo(AddressFamily.InterNetwork));
+        Assert.That(observedInfo.Value.Address, Is.EqualTo(IPAddress.None));
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Milter_receives_connection_information_for_local_submission()
+    {
+        MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Connect;
+        MilterContextAdapter.ActionRequirements = ActionRequirements.None;
+
+        ConnectionInformation? observedInfo = null;
+
+        _ = ContextAdapter.OnConnectionEstablished(Arg.Do<ConnectionInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+
+        // Locally submitted mail reaches the milter through cleanup and non_smtpd_milters. Postfix
+        // substitutes a loopback client for it, whose address family depends on inet_protocols.
+        await SubmitMailLocally("printf 'To: root@localhost.localdomain\\nSubject: Subject\\n\\nBody\\n' | /usr/sbin/sendmail -t");
+
+        await ReceiveMail();
+
+        Assert.That(observedInfo, Is.Not.Null);
+
+        Assert.That(observedInfo.Value.Address, Is.Not.EqualTo(IPAddress.None));
+        Assert.That(observedInfo.Value.Port, Is.EqualTo(0));
     }
 
     [Test]
