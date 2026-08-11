@@ -47,6 +47,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="MultiChunkBody.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Dockerfile.postfix">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
