@@ -46,49 +46,58 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
     {
         _protocolState = new AwaitingNegotiationState(this, new ProtocolStateMachineConfiguration(TContext.ProtocolRequirements, TContext.ActionRequirements));
 
-        while (!_protocolState.IsFinal)
+        try
         {
-            var requestFrame = await _requestFrameReader
-                .ReadAsync(cancellationToken)
-                .AsTask()
-                .WaitAsync(_timeout, _timeProvider, cancellationToken)
-                .ConfigureAwait(false);
-
-            var requestPacket = _requestPacketFactory.CreateRequestPacket(requestFrame);
-
-            try
+            while (!_protocolState.IsFinal)
             {
+                var requestFrame = await _requestFrameReader
+                    .ReadAsync(cancellationToken)
+                    .AsTask()
+                    .WaitAsync(_timeout, _timeProvider, cancellationToken)
+                    .ConfigureAwait(false);
 
-                var responsePackets = new SessionController(this)
-                    .ProcessRequest(requestPacket)
-                    .WithCancellation(cancellationToken);
+                var requestPacket = _requestPacketFactory.CreateRequestPacket(requestFrame);
 
-                await foreach (var responsePacket in responsePackets.ConfigureAwait(false))
+                try
                 {
-                    var responseFrame = _responseFrameFactory.CreateResponseFrame(responsePacket);
+                    var responsePackets = new SessionController(this)
+                        .ProcessRequest(requestPacket)
+                        .WithCancellation(cancellationToken);
 
-                    await _responseFrameWriter
-                        .WriteAsync(responseFrame, cancellationToken)
-                        .AsTask()
-                        .WaitAsync(_timeout, _timeProvider, cancellationToken)
-                        .ConfigureAwait(false);
+                    await foreach (var responsePacket in responsePackets.ConfigureAwait(false))
+                    {
+                        var responseFrame = _responseFrameFactory.CreateResponseFrame(responsePacket);
 
-                    await responseFrame.ConfigureAwait(false);
+                        await _responseFrameWriter
+                            .WriteAsync(responseFrame, cancellationToken)
+                            .AsTask()
+                            .WaitAsync(_timeout, _timeProvider, cancellationToken)
+                            .ConfigureAwait(false);
+
+                        await responseFrame.ConfigureAwait(false);
+                    }
+                }
+                finally
+                {
+                    switch (requestPacket)
+                    {
+                        case IAsyncDisposable asyncDisposable:
+                            await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                            break;
+
+                        case IDisposable dispsable:
+                            dispsable.Dispose();
+                            break;
+                    }
                 }
             }
-            finally
-            {
-                switch (requestPacket)
-                {
-                    case IAsyncDisposable asyncDisposable:
-                        await asyncDisposable.DisposeAsync().ConfigureAwait(false);
-                        break;
-
-                    case IDisposable dispsable:
-                        dispsable.Dispose();
-                        break;
-                }
-            }
+        }
+        finally
+        {
+            // Nothing else completes the response channel. Without this the formatter's orphan drain
+            // waits on a channel that never closes, so its task never finishes and one parked
+            // continuation is left behind per connection.
+            _responseFrameWriter.Complete();
         }
     }
 

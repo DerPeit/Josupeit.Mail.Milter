@@ -21,17 +21,27 @@ public class ResponseFormatter
 
     public void Start()
     {
+        if (_runner != null)
+            throw new InvalidOperationException($"{nameof(ResponseFormatter)} cannot be started. It is already running.");
+
         _stopper = new();
 
+        // Unwrap matters: without it _runner is the outer Task<Task>, which completes at the first await
+        // inside ProcessFrames. StopAsync would then return while frames are still being written, and any
+        // failure in ProcessFrames would never be observed.
         _runner = Task.Factory.StartNew(
-            ProcessFramesCore,
-            _stopper.Token,
-            TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+                ProcessFramesCore,
+                _stopper.Token,
+                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
+                TaskScheduler.Default)
+            .Unwrap();
     }
 
     public async ValueTask StopAsync()
     {
+        if (_runner == null)
+            throw new InvalidOperationException($"{nameof(ResponseFormatter)} cannot be stopped. It is not running.");
+
         await _stopper!.CancelAsync().ConfigureAwait(false);
 
         try
