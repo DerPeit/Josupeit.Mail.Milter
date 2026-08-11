@@ -229,9 +229,33 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitQuarantineMessageResponsePacket(QuarantineMessageResponsePacket responsePacket)
     {
-        _responseFrame = new(ResponseCode.QuarantineMessage);
+        var reasonLength = Encoding.Latin1.GetByteCount(responsePacket.Reason);
+        const int endOfReasonMarkLength = 1;
+        var blockLength = reasonLength + endOfReasonMarkLength;
 
-        return true;
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+
+        try
+        {
+            var memoryBlock = memoryOwner.Memory[..blockLength];
+
+            var reasonMemoryBlock = memoryBlock[..reasonLength];
+            var endOfReasonMarkMemoryBlock = memoryBlock[reasonLength..][..endOfReasonMarkLength];
+
+            endOfReasonMarkMemoryBlock.Span[0] = 0;
+
+            Encoding.Latin1.GetBytes(responsePacket.Reason, reasonMemoryBlock.Span);
+
+            _responseFrame = new(ResponseCode.QuarantineMessage, memoryOwner, ..blockLength);
+
+            return true;
+        }
+        catch
+        {
+            memoryOwner.Dispose();
+
+            throw;
+        }
     }
 
     protected internal override bool VisitRejectMessageResponsePacket(RejectMessageResponsePacket responsePacket)
