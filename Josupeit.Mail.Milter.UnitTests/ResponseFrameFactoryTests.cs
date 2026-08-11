@@ -1,3 +1,5 @@
+using System;
+using System.Buffers;
 using System.Linq;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
@@ -99,6 +101,128 @@ public sealed class ResponseFrameFactoryTests
         // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.Progress));
         Assert.That(GetData(frame), Is.Empty);
+    }
+
+    [Test]
+    public void A_decision_without_data_is_a_bare_frame()
+    {
+        // Arrange
+        (ResponsePacket Packet, ResponseCode Code)[] decisions =
+        [
+            (AcceptMessageResponsePacket.Instance, ResponseCode.AcceptMessage),
+            (ContinueProcessingResponsePacket.Instance, ResponseCode.ContinueProcessing),
+            (DeferMessageResponsePacket.Instance, ResponseCode.DeferMessage),
+            (DiscardMessageResponsePacket.Instance, ResponseCode.DiscardMessage),
+            (RejectMessageResponsePacket.Instance, ResponseCode.RejectMessage),
+        ];
+
+        var factory = new ResponseFrameFactory();
+
+        // Act
+        // Assert
+        foreach (var (packet, code) in decisions)
+        {
+            using var frame = factory.CreateResponseFrame(packet);
+
+            Assert.That(frame.ResponseCode, Is.EqualTo(code));
+            Assert.That(GetData(frame), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Adding_a_header_terminates_both_fields()
+    {
+        // Arrange
+        var packet = new AddHeaderResponsePacket { Name = "X-Test", Value = "value" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.AddHeader));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("X-Test\0value\0")));
+    }
+
+    [Test]
+    public void Adding_a_recipient_terminates_the_address()
+    {
+        // Arrange
+        var packet = new AddRecipientResponsePacket { Recipient = "bob@example.com" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.AddRecipient));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("bob@example.com\0")));
+    }
+
+    [Test]
+    public void Deleting_a_recipient_terminates_the_address()
+    {
+        // Arrange
+        var packet = new DeleteRecipientResponsePacket { Recipient = "eve@example.com" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.DeleteRecipient));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("eve@example.com\0")));
+    }
+
+    [Test]
+    public void Negotiation_writes_three_big_endian_words()
+    {
+        // Arrange
+        var packet = new OptionNegotiationResponsePacket
+        {
+            MilterProtocolVersion = new Version(2, 0),
+            MilterRequiredActions = ActionDiscriminator.AddHeaders,
+            MilterUndesiredProtocolContent = ContentBypassDiscriminator.NoConnect | ContentBypassDiscriminator.NoHelo,
+        };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.OptionNegotiation));
+        Assert.That(
+            GetData(frame),
+            Is.EqualTo(new byte[]
+            {
+                0, 0, 0, 2,
+                0, 0, 0, (byte)ActionDiscriminator.AddHeaders,
+                0, 0, 0, (byte)(ContentBypassDiscriminator.NoConnect | ContentBypassDiscriminator.NoHelo),
+            }));
+    }
+
+    [Test]
+    public void Replacing_the_body_hands_the_buffer_through_untouched()
+    {
+        // Arrange
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(16);
+
+        "chunk"u8.CopyTo(memoryOwner.Memory.Span);
+
+        var packet = new ReplaceBodyResponsePacket { Memory = memoryOwner, BodyRange = ..5 };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ReplaceBody));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("chunk")));
+    }
+
+    [Test]
+    public void An_unknown_packet_is_refused()
+    {
+        // Act
+        // Assert
+        Assert.That(
+            () => new ResponseFrameFactory().CreateResponseFrame(null!),
+            Throws.ArgumentNullException);
     }
 
     private static byte[] Latin1(string text)
