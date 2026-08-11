@@ -550,6 +550,159 @@ public class MilterTests : MilterFixture
             Throws.InstanceOf<TimeoutException>());
     }
 
+    [Test]
+    public async Task Adding_a_header_reaches_the_delivered_mail()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.AddHeaders,
+            ModificationActions.AddHeader("X-Filtered-By", "Josupeit.Mail.Milter"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        Assert.That(await ReceiveMail(), Does.Contain("X-Filtered-By: Josupeit.Mail.Milter"));
+    }
+
+    [Test]
+    public async Task Changing_a_header_reaches_the_delivered_mail()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.ChangeHeaders,
+            ModificationActions.ChangeHeader("Subject", "Rewritten by the filter"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Original subject", "Body"));
+
+        var delivered = await ReceiveMail();
+
+        Assert.That(delivered, Does.Contain("Subject: Rewritten by the filter"));
+        Assert.That(delivered, Does.Not.Contain("Original subject"));
+    }
+
+    /// <summary>
+    /// The end-to-end proof that the header index is translated for the wire.
+    /// </summary>
+    /// <remarks>
+    /// A default index cannot show this: SMFIR_CHGHEADER counts occurrences from one, and Postfix quietly
+    /// treats the zero a naive implementation sends as a one, so changing the only occurrence works either
+    /// way. It is the second occurrence that separates them - untranslated, index 1 rewrites the first.
+    /// </remarks>
+    [Test, CancelAfter(30_000)]
+    public async Task Changing_the_second_occurrence_of_a_header_leaves_the_first_alone()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.ChangeHeaders,
+            ModificationActions.ChangeHeader("X-Repeated", "rewritten", index: 1));
+
+        await Converse(
+            "EHLO test.example.com",
+            "MAIL FROM:<random@example.com>",
+            "RCPT TO:<root@localhost.localdomain>",
+            "DATA",
+            "X-Repeated: first\r\nX-Repeated: second\r\nSubject: Subject\r\n\r\nBody\r\n.",
+            "QUIT");
+
+        var delivered = await ReceiveMail();
+
+        Assert.That(delivered, Does.Contain("X-Repeated: first"));
+        Assert.That(delivered, Does.Contain("X-Repeated: rewritten"));
+        Assert.That(delivered, Does.Not.Contain("X-Repeated: second"));
+    }
+
+    [Test]
+    public async Task Deleting_a_header_reaches_the_delivered_mail()
+    {
+        RespondAtEndOfBody(ActionRequirements.DeleteHeaders, ModificationActions.DeleteHeader("Subject"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Doomed subject", "Body"));
+
+        Assert.That(await ReceiveMail(), Does.Not.Contain("Doomed subject"));
+    }
+
+    [Test]
+    public async Task Replacing_the_body_reaches_the_delivered_mail()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.ChangeBody,
+            ModificationActions.ReplaceBody(new MemoryStream(Encoding.ASCII.GetBytes("Body written by the filter\r\n"))));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body written by the sender"));
+
+        var delivered = await ReceiveMail();
+
+        Assert.That(delivered, Does.Contain("Body written by the filter"));
+        Assert.That(delivered, Does.Not.Contain("Body written by the sender"));
+    }
+
+    [Test, CancelAfter(30_000)]
+    public async Task Adding_a_recipient_delivers_the_mail_twice()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.AddRecipients,
+            ModificationActions.AddRecipient("nobody@localhost.localdomain"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        var firstDelivery = await ReceiveMail();
+        var secondDelivery = await ReceiveMail();
+
+        // The pipe transport prepends Delivered-To, so the envelope recipient is visible in the message.
+        Assert.That(
+            firstDelivery + secondDelivery,
+            Does.Contain("Delivered-To: root@localhost.localdomain")
+                .And.Contains("Delivered-To: nobody@localhost.localdomain"));
+    }
+
+    [Test, CancelAfter(60_000)]
+    public async Task Deleting_the_only_recipient_stops_the_delivery()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.DeleteRecipients,
+            ModificationActions.DeleteRecipient("root@localhost.localdomain"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        await Assert.ThatAsync(
+            async () => await ReceiveMail().WaitAsync(TimeSpan.FromSeconds(20)),
+            Throws.InstanceOf<TimeoutException>());
+    }
+
+    /// <summary>
+    /// A quarantined message is held in the queue instead of being delivered.
+    /// </summary>
+    /// <remarks>
+    /// The reason deliberately goes unasserted, because against Postfix it is unobservable. Postfix reads
+    /// the reason off SMFIR_QUARANTINE and then logs its own fixed "milter triggers HOLD action" text, and
+    /// it holds the message just as readily when the reason is missing altogether - which was measured
+    /// here, not assumed. So the reason reaching the wire is only provable at the byte level; see
+    /// ResponseFrameFactoryTests.Quarantining_carries_the_reason.
+    /// </remarks>
+    [Test, CancelAfter(30_000)]
+    public async Task Quarantining_holds_the_message_in_the_queue()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.QuarantineMessage,
+            ModificationActions.QuarantineMessage("held by the integration test"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        var heldMessageCount = await SubmitMailLocally("find /var/spool/postfix/hold -type f | wc -l");
+
+        Assert.That(heldMessageCount.Trim(), Is.EqualTo("1"), "The message should have been held.");
+        Assert.That(await ReadPostfixLog(), Does.Contain("milter-hold"));
+    }
+
+    /// <summary>
+    /// Answers end-of-body with <paramref name="actions"/> and then accepts the message.
+    /// </summary>
+    private void RespondAtEndOfBody(ActionRequirements actionRequirements, params Action[] actions)
+    {
+        MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.EndOfBody;
+        MilterContextAdapter.ActionRequirements = actionRequirements;
+
+        ContextAdapter
+            .OnEndOfBody()
+            .ReturnsForAnyArgs(actions.Append<Action>(CommitActions.Accept).ToAsyncEnumerable());
+    }
+
     /// <summary>
     /// Asserts that the callback matching <paramref name="protocolRequirements"/> was actually invoked.
     /// </summary>
