@@ -4,8 +4,8 @@ namespace Josupeit.Mail.Milter;
 
 public sealed record MilterOptions
 {
-    private const uint DefaultMaxFrameLength = 1024 * 1024;
-    private const int DefaultMaxConcurrentSessions = 1024;
+    public static readonly uint DefaultMaxFrameLength = 1024 * 1024;
+    public static readonly int DefaultMaxConcurrentSessions = 1024;
 
     private readonly uint _maxFrameLength = DefaultMaxFrameLength;
     private readonly int _maxConcurrentSessions = DefaultMaxConcurrentSessions;
