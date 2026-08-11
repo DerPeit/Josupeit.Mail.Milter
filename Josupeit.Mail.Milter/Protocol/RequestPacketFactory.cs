@@ -123,7 +123,10 @@ public class RequestPacketFactory : IRequestPacketFactory
             EnsureHasReadEverything(hasReadEverything);
 
             macros ??= new();
-            macros.Add(macroName, macroValue!);
+
+            // An MTA may redefine a macro within one packet, so the last definition wins. Using
+            // Dictionary.Add here would throw and tear down the session over ~20 bytes on the wire.
+            macros[macroName] = macroValue!;
         }
 
         var packet = new DefineMacroRequestPacket
