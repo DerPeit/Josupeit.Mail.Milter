@@ -44,24 +44,32 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         return ProcessRequest(request, ca => ca.OnHeader, responseExpected: true, cancellationToken);
     }
 
+    // Unlike AbortedState, a macro definition does transition here, and that difference is deliberate:
+    // replaying is what moves this state on, and it has to happen before the next message's events reach
+    // the fresh context. The macro cannot be handled without it.
     public override IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
         return ProcessRequest(request, ca => ca.OnDefineMacro, responseExpected: false, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public override IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        try
+        return Enumerate();
+
+        async IAsyncEnumerable<ResponsePacket> Enumerate()
         {
-            yield break;
-        }
-        finally
-        {
-            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
-            await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
+            try
+            {
+                yield break;
+            }
+            finally
+            {
+                await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+                await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
+            }
         }
     }
 
@@ -75,58 +83,63 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         return ProcessRequest(request, ca => ca.OnSender, responseExpected: true, cancellationToken);
     }
 
-    private async IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        return Enumerate(CancellationToken.None);
 
-        try
+        async IAsyncEnumerable<ResponsePacket> Enumerate([EnumeratorCancellation] CancellationToken enumeratorToken)
         {
-            // We replay all required packets, because according to the docs, an abortion "resets internal state of milter
-            // program to before SMFIC_HELO, but keeps the connection open". However, we know from the internal states, that
-            // there can only be macros and the connection request. So we implement this with a little smelly code.
-            foreach (var packet in packetReplayHistory)
+            var contextAdapter = stateMachine.EnsureContextAdapter();
+
+            try
             {
-                var responses = packet switch
+                // We replay all required packets, because according to the docs, an abortion "resets internal state of milter
+                // program to before SMFIC_HELO, but keeps the connection open". However, we know from the internal states, that
+                // there can only be macros and the connection request. So we implement this with a little smelly code.
+                foreach (var packet in packetReplayHistory)
                 {
-                    DefineMacroRequestPacket defineMacroRequestPacket => contextAdapter.OnDefineMacro(defineMacroRequestPacket, cancellationToken),
-                    ConnectRequestPacket connectRequestPacket => contextAdapter.OnConnectionEstablished(connectRequestPacket, cancellationToken),
-                    _ => null!,
-                };
+                    var responses = packet switch
+                    {
+                        DefineMacroRequestPacket defineMacroRequestPacket => contextAdapter.OnDefineMacro(defineMacroRequestPacket, enumeratorToken),
+                        ConnectRequestPacket connectRequestPacket => contextAdapter.OnConnectionEstablished(connectRequestPacket, enumeratorToken),
+                        _ => null!,
+                    };
 
-                Debug.Assert(responses != null, "Packet replay history contained unexpected packet.");
+                    Debug.Assert(responses != null, "Packet replay history contained unexpected packet.");
 
-                await foreach (var response in responses.WithCancellation(cancellationToken).ConfigureAwait(false))
-                {
-                    // We know, by design, that the response represents a commit action. Also, we must have come here
-                    // when a previous connection request was responded with a "continue" response. Thus, we expect
-                    // the connection attempt to be deterministic and respond with a continue response, again. If it's
-                    // a different connection response, we respond with this commit in this stage.
-                    if (response is ContinueProcessingResponsePacket)
-                        continue;
+                    await foreach (var response in responses.WithCancellation(enumeratorToken).ConfigureAwait(false))
+                    {
+                        // We know, by design, that the response represents a commit action. Also, we must have come here
+                        // when a previous connection request was responded with a "continue" response. Thus, we expect
+                        // the connection attempt to be deterministic and respond with a continue response, again. If it's
+                        // a different connection response, we respond with this commit in this stage.
+                        if (response is ContinueProcessingResponsePacket)
+                            continue;
 
-                    // Unless the packet we are replaying for expects no reply at all, in which case writing
-                    // one would be read by the MTA as the answer to the next command and put every
-                    // request and response after it out of step for the rest of the connection. Failing
-                    // the session costs one message; a desynchronised connection corrupts all of them.
-                    if (!responseExpected)
-                        throw new InvalidOperationException(
-                            "Protocol violation: The replayed connection callback returned a non-continue response "
-                            + "while handling a packet that expects no reply. Connection callbacks must be deterministic.");
+                        // Unless the packet we are replaying for expects no reply at all, in which case writing
+                        // one would be read by the MTA as the answer to the next command and put every
+                        // request and response after it out of step for the rest of the connection. Failing
+                        // the session costs one message; a desynchronised connection corrupts all of them.
+                        if (!responseExpected)
+                            throw new InvalidOperationException(
+                                "Protocol violation: The replayed connection callback returned a non-continue response "
+                                + "while handling a packet that expects no reply. Connection callbacks must be deterministic.");
 
-                    yield return response;
-                    yield break;
+                        yield return response;
+                        yield break;
+                    }
                 }
-            }
 
-            await foreach (var response in processor(contextAdapter).Invoke(request, cancellationToken).ConfigureAwait(false))
-                yield return response;
-        }
-        finally
-        {
-            await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, packetReplayHistory)).ConfigureAwait(false);
+                await foreach (var response in processor(contextAdapter).Invoke(request, enumeratorToken).ConfigureAwait(false))
+                    yield return response;
+            }
+            finally
+            {
+                await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, packetReplayHistory)).ConfigureAwait(false);
+            }
         }
     }
 }

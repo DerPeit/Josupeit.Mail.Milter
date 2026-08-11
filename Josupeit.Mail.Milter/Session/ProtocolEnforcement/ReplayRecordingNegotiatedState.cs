@@ -16,7 +16,17 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        return ProcessAbortionCore();
+        return Enumerate();
+
+        // See NegotiatedState for why an abortion reaches this state at all. The recorded packets are
+        // kept: they describe the connection, which outlives the message that was aborted and still has
+        // to be replayed into the context that serves the next one.
+        async IAsyncEnumerable<ResponsePacket> Enumerate()
+        {
+            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+
+            yield break;
+        }
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
@@ -54,28 +64,38 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
         return ProcessRequest(request, static ca => ca.OnHeader, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public override IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
         _packetReplayHistory.Add(request);
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        return Enumerate(CancellationToken.None);
 
-        await foreach (var response in contextAdapter.OnDefineMacro(request, cancellationToken).ConfigureAwait(false))
-            yield return response;
+        async IAsyncEnumerable<ResponsePacket> Enumerate([EnumeratorCancellation] CancellationToken enumeratorToken)
+        {
+            var contextAdapter = stateMachine.EnsureContextAdapter();
+
+            await foreach (var response in contextAdapter.OnDefineMacro(request, enumeratorToken).ConfigureAwait(false))
+                yield return response;
+        }
     }
 
-    public override async IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public override IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
-        await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
+        return Enumerate();
 
-        yield break;
+        async IAsyncEnumerable<ResponsePacket> Enumerate()
+        {
+            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+            await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
+
+            yield break;
+        }
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
@@ -88,16 +108,6 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
         return ProcessRequest(request, static ca => ca.OnSender, cancellationToken);
     }
 
-    // See NegotiatedState for why an abortion reaches this state at all. The recorded packets are kept:
-    // they describe the connection, which outlives the message that was aborted and still has to be
-    // replayed into the context that serves the next one.
-    private async IAsyncEnumerable<ResponsePacket> ProcessAbortionCore()
-    {
-        await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
-
-        yield break;
-    }
-
     private IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, CancellationToken cancellationToken)
     {
         if (request == null)
@@ -106,20 +116,25 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
         return ProcessRequestCore(request, processor, cancellationToken);
     }
 
-    private async IAsyncEnumerable<ResponsePacket> ProcessRequestCore<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private IAsyncEnumerable<ResponsePacket> ProcessRequestCore<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, CancellationToken cancellationToken)
     {
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        return Enumerate(CancellationToken.None);
 
-        try
+        async IAsyncEnumerable<ResponsePacket> Enumerate([EnumeratorCancellation] CancellationToken enumeratorToken)
         {
-            await foreach (var response in processor(contextAdapter).Invoke(request, cancellationToken).ConfigureAwait(false))
-                yield return response;
-        }
-        finally
-        {
-            var connectedState = new ReplayingConnectedState(stateMachine, _packetReplayHistory);
+            var contextAdapter = stateMachine.EnsureContextAdapter();
 
-            await stateMachine.TransitionTo(connectedState).ConfigureAwait(false);
+            try
+            {
+                await foreach (var response in processor(contextAdapter).Invoke(request, enumeratorToken).ConfigureAwait(false))
+                    yield return response;
+            }
+            finally
+            {
+                var connectedState = new ReplayingConnectedState(stateMachine, _packetReplayHistory);
+
+                await stateMachine.TransitionTo(connectedState).ConfigureAwait(false);
+            }
         }
     }
 }

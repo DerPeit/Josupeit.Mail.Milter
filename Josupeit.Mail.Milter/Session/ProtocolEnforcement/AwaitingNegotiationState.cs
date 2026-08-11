@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Link;
@@ -12,7 +11,7 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
 {
     private static readonly Version _implementedProtocolVersion = new(2, 0);
 
-    public override async IAsyncEnumerable<ResponsePacket> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public override IAsyncEnumerable<ResponsePacket> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
@@ -32,13 +31,18 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
             MilterUndesiredProtocolContent = contentBypass,
         };
 
-        try
+        return Enumerate();
+
+        async IAsyncEnumerable<ResponsePacket> Enumerate()
         {
-            yield return response;
-        }
-        finally
-        {
-            await TransitionToNextState().ConfigureAwait(false);
+            try
+            {
+                yield return response;
+            }
+            finally
+            {
+                await TransitionToNextState().ConfigureAwait(false);
+            }
         }
     }
 

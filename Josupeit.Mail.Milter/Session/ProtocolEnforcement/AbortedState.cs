@@ -20,81 +20,98 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine) : Protoco
 
     public override IAsyncEnumerable<ResponsePacket> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnBodyChunk, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnBodyChunk, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnClientHello, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnClientHello, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnEndOfBody, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfBody, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnEndOfHeaders, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfHeaders, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnHeader, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnHeader, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    // A macro definition carries no message content, so it does not start the next message and does not
+    // transition. The replaying counterpart cannot follow that rule: replaying is what moves it on.
+    public override IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        return Enumerate(CancellationToken.None);
 
-        await foreach (var response in contextAdapter.OnDefineMacro(request, cancellationToken).ConfigureAwait(false))
-            yield return response;
-    }
-
-    public override async IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
-
-        try
+        async IAsyncEnumerable<ResponsePacket> Enumerate([EnumeratorCancellation] CancellationToken enumeratorToken)
         {
-            yield break;
+            var contextAdapter = stateMachine.EnsureContextAdapter();
+
+            await foreach (var response in contextAdapter.OnDefineMacro(request, enumeratorToken).ConfigureAwait(false))
+                yield return response;
         }
-        finally
+    }
+
+    public override IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
+    {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+
+        return Enumerate();
+
+        async IAsyncEnumerable<ResponsePacket> Enumerate()
         {
-            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
-            await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
+            try
+            {
+                yield break;
+            }
+            finally
+            {
+                await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+                await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
+            }
         }
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnRecipient, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnRecipient, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnSender, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnSender, cancellationToken);
     }
 
-    private async IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        return Enumerate(CancellationToken.None);
 
-        try
+        async IAsyncEnumerable<ResponsePacket> Enumerate([EnumeratorCancellation] CancellationToken enumeratorToken)
         {
-            await foreach (var response in processor(contextAdapter).Invoke(request, cancellationToken).ConfigureAwait(false))
-                yield return response;
-        }
-        finally
-        {
-            await stateMachine.TransitionTo(new ConnectedState(stateMachine)).ConfigureAwait(false);
+            var contextAdapter = stateMachine.EnsureContextAdapter();
+
+            try
+            {
+                await foreach (var response in processor(contextAdapter).Invoke(request, enumeratorToken).ConfigureAwait(false))
+                    yield return response;
+            }
+            finally
+            {
+                await stateMachine.TransitionTo(new ConnectedState(stateMachine)).ConfigureAwait(false);
+            }
         }
     }
 }
