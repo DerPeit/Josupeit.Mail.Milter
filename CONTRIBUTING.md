@@ -18,7 +18,12 @@ There is no `.editorconfig` or analyzer ruleset yet - apart from `ConfigureAwait
 
 ### Naming & visibility
 
-- **`internal sealed` by default.** Only the user-facing surface is public: `Milter<T>`, `IMilterContext`, `IMilterCallbacks`, `Action` and its subtypes, the `*Information` types, the requirement enums.
+- **Three visibility tiers**, not one default. This is a library, and the wire layer is deliberately reachable so a consumer can extend it rather than fork it:
+  - **The authoring surface** - `Milter<T>`, `IMilterContext`, `IMilterCallbacks`, `Action` and its subtypes, the `CommitActions`/`ModificationActions` factories, the `*Information` types, `MilterOptions`, the requirement enums. Public, and the only tier a normal filter touches.
+  - **The extensible wire layer** - `LinkReader`/`LinkWriter`, `RequestParser`/`ResponseFormatter`, `RequestPacketFactory`/`ResponseFrameFactory`, the packet hierarchies and their visitors, plus the `I*` interfaces over all of them. **Public and non-sealed on purpose**, with `protected internal virtual` members, so a consumer can subclass a visitor or swap a factory. Adding a packet type means adding a `Visit*` to the matching visitor - that is a breaking change for anyone who derived, so weigh it.
+  - **Everything else** - `internal sealed`: the session, the protocol states, `ContextAdapter`, `WireText`. Reachable from the two test projects through `<InternalsVisibleTo />` and from nowhere else.
+- **Sealed unless it is meant to be derived from.** A public type that is not sealed is a statement that overriding it is supported; do not unseal one just to make a test easier.
+- **Validate arguments on the public surface**, not on internal members. An internal method is only reached by this library and its tests, so a guard there checks a caller that cannot get it wrong.
 - Private fields `_camelCase`; locals and parameters `camelCase`; everything else `PascalCase`.
 - Interfaces are `I`-prefixed.
 - **No `Async` suffix** on async methods - `Session.Run`, `Milter.Stop` and `LinkWriter.WriteData` are all async. Exception: names dictated by a framework contract (`DisposeAsync`).
@@ -89,7 +94,9 @@ Not rigid rules - lenses. When writing, reading or reviewing code here, actively
 ### Tests
 
 - **Arrange / Act / Assert**, always separated by blank lines. A comment block is always preceded by a blank line.
-- Tests are integration-only and need Docker; see [CLAUDE.md](CLAUDE.md) for the Postfix/milter fixtures.
+- Two projects, and the split decides where a test belongs. `Josupeit.Mail.Milter.UnitTests` needs no Docker and covers what a correct MTA can never send - malformed frames, protocol violations, byte-exact serialization, the abort and replay states. `Josupeit.Mail.Milter.IntegrationTests` drives a real Postfix through Testcontainers; see [CLAUDE.md](CLAUDE.md) for the fixtures.
+- **Reach for the unit project first.** An integration run costs minutes and a Docker daemon; it earns that only when the point of the test is that Postfix agrees.
+- **Bound every wait on a background worker.** A test that awaits a task which never completes hangs the whole run rather than failing one test, and NUnit's `CancelAfter` cannot break it. Race the wait against a timeout and assert on which won.
 
 ## Commit style
 
