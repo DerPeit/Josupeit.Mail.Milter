@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 
 namespace Josupeit.Mail.Milter;
@@ -8,6 +8,7 @@ public static class ModificationActions
     public static AddRecipientAction AddRecipient(string recipient)
     {
         ArgumentException.ThrowIfNullOrEmpty(recipient);
+        WireText.ThrowIfContainsControlCharacter(recipient);
 
         return new AddRecipientAction(recipient);
     }
@@ -15,6 +16,7 @@ public static class ModificationActions
     public static DeleteRecipientAction DeleteRecipient(string recipient)
     {
         ArgumentException.ThrowIfNullOrEmpty(recipient);
+        WireText.ThrowIfContainsControlCharacter(recipient);
 
         return new DeleteRecipientAction(recipient);
     }
@@ -23,6 +25,8 @@ public static class ModificationActions
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentException.ThrowIfNullOrEmpty(value);
+        WireText.ThrowIfNotHeaderName(name);
+        WireText.ThrowIfContainsControlCharacter(value);
 
         return new AddHeaderAction(name, value);
     }
@@ -32,6 +36,8 @@ public static class ModificationActions
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentException.ThrowIfNullOrEmpty(value);
         ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
+        WireText.ThrowIfNotHeaderName(name);
+        WireText.ThrowIfContainsControlCharacter(value);
 
         return new ChangeHeaderAction(name, value, index);
     }
@@ -40,6 +46,7 @@ public static class ModificationActions
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
+        WireText.ThrowIfNotHeaderName(name);
 
         return new DeleteHeaderAction(name, index);
     }
@@ -54,6 +61,7 @@ public static class ModificationActions
     public static QuarantineAction QuarantineMessage(string reason)
     {
         ArgumentException.ThrowIfNullOrEmpty(reason);
+        WireText.ThrowIfContainsControlCharacter(reason);
 
         return new QuarantineAction(reason);
     }
