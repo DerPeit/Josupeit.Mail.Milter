@@ -98,14 +98,24 @@ public sealed class Milter<TContext> where TContext : IMilterContext
             }
         }
 
-        using (await _monitor!.EnterAsync().ConfigureAwait(false))
-            while (_activeSessions > 0)
-                await _monitor.WaitAsync().ConfigureAwait(false);
+        await WaitForSessionsToEnd().ConfigureAwait(false);
 
         _stopper.Dispose();
         _stopper = null;
         _runner = null;
         _monitor = null;
+    }
+
+    /// <summary>
+    /// Waits until no session is being served any more. The listener is untouched, so new connections are
+    /// still accepted while this waits - it says when the sessions already in flight are finished, nothing
+    /// more.
+    /// </summary>
+    internal async Task WaitForSessionsToEnd()
+    {
+        using (await _monitor!.EnterAsync().ConfigureAwait(false))
+            while (_activeSessions > 0)
+                await _monitor.WaitAsync().ConfigureAwait(false);
     }
 
     private async Task AcceptConnections()
