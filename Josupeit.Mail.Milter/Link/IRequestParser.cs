@@ -6,5 +6,5 @@ public interface IRequestParser
 {
     void Start();
 
-    Task StopAsync();
+    Task Stop();
 }

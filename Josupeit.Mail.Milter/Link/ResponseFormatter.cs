@@ -28,7 +28,7 @@ public class ResponseFormatter
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
-    public async Task StopAsync()
+    public async Task Stop()
     {
         if (_runner == null)
             throw new InvalidOperationException($"{nameof(ResponseFormatter)} cannot be stopped. It is not running.");

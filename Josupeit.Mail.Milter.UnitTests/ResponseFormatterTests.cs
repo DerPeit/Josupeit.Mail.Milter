@@ -82,19 +82,19 @@ public sealed class ResponseFormatterTests
 
         // Act
         // Assert
-        Assert.That(async () => await formatter.StopAsync(), Throws.InstanceOf<InvalidOperationException>());
+        Assert.That(async () => await formatter.Stop(), Throws.InstanceOf<InvalidOperationException>());
     }
 
     // Stopping a formatter that is waiting on a channel nobody completed never returns, which would hang
     // the whole test run rather than fail one test. So we bound the wait and assert on it instead.
     private static async Task StopAndAssertItCompletes(ResponseFormatter formatter)
     {
-        var stopping = formatter.StopAsync();
+        var stopping = formatter.Stop();
 
         Assert.That(
             await Task.WhenAny(stopping, Task.Delay(StopTimeout)),
             Is.SameAs(stopping),
-            "StopAsync did not complete.");
+            "Stop did not complete.");
 
         await stopping;
     }

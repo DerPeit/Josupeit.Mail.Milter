@@ -191,8 +191,8 @@ public sealed class Milter<TContext> where TContext : IMilterContext
                         }
                         finally
                         {
-                            await requestParser.StopAsync().ConfigureAwait(false);
-                            await responseFormatter.StopAsync().ConfigureAwait(false);
+                            await requestParser.Stop().ConfigureAwait(false);
+                            await responseFormatter.Stop().ConfigureAwait(false);
                         }
                     }
                     finally

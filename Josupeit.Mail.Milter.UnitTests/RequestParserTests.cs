@@ -32,7 +32,7 @@ public sealed class RequestParserTests
             async () => await Drain(reader),
             Throws.InstanceOf<InvalidOperationException>());
 
-        await parser.StopAsync();
+        await parser.Stop();
     }
 
     [Test]
@@ -51,7 +51,7 @@ public sealed class RequestParserTests
             async () => await Drain(reader),
             Throws.InstanceOf<InvalidOperationException>());
 
-        await parser.StopAsync();
+        await parser.Stop();
     }
 
     [Test]
@@ -79,7 +79,7 @@ public sealed class RequestParserTests
             });
         }
 
-        await parser.StopAsync();
+        await parser.Stop();
     }
 
     private static (RequestParser Parser, PipeWriter Writer, ChannelReader<RequestFrame> Reader) CreateParserHarness(
