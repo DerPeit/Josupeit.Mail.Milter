@@ -38,9 +38,9 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitAddHeaderResponsePacket(AddHeaderResponsePacket responsePacket)
     {
-        var nameLength = Encoding.ASCII.GetByteCount(responsePacket.Name);
+        var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
         const int endOfNameMarkLength = 1;
-        var valueLength = Encoding.ASCII.GetByteCount(responsePacket.Value);
+        var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
         const int endOfValueMarkLength = 1;
         var blockLength = nameLength + endOfNameMarkLength + valueLength + endOfValueMarkLength;
 
@@ -58,8 +58,8 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             // I cannot find whether the memory block is guaranteed to be zero-ed.
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
 
-            Encoding.ASCII.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
-            Encoding.ASCII.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.AddHeader, memoryOwner, ..blockLength);
 
@@ -75,7 +75,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitAddRecipientResponsePacket(AddRecipientResponsePacket responsePacket)
     {
-        var recipientLength = Encoding.ASCII.GetByteCount(responsePacket.Recipient);
+        var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
         const int endOfRecipientMarkLength = 1;
         var blockLength = recipientLength + endOfRecipientMarkLength;
 
@@ -90,7 +90,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
             endOfRecipientMarkMemoryBlock.Span[0] = 0;
 
-            Encoding.ASCII.GetBytes(responsePacket.Recipient, recipientMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Recipient, recipientMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.AddRecipient, memoryOwner, ..blockLength);
 
@@ -107,9 +107,9 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     protected internal override bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
     {
         const int indexLength = sizeof(uint);
-        var nameLength = Encoding.ASCII.GetByteCount(responsePacket.Name);
+        var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
         const int endOfNameMarkLength = 1;
-        var valueLength = Encoding.ASCII.GetByteCount(responsePacket.Value);
+        var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
         const int endOfValueMarkLength = 1;
         var blockLength = indexLength + nameLength + endOfNameMarkLength + valueLength + endOfValueMarkLength;
 
@@ -128,8 +128,8 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
 
             BinaryPrimitives.WriteUInt32BigEndian(indexMemoryBlock.Span, responsePacket.Index);
-            Encoding.ASCII.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
-            Encoding.ASCII.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.ChangeOrDeleteHeader, memoryOwner, ..blockLength);
 
@@ -158,7 +158,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitDeleteRecipientResponsePacket(DeleteRecipientResponsePacket responsePacket)
     {
-        var recipientLength = Encoding.ASCII.GetByteCount(responsePacket.Recipient);
+        var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
         const int endOfRecipientMarkLength = 1;
         var blockLength = recipientLength + endOfRecipientMarkLength;
 
@@ -173,7 +173,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
             endOfRecipientMarkMemoryBlock.Span[0] = 0;
 
-            Encoding.ASCII.GetBytes(responsePacket.Recipient, recipientMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Recipient, recipientMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.DeleteRecipient, memoryOwner, ..blockLength);
 
@@ -250,9 +250,9 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitReplyWithCodeResponsePacket(ReplyWithCodeResponsePacket responsePacket)
     {
-        var codeLength = Encoding.ASCII.GetByteCount(responsePacket.SmtpCode);
+        var codeLength = Encoding.Latin1.GetByteCount(responsePacket.SmtpCode);
         const int endOfCodeMarkLength = 1;
-        var textLength = Encoding.ASCII.GetByteCount(responsePacket.Text);
+        var textLength = Encoding.Latin1.GetByteCount(responsePacket.Text);
         const int endOfTextMarkLength = 1;
         var blockLength = codeLength + endOfCodeMarkLength + textLength + endOfTextMarkLength;
 
@@ -270,8 +270,8 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             endOfCodeMarkMemoryBlock.Span[0] = 32;
             endOfTextMarkMemoryBlock.Span[0] = 0;
 
-            Encoding.ASCII.GetBytes(responsePacket.SmtpCode, codeMemoryBlock.Span);
-            Encoding.ASCII.GetBytes(responsePacket.Text, textMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.SmtpCode, codeMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Text, textMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.ReplyWithCode, memoryOwner, ..blockLength);
 

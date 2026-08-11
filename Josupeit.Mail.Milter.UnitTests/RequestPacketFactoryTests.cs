@@ -51,6 +51,49 @@ public sealed class RequestPacketFactoryTests
     }
 
     [Test]
+    public void Header_values_preserve_bytes_above_the_ascii_range()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var value = new byte[] { 0xE9, 0xFF };
+
+        var payload = new List<byte>();
+
+        payload.AddRange(Encoding.Latin1.GetBytes("Subject"));
+        payload.Add(0);
+        payload.AddRange(value);
+        payload.Add(0);
+
+        var frame = CreateFrame(CommandCode.Header, payload.ToArray());
+
+        // Act
+        var packet = (HeaderRequestPacket)factory.CreateRequestPacket(frame);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(packet.Name, Is.EqualTo("Subject"));
+            Assert.That(Encoding.Latin1.GetBytes(packet.Value), Is.EqualTo(value));
+        });
+    }
+
+    [Test]
+    public void Unterminated_string_is_rejected_as_malformed()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var frame = CreateFrame(CommandCode.Helo, Encoding.Latin1.GetBytes("localhost"));
+
+        // Act
+        // Assert
+        Assert.That(
+            () => factory.CreateRequestPacket(frame),
+            Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
     public void Option_negotiation_version_with_the_high_bit_set_is_rejected_as_unsupported()
     {
         // Arrange
@@ -81,7 +124,7 @@ public sealed class RequestPacketFactoryTests
         var packet = (OptionNegotiationRequestPacket)factory.CreateRequestPacket(frame);
 
         // Assert
-        Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(major: 6, minor: 0)));
+        Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(6, 0)));
     }
 
     private static RequestFrame CreateFrame(CommandCode commandCode, byte[] data)

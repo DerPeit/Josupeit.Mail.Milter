@@ -1,15 +1,12 @@
-﻿using System;
+using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
-using Josupeit.Mail.Milter.Infrastructure;
 using Josupeit.Mail.Milter.Link;
 using ProtocolFamily = Josupeit.Mail.Milter.Link.ProtocolFamily;
 
@@ -62,10 +59,10 @@ public class RequestPacketFactory : IRequestPacketFactory
 
     protected virtual ConnectRequestPacket CreateConnectRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
+        var remaining = data.Span;
 
-        var hasReadEverything = TryGetNextStringVariableLength(reader, out var hostName)
-                                & TryGetNextChar(reader, out var family);
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var hostName)
+                                & TryGetNextChar(ref remaining, out var family);
 
         EnsureHasReadEverything(hasReadEverything);
 
@@ -87,8 +84,8 @@ public class RequestPacketFactory : IRequestPacketFactory
         // literal "unknown" (Postfix XCLIENT ADDR=[UNAVAILABLE]) - neither is an IPAddress.
         if (addressFamily != AddressFamily.Unknown)
         {
-            hasReadEverything = TryGetNextUInt16(reader, out port)
-                                & TryGetNextStringVariableLength(reader, out var addressText);
+            hasReadEverything = TryGetNextUInt16(ref remaining, out port)
+                                & TryGetNextStringVariableLength(ref remaining, out var addressText);
 
             EnsureHasReadEverything(hasReadEverything);
 
@@ -109,16 +106,16 @@ public class RequestPacketFactory : IRequestPacketFactory
 
     protected virtual DefineMacroRequestPacket CreateDefineMacroRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        var hasReadEverything = TryGetNextChar(reader, out var commandCode);
+        var remaining = data.Span;
+        var hasReadEverything = TryGetNextChar(ref remaining, out var commandCode);
 
         EnsureHasReadEverything(hasReadEverything);
 
         Dictionary<string, string>? macros = null;
 
-        while (TryGetNextStringVariableLength(reader, out var macroName))
+        while (TryGetNextStringVariableLength(ref remaining, out var macroName))
         {
-            hasReadEverything = TryGetNextStringVariableLength(reader, out var macroValue);
+            hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var macroValue);
 
             EnsureHasReadEverything(hasReadEverything);
 
@@ -150,10 +147,10 @@ public class RequestPacketFactory : IRequestPacketFactory
 
     protected virtual HeaderRequestPacket CreateHeaderRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
+        var remaining = data.Span;
 
-        var hasReadEverything = TryGetNextStringVariableLength(reader, out var headerName)
-                                & TryGetNextStringVariableLength(reader, out var headerValue);
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var headerName)
+                                & TryGetNextStringVariableLength(ref remaining, out var headerValue);
 
         EnsureHasReadEverything(hasReadEverything);
 
@@ -168,8 +165,8 @@ public class RequestPacketFactory : IRequestPacketFactory
 
     protected virtual HeloRequestPacket CreateHeloRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        var hasReadEverything = TryGetNextStringVariableLength(reader, out var heloString);
+        var remaining = data.Span;
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var heloString);
 
         EnsureHasReadEverything(hasReadEverything);
 
@@ -180,13 +177,14 @@ public class RequestPacketFactory : IRequestPacketFactory
 
         return packet;
     }
+
     protected virtual OptionNegotiationRequestPacket CreateOptionNegotiationRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
+        var remaining = data.Span;
 
-        var hasReadEverything = TryGetNextUInt32(reader, out var version)
-                                & TryGetNextUInt32(reader, out var actions)
-                                & TryGetNextUInt32(reader, out var events);
+        var hasReadEverything = TryGetNextUInt32(ref remaining, out var version)
+                                & TryGetNextUInt32(ref remaining, out var actions)
+                                & TryGetNextUInt32(ref remaining, out var events);
 
         EnsureHasReadEverything(hasReadEverything);
 
@@ -215,27 +213,17 @@ public class RequestPacketFactory : IRequestPacketFactory
 
     protected virtual RecipientRequestPacket CreateRecipientRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        var hasReadEverything = TryGetNextStringVariableLength(reader, out var recipient);
+        var remaining = data.Span;
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var recipient);
 
         EnsureHasReadEverything(hasReadEverything);
 
-        List<string>? eSmtpArguments = null;
-
-        while (HasNext(reader))
-        {
-            hasReadEverything = TryGetNextStringVariableLength(reader, out var eSmtpArgument);
-
-            EnsureHasReadEverything(hasReadEverything);
-
-            eSmtpArguments ??= new();
-            eSmtpArguments.Add(eSmtpArgument!);
-        }
+        var eSmtpArguments = ReadESmtpArguments(ref remaining);
 
         var packet = new RecipientRequestPacket
         {
             Recipient = recipient!,
-            ESmtpArguments = (IReadOnlyList<string>?)eSmtpArguments ?? Array.Empty<string>(),
+            ESmtpArguments = eSmtpArguments,
         };
 
         return packet;
@@ -243,200 +231,136 @@ public class RequestPacketFactory : IRequestPacketFactory
 
     protected virtual SenderRequestPacket CreateSenderRequestPacket(ReadOnlyMemory<byte> data)
     {
-        var reader = PipeReader.Create(new ReadOnlySequence<byte>(data));
-        var hasReadEverything = TryGetNextStringVariableLength(reader, out var sender);
+        var remaining = data.Span;
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var sender);
 
         EnsureHasReadEverything(hasReadEverything);
 
-        List<string>? eSmtpArguments = null;
-
-        while (HasNext(reader))
-        {
-            hasReadEverything = TryGetNextStringVariableLength(reader, out var eSmtpArgument);
-
-            EnsureHasReadEverything(hasReadEverything);
-
-            eSmtpArguments ??= new();
-            eSmtpArguments.Add(eSmtpArgument!);
-        }
+        var eSmtpArguments = ReadESmtpArguments(ref remaining);
 
         var packet = new SenderRequestPacket
         {
             Sender = sender!,
-            ESmtpArguments = (IReadOnlyList<string>?)eSmtpArguments ?? Array.Empty<string>(),
+            ESmtpArguments = eSmtpArguments,
         };
 
         return packet;
     }
-    protected bool HasNext(PipeReader reader)
-    {
-        var hasRead = reader.TryRead(out var readResult);
 
-        return hasRead && !readResult.Buffer.IsEmpty;
+    protected static bool HasNext(ReadOnlySpan<byte> remaining)
+    {
+        return !remaining.IsEmpty;
     }
 
-    protected bool TryGetNextBytes(PipeReader reader, long length, out ReadOnlySequence<byte> value)
+    protected static bool TryGetNextBytes(ref ReadOnlySpan<byte> remaining, int length, out ReadOnlySpan<byte> value)
     {
-        if (reader == null)
-            throw new ArgumentNullException(nameof(reader));
-
-        if (length < 0)
-            throw new ArgumentOutOfRangeException(nameof(length), length, message: null);
-        
-        while (true)
-        {
-            var hasRead = reader.TryRead(out var readResult);
-
-            if (!hasRead)
-            {
-                value = ReadOnlySequence<byte>.Empty;
-
-                return false;
-            }
-
-            Debug.Assert(!readResult.IsCanceled);
-
-            value = readResult.Buffer;
-
-            if (value.Length == length)
-            {
-                reader.AdvanceTo(value.End);
-
-                return true;
-            }
-
-            if (value.Length > length)
-            {
-                value = value.Slice(0, length);
-
-                reader.AdvanceTo(value.End);
-
-                return true;
-            }
-
-            reader.AdvanceTo(value.Start, value.End);
-
-            if (readResult.IsCompleted)
-                return false;
-        }
-    }
-
-    protected bool TryGetNextChar(in PipeReader reader, out char value)
-    {
-        if (reader == null)
-            throw new ArgumentNullException(nameof(reader));
-
-        if (TryGetNextBytes(reader, length: 1, out var buffer))
-        {
-            value = (char)buffer.FirstSpan[0];
-
-            return true;
-        }
-
-        value = default;
-
-        return false;
-    }
-
-    protected bool TryGetNextStringFixedLength(PipeReader reader, long length, [NotNullWhen(true)] out string? value)
-    {
-        if (reader == null)
-            throw new ArgumentNullException(nameof(reader));
-
         if (length < 0)
             throw new ArgumentOutOfRangeException(nameof(length), length, message: null);
 
-        if (TryGetNextBytes(reader, length, out var buffer))
+        if (remaining.Length < length)
         {
-            value = Encoding.ASCII.GetString(buffer);
+            value = default;
 
-            return true;
+            return false;
         }
 
-        value = default;
+        value = remaining[..length];
+        remaining = remaining[length..];
 
-        return false;
+        return true;
     }
 
-    protected bool TryGetNextStringVariableLength(PipeReader reader, [NotNullWhen(true)] out string? value)
+    protected static bool TryGetNextChar(ref ReadOnlySpan<byte> remaining, out char value)
     {
-        if (reader == null)
-            throw new ArgumentNullException(nameof(reader));
-
-        StringBuilder? sb = null;
-
-        while (true)
+        if (!TryGetNextBytes(ref remaining, length: 1, out var bytes))
         {
-            var hasRead = reader.TryRead(out var readResult);
+            value = default;
 
-            if (!hasRead)
-                break;
-
-            Debug.Assert(!readResult.IsCanceled);
-
-            var offset = 0;
-
-            foreach (var bytes in readResult.Buffer)
-                foreach (var @byte in bytes.Span)
-                {
-                    offset++;
-
-                    if (@byte == 0)
-                    {
-                        reader.AdvanceTo(readResult.Buffer.GetPosition(offset));
-                        value = sb?.ToString() ?? string.Empty;
-
-                        return true;
-                    }
-
-                    sb ??= new();
-                    sb.Append((char)@byte);
-                }
-
-            reader.AdvanceTo(readResult.Buffer.Start, readResult.Buffer.GetPosition(offset));
-
-            if (readResult.IsCompleted)
-                break;
+            return false;
         }
 
-        value = null;
+        value = (char)bytes[0];
 
-        return false;
+        return true;
     }
 
-    protected bool TryGetNextUInt16(PipeReader reader, out ushort value)
+    protected static bool TryGetNextStringFixedLength(ref ReadOnlySpan<byte> remaining, int length, [NotNullWhen(true)] out string? value)
     {
-        if (reader == null)
-            throw new ArgumentNullException(nameof(reader));
-
-        if (TryGetNextBytes(reader, length: 2, out var buffer))
+        if (!TryGetNextBytes(ref remaining, length, out var bytes))
         {
-            value = buffer.AsSpanInvoke(BinaryPrimitives.ReadUInt16BigEndian);
+            value = null;
 
-            return true;
+            return false;
         }
 
-        value = default;
-            
-        return false;
+        value = Encoding.Latin1.GetString(bytes);
+
+        return true;
     }
 
-    protected bool TryGetNextUInt32(PipeReader reader, out uint value)
+    protected static bool TryGetNextStringVariableLength(ref ReadOnlySpan<byte> remaining, [NotNullWhen(true)] out string? value)
     {
-        if (reader == null)
-            throw new ArgumentNullException(nameof(reader));
+        var terminator = remaining.IndexOf((byte)0);
 
-        if (TryGetNextBytes(reader, length: 4, out var buffer))
+        if (terminator < 0)
         {
-            value = buffer.AsSpanInvoke(BinaryPrimitives.ReadUInt32BigEndian);
+            value = null;
 
-            return true;
+            return false;
         }
 
-        value = default;
+        value = Encoding.Latin1.GetString(remaining[..terminator]);
+        remaining = remaining[(terminator + 1)..];
 
-        return false;
+        return true;
     }
+
+    protected static bool TryGetNextUInt16(ref ReadOnlySpan<byte> remaining, out ushort value)
+    {
+        if (!TryGetNextBytes(ref remaining, sizeof(ushort), out var bytes))
+        {
+            value = default;
+
+            return false;
+        }
+
+        value = BinaryPrimitives.ReadUInt16BigEndian(bytes);
+
+        return true;
+    }
+
+    protected static bool TryGetNextUInt32(ref ReadOnlySpan<byte> remaining, out uint value)
+    {
+        if (!TryGetNextBytes(ref remaining, sizeof(uint), out var bytes))
+        {
+            value = default;
+
+            return false;
+        }
+
+        value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+
+        return true;
+    }
+
+    private static IReadOnlyList<string> ReadESmtpArguments(ref ReadOnlySpan<byte> remaining)
+    {
+        List<string>? eSmtpArguments = null;
+
+        while (HasNext(remaining))
+        {
+            var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var eSmtpArgument);
+
+            EnsureHasReadEverything(hasReadEverything);
+
+            eSmtpArguments ??= new();
+
+            eSmtpArguments.Add(eSmtpArgument!);
+        }
+
+        return eSmtpArguments ?? (IReadOnlyList<string>)Array.Empty<string>();
+    }
+
     private static void EnsureHasReadEverything(bool hasReadEverything)
     {
         if (hasReadEverything)
