@@ -229,6 +229,13 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         }
     }
 
+    protected internal override bool VisitProgressResponsePacket(ProgressResponsePacket responsePacket)
+    {
+        _responseFrame = new(ResponseCode.Progress);
+
+        return true;
+    }
+
     protected internal override bool VisitQuarantineMessageResponsePacket(QuarantineMessageResponsePacket responsePacket)
     {
         var reasonLength = Encoding.Latin1.GetByteCount(responsePacket.Reason);

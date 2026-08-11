@@ -55,6 +55,11 @@ public abstract class ResponsePacketVisitor
         return true;
     }
 
+    protected internal virtual bool VisitProgressResponsePacket(ProgressResponsePacket responsePacket)
+    {
+        return true;
+    }
+
     protected internal virtual bool VisitQuarantineMessageResponsePacket(QuarantineMessageResponsePacket responsePacket)
     {
         return true;

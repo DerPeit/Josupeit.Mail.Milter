@@ -90,6 +90,17 @@ public sealed class ResponseFrameFactoryTests
         Assert.That(GetData(frame), Is.EqualTo(new byte[] { 0, 0, 0, 3 }.Concat(Latin1("Received\0\0"))));
     }
 
+    [Test]
+    public void Reporting_progress_carries_no_data()
+    {
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(ProgressResponsePacket.Instance);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.Progress));
+        Assert.That(GetData(frame), Is.Empty);
+    }
+
     private static byte[] Latin1(string text)
     {
         return Encoding.Latin1.GetBytes(text);
