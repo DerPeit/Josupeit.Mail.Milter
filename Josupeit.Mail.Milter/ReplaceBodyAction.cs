@@ -8,9 +8,16 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
-public sealed record ReplaceBodyAction(Stream Body) : ModificationAction
+public sealed record ReplaceBodyAction : ModificationAction
 {
     private const int CHUNK_SIZE = 65535;
+
+    internal ReplaceBodyAction(Stream body)
+    {
+        Body = body;
+    }
+
+    public Stream Body { get; }
 
     protected override async IAsyncEnumerable<ResponsePacket> CreateResponsePackets([EnumeratorCancellation] CancellationToken cancellationToken)
     {

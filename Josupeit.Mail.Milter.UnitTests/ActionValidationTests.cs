@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Linq;
+using System.Reflection;
 using NUnit.Framework;
 
 namespace Josupeit.Mail.Milter.UnitTests;
@@ -62,6 +64,24 @@ public sealed class ActionValidationTests
         // Act
         // Assert
         Assert.That(() => ModificationActions.QuarantineMessage("spam\r\nheld"), Throws.ArgumentException);
+    }
+
+    // Validation is only worth anything if it cannot be walked around, so no action may offer a public
+    // constructor. The `with` expression is closed off too, because the properties are get-only.
+    [Test]
+    public void No_action_can_be_built_without_going_through_a_factory()
+    {
+        // Arrange
+        var actionTypes = typeof(Action).Assembly.GetExportedTypes()
+            .Where(type => typeof(Action).IsAssignableFrom(type) && !type.IsAbstract);
+
+        // Act
+        var publiclyConstructible = actionTypes
+            .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance).Length > 0)
+            .ToArray();
+
+        // Assert
+        Assert.That(publiclyConstructible, Is.Empty);
     }
 
     [Test]
