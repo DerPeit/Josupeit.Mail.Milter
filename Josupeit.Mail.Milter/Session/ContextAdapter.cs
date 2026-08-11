@@ -134,13 +134,35 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
             yield return response;
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _, CancellationToken cancellationToken)
     {
         var context = _context ??= contextFactory();
 
-        var actions = context.OnEndOfBody();
-        var responses = actions.SelectMany(action => action.CreateResponsePackets());
+        return EnumerateResponses(context.OnEndOfBody(), cancellationToken);
 
-        return responses;
+        // End-of-body is the one callback that may answer with more than a single decision, and the MTA
+        // reads that stream as modifications first and exactly one verdict last. Letting a wrong sequence
+        // through would leave the MTA waiting for a verdict that never comes, or acting on a modification
+        // it has already been told to ignore - both far harder to place than a throw here.
+        static async IAsyncEnumerable<ResponsePacket> EnumerateResponses(
+            IAsyncEnumerable<Action> actions,
+            [EnumeratorCancellation] CancellationToken cancellationToken)
+        {
+            var isCommitted = false;
+
+            await foreach (var action in actions.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (isCommitted)
+                    throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} yielded an action after the commit action.");
+
+                isCommitted = action is CommitAction;
+
+                await foreach (var response in action.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
+                    yield return response;
+            }
+
+            if (!isCommitted)
+                throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} must yield exactly one commit action.");
+        }
     }
 }
