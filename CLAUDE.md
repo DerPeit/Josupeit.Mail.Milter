@@ -76,7 +76,7 @@ The **Replay** states handle Postfix keeping a connection alive across multiple 
 
 ### `ContextAdapter`
 
-Bridges protocol packets and the user's context. Lazily creates **one** context instance per session (via the injected factory or `Activator.CreateInstance`), converts request packets into the friendly `*Information` structs, invokes the callback, and turns the returned `CommitAction`/`Action` into `ResponsePacket`s. Disposes the context if it implements `IDisposable`/`IAsyncDisposable`.
+Bridges protocol packets and the user's context. Lazily creates **one context instance per message**, not per session: the states dispose the adapter at every message boundary (ABORT, QUIT, and the end of a message), so the next message on the same connection gets a fresh context from the supplied factory or `Activator.CreateInstance`. A context may therefore hold per-message state, and must not be relied on to see two messages. The adapter converts request packets into the friendly `*Information` structs, invokes the callback, and turns the returned `CommitAction`/`Action` into `ResponsePacket`s. It disposes the context if it implements `IDisposable`/`IAsyncDisposable`.
 
 ### Actions
 
