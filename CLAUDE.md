@@ -39,11 +39,11 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 3. Declare the two static requirement properties yourself:
    - `static ProtocolRequirements ProtocolRequirements` - which SMTP events you want delivered. Should match the callbacks you actually overrode (Milter negotiation lets the filter tell the MTA which events to skip, so declaring fewer events means the MTA sends fewer).
    - `static ActionRequirements ActionRequirements` - which message modifications you intend to perform.
-4. `new Milter<TContext>(socket).Start();`
+4. `new Milter<TContext>(socket).Start();` - or `new Milter<TContext>(socket, () => new TContext(logger))` when the context needs dependencies. Without a factory the context comes from `Activator.CreateInstance`, which requires a public parameterless constructor.
 
 See `MilterContextAdapter` in the test project for a complete implementation that declares both properties.
 
-Callbacks return `ValueTask<CommitAction>` except `OnEndOfBody`, which returns `IAsyncEnumerable<Action>` (zero or more `ModificationAction`s followed by a terminal `CommitAction`). Build actions via the `CommitActions` and `ModificationActions` static factories. `OnBodyChunk` takes `ReadOnlySpan<byte>`.
+Callbacks return `ValueTask<CommitAction>` except `OnEndOfBody`, which returns `IAsyncEnumerable<Action>`: zero or more `ModificationAction`s and `ProgressAction`s, then **exactly one** terminal `CommitAction`. That sequence is enforced - yielding nothing, omitting the commit action, or yielding anything after it throws `InvalidOperationException`. Build actions via the `CommitActions` and `ModificationActions` static factories. `OnBodyChunk` takes `ReadOnlySpan<byte>`.
 
 ## Runtime architecture
 
@@ -80,7 +80,9 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 
 ### Actions
 
-`Action` (abstract record) splits into `CommitAction` (Continue/Accept/Reject/Discard/Defer/Reply/Quarantine) and `ModificationAction` (AddHeader/ChangeHeader/DeleteHeader/AddRecipient/DeleteRecipient/ReplaceBody). Each knows how to produce its `ResponsePacket`(s) via `CreateResponsePackets`. `CommitActions`/`ModificationActions` are the public factories; the simple commit actions are cached singletons.
+`Action` (abstract record) has three branches: `CommitAction` (Continue/Accept/Reject/Discard/Defer/Reply) decides the message's fate, `ModificationAction` (AddHeader/ChangeHeader/DeleteHeader/AddRecipient/DeleteRecipient/ReplaceBody/**Quarantine**) changes it, and `ProgressAction` sits directly under `Action` because it does neither - it only tells the MTA to restart its reply timeout. Each knows how to produce its `ResponsePacket`(s) via `CreateResponsePackets`.
+
+`CommitActions`/`ModificationActions` are the public factories and the **only** way to build an action: the records have internal constructors and get-only properties, so neither `new` nor a `with` expression can bypass the validation the factories perform (control characters are rejected in every outbound string; header names must be RFC 5322 ftext). The simple commit actions are cached singletons, as are `ProgressAction.Instance` - progress belongs to neither factory, so it is reached through that property.
 
 ## Conventions & gotchas
 
