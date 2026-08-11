@@ -21,32 +21,32 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
 
     public override IAsyncEnumerable<ResponsePacket> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnBodyChunk, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnBodyChunk, responseExpected: true, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnClientHello, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnClientHello, responseExpected: true, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnEndOfBody, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnEndOfBody, responseExpected: true, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnEndOfHeaders, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnEndOfHeaders, responseExpected: true, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnHeader, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnHeader, responseExpected: true, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnDefineMacro, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnDefineMacro, responseExpected: false, cancellationToken);
     }
 
     public override async IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
@@ -67,15 +67,15 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
 
     public override IAsyncEnumerable<ResponsePacket> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnRecipient, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnRecipient, responseExpected: true, cancellationToken);
     }
 
     public override IAsyncEnumerable<ResponsePacket> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnSender, cancellationToken);
+        return ProcessRequest(request, ca => ca.OnSender, responseExpected: true, cancellationToken);
     }
 
-    private async IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
@@ -106,6 +106,15 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
                     // a different connection response, we respond with this commit in this stage.
                     if (response is ContinueProcessingResponsePacket)
                         continue;
+
+                    // Unless the packet we are replaying for expects no reply at all, in which case writing
+                    // one would be read by the MTA as the answer to the next command and put every
+                    // request and response after it out of step for the rest of the connection. Failing
+                    // the session costs one message; a desynchronised connection corrupts all of them.
+                    if (!responseExpected)
+                        throw new InvalidOperationException(
+                            "Protocol violation: The replayed connection callback returned a non-continue response "
+                            + "while handling a packet that expects no reply. Connection callbacks must be deterministic.");
 
                     yield return response;
                     yield break;
