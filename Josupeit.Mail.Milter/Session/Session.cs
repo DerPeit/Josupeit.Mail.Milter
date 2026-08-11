@@ -44,7 +44,7 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
 
     public async ValueTask Run(CancellationToken cancellationToken)
     {
-        _protocolState = new AwaitingNegotiationState(this, new ProtocolStateMachineConfiguration(TContext.ProtocolRequirements, TContext.ActionRequirements));
+        _protocolState = new AwaitingNegotiationState(this, _protocolStateMachineConfiguration);
 
         try
         {
@@ -122,8 +122,6 @@ partial class Session<TContext> : ISessionControlee
 partial class Session<TContext> : IProtocolStateMachine
 {
     IProtocolState IStateMachine<IProtocolState>.State => _protocolState!;
-
-    ProtocolStateMachineConfiguration IProtocolStateMachine.Configuration => _protocolStateMachineConfiguration;
 
     ValueTask IProtocolStateMachine.DisposeContextAdapter() => DisposeContextAdapter();
 
