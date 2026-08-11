@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
 using Josupeit.Mail.Milter.Protocol;
@@ -60,6 +61,33 @@ public sealed class ResponseFrameFactoryTests
 
         // Assert
         Assert.That(GetData(frame), Is.EqualTo(Latin1("550 %%%%%%\0")));
+    }
+
+    [Test]
+    public void Changing_a_header_counts_occurrences_from_one_on_the_wire()
+    {
+        // Arrange
+        var packet = new ChangeOrDeleteHeaderResponsePacket { Index = 0, Name = "Received", Value = "redacted" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ChangeOrDeleteHeader));
+        Assert.That(GetData(frame), Is.EqualTo(new byte[] { 0, 0, 0, 1 }.Concat(Latin1("Received\0redacted\0"))));
+    }
+
+    [Test]
+    public void Deleting_a_header_keeps_the_index_offset()
+    {
+        // Arrange
+        var packet = new ChangeOrDeleteHeaderResponsePacket { Index = 2, Name = "Received", Value = string.Empty };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(GetData(frame), Is.EqualTo(new byte[] { 0, 0, 0, 3 }.Concat(Latin1("Received\0\0"))));
     }
 
     private static byte[] Latin1(string text)

@@ -127,7 +127,9 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
 
-            BinaryPrimitives.WriteUInt32BigEndian(indexMemoryBlock.Span, responsePacket.Index);
+            // The wire counts the occurrences of a header name from one, while the API counts from zero
+            // like every other index a caller meets. Off by one here rewrites the neighbouring header.
+            BinaryPrimitives.WriteUInt32BigEndian(indexMemoryBlock.Span, responsePacket.Index + 1);
             Encoding.Latin1.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
             Encoding.Latin1.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
 
