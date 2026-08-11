@@ -1,5 +1,6 @@
 using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
@@ -49,6 +50,40 @@ public sealed class RequestPacketFactoryTests
         });
     }
 
+    [Test]
+    public void Option_negotiation_version_with_the_high_bit_set_is_rejected_as_unsupported()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var frame = CreateFrame(
+            CommandCode.OptionNegotiation,
+            OptionNegotiationPayload(version: 0xFFFFFFFF, actions: 0, events: 0));
+
+        // Act
+        // Assert
+        Assert.That(
+            () => factory.CreateRequestPacket(frame),
+            Throws.InstanceOf<NotSupportedException>());
+    }
+
+    [Test]
+    public void Option_negotiation_parses_a_plausible_version()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var frame = CreateFrame(
+            CommandCode.OptionNegotiation,
+            OptionNegotiationPayload(version: 6, actions: 0, events: 0));
+
+        // Act
+        var packet = (OptionNegotiationRequestPacket)factory.CreateRequestPacket(frame);
+
+        // Assert
+        Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(6, 0)));
+    }
+
     private static RequestFrame CreateFrame(CommandCode commandCode, byte[] data)
     {
         var owner = MemoryPool<byte>.Shared.Rent(minBufferSize: Math.Max(data.Length, 1));
@@ -56,6 +91,17 @@ public sealed class RequestPacketFactoryTests
         data.CopyTo(owner.Memory.Span);
 
         return new RequestFrame(commandCode, owner, new Range(0, data.Length));
+    }
+
+    private static byte[] OptionNegotiationPayload(uint version, uint actions, uint events)
+    {
+        var bytes = new byte[12];
+
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(start: 0, length: 4), version);
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(start: 4, length: 4), actions);
+        BinaryPrimitives.WriteUInt32BigEndian(bytes.AsSpan(start: 8, length: 4), events);
+
+        return bytes;
     }
 
     private static byte[] MacroPayload(CommandCode stage, params string[] namesAndValues)

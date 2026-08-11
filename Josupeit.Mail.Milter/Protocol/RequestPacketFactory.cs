@@ -190,6 +190,14 @@ public class RequestPacketFactory : IRequestPacketFactory
 
         EnsureHasReadEverything(hasReadEverything);
 
+        // Version only accepts non-negative components, so a version with the high bit set would throw
+        // ArgumentOutOfRangeException out of the factory and tear down the session over 13 bytes. No MTA
+        // announces such a version - Postfix sends 2 or 6 - so we reject it the way we reject any other
+        // capability we cannot honour.
+        if (version > int.MaxValue)
+            throw new NotSupportedException(
+                $"The MTA announced Milter protocol version {version}, which this Milter does not support.");
+
         var packet = new OptionNegotiationRequestPacket
         {
             MtaProtocolVersion = new Version((int)version, 0),
