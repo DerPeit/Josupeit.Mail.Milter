@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter.Session.ProtocolEnforcement;
@@ -7,27 +9,27 @@ internal interface IProtocolState
 {
     bool IsFinal { get; }
 
-    IAsyncEnumerable<ResponsePacket> ProcessAbortion(AbortRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessBodyChunk(BodyChunkRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessClientHello(HeloRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessConnectionAttempt(ConnectRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessConnectionAttempt(ConnectRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessEndOfBody(EndOfBodyRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessEndOfHeaders(EndOfHeadersRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessHeader(HeaderRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessRecipient(RecipientRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken);
 
-    IAsyncEnumerable<ResponsePacket> ProcessSender(SenderRequestPacket request);
+    ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken);
 }

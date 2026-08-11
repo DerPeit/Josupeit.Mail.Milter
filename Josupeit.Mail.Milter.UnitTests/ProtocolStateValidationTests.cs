@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 using Josupeit.Mail.Milter.Protocol;
 using Josupeit.Mail.Milter.Session.ProtocolEnforcement;
@@ -23,7 +23,7 @@ public sealed class ProtocolStateValidationTests
         // Act
         // Assert
         Assert.That(
-            () => state.ProcessHeader(null!, CancellationToken.None),
+            async () => await state.ProcessHeader(null!, CancellationToken.None),
             Throws.InstanceOf<ArgumentNullException>());
     }
 
@@ -36,7 +36,7 @@ public sealed class ProtocolStateValidationTests
         // Act
         // Assert
         Assert.That(
-            () => state.ProcessMacroDefinition(null!, CancellationToken.None),
+            async () => await state.ProcessMacroDefinition(null!, CancellationToken.None),
             Throws.InstanceOf<ArgumentNullException>());
     }
 
@@ -49,7 +49,7 @@ public sealed class ProtocolStateValidationTests
         // Act
         // Assert
         Assert.That(
-            () => state.ProcessQuitting(null!, CancellationToken.None),
+            async () => await state.ProcessQuitting(null!, CancellationToken.None),
             Throws.InstanceOf<ArgumentNullException>());
     }
 
@@ -71,7 +71,7 @@ public sealed class ProtocolStateValidationTests
         // Act
         // Assert
         Assert.That(
-            () => state.ProcessOptionNegotiationAttempt(request, CancellationToken.None),
+            async () => await state.ProcessOptionNegotiationAttempt(request, CancellationToken.None),
             Throws.InstanceOf<NotSupportedException>());
     }
 }

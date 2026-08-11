@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Link;
@@ -11,7 +12,7 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
 {
     private static readonly Version _implementedProtocolVersion = new(2, 0);
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
@@ -31,19 +32,7 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
             MilterUndesiredProtocolContent = contentBypass,
         };
 
-        return Enumerate();
-
-        async IAsyncEnumerable<ResponsePacket> Enumerate()
-        {
-            try
-            {
-                yield return response;
-            }
-            finally
-            {
-                await TransitionToNextState().ConfigureAwait(false);
-            }
-        }
+        return new(AsyncEnumerableEx.Return<ResponsePacket>(response).Finally(TransitionToNextState));
     }
 
     private static void ThrowIfUnsupportedVersion(Version supportedVersion)
@@ -74,12 +63,12 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
             $"actions {requiredFlags:F}, which is unsupported. Upgrade the MTA and retry.");
     }
 
-    private ValueTask TransitionToNextState()
+    private async Task TransitionToNextState()
     {
         ProtocolState nextState = config.IsAwaitingConnection
             ? new ReplayRecordingNegotiatedState(stateMachine)
             : new NegotiatedState(stateMachine);
 
-        return stateMachine.TransitionTo(nextState);
+        await stateMachine.TransitionTo(nextState).ConfigureAwait(false);
     }
 }

@@ -60,11 +60,11 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
 
                 try
                 {
-                    var responsePackets = new SessionController(this)
-                        .ProcessRequest(requestPacket)
-                        .WithCancellation(cancellationToken);
+                    var responsePackets = await new SessionController(this)
+                        .ProcessRequest(requestPacket, cancellationToken)
+                        .ConfigureAwait(false);
 
-                    await foreach (var responsePacket in responsePackets.ConfigureAwait(false))
+                    await foreach (var responsePacket in responsePackets.WithCancellation(cancellationToken).ConfigureAwait(false))
                     {
                         var responseFrame = _responseFrameFactory.CreateResponseFrame(responsePacket);
 

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -74,11 +74,11 @@ public sealed class ReplayingAbortedStateTests
         };
     }
 
-    private static async Task<List<ResponsePacket>> Drain(IAsyncEnumerable<ResponsePacket> responses)
+    private static async Task<List<ResponsePacket>> Drain(ValueTask<IAsyncEnumerable<ResponsePacket>> responses)
     {
         var drained = new List<ResponsePacket>();
 
-        await foreach (var response in responses)
+        await foreach (var response in await responses.ConfigureAwait(false))
             drained.Add(response);
 
         return drained;
