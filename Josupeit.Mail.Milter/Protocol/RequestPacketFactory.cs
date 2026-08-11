@@ -38,6 +38,16 @@ public class RequestPacketFactory : IRequestPacketFactory
                 _ => throw new ArgumentOutOfRangeException(nameof(frame))
             };
         }
+        catch
+        {
+            // Body chunks hand their pooled buffer to the packet, which is why the finally below
+            // deliberately leaves them alone. If constructing that packet threw, the handover never
+            // happened and the rent would leak.
+            if (frame.CommandCode == CommandCode.BodyChunk)
+                frame.Dispose();
+
+            throw;
+        }
         finally
         {
             if (frame.CommandCode != CommandCode.BodyChunk)

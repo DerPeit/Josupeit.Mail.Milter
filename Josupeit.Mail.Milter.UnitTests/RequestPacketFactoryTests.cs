@@ -208,6 +208,26 @@ public sealed class RequestPacketFactoryTests
         Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(6, 0)));
     }
 
+    [Test]
+    public void A_failing_body_chunk_packet_releases_the_frame_buffer()
+    {
+        // Arrange
+        var memoryOwner = new TrackingMemoryOwner(size: 16);
+        var factory = new ThrowingBodyChunkFactory();
+
+        // A body chunk is the one command whose buffer the factory hands to the packet rather than
+        // disposing itself, so it is the only one that can leak when construction fails.
+        var frame = new RequestFrame(CommandCode.BodyChunk, memoryOwner, new Range(start: 0, end: 16));
+
+        // Act
+        // Assert
+        Assert.That(
+            () => factory.CreateRequestPacket(frame),
+            Throws.InstanceOf<InvalidOperationException>());
+
+        Assert.That(memoryOwner.IsDisposed, Is.True);
+    }
+
     private static RequestFrame CreateFrame(CommandCode commandCode, byte[] data)
     {
         var owner = MemoryPool<byte>.Shared.Rent(minBufferSize: Math.Max(data.Length, 1));
@@ -262,5 +282,32 @@ public sealed class RequestPacketFactoryTests
         }
 
         return bytes.ToArray();
+    }
+
+    private sealed class ThrowingBodyChunkFactory : RequestPacketFactory
+    {
+        protected override BodyChunkRequestPacket CreateBodyChunkRequestPacket(IMemoryOwner<byte>? memory, Range dataRange)
+        {
+            throw new InvalidOperationException("Malformed packet.");
+        }
+    }
+
+    private sealed class TrackingMemoryOwner : IMemoryOwner<byte>
+    {
+        private readonly byte[] _array;
+
+        public TrackingMemoryOwner(int size)
+        {
+            _array = new byte[size];
+        }
+
+        public bool IsDisposed { get; private set; }
+
+        public Memory<byte> Memory => _array;
+
+        public void Dispose()
+        {
+            IsDisposed = true;
+        }
     }
 }
