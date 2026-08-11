@@ -2,10 +2,13 @@ using System;
 using System.Buffers;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
 using Josupeit.Mail.Milter.Protocol;
 using NUnit.Framework;
+using ProtocolFamily = Josupeit.Mail.Milter.Link.ProtocolFamily;
 
 namespace Josupeit.Mail.Milter.UnitTests;
 
@@ -48,6 +51,84 @@ public sealed class RequestPacketFactoryTests
             Assert.That(packet.Macros["j"], Is.EqualTo("mail.example.com"));
             Assert.That(packet.Macros["_"], Is.EqualTo("client"));
         });
+    }
+
+    [Test]
+    public void Connect_over_ip_yields_an_ip_endpoint()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var frame = CreateFrame(
+            CommandCode.Connect,
+            ConnectPayload("mail.example.com", ProtocolFamily.Ip4, port: 25, addressText: "192.0.2.1"));
+
+        // Act
+        var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(packet.HostName, Is.EqualTo("mail.example.com"));
+            Assert.That(packet.EndPoint, Is.EqualTo(new IPEndPoint(IPAddress.Parse("192.0.2.1"), 25)));
+        });
+    }
+
+    [Test]
+    public void Connect_over_a_unix_socket_yields_a_unix_endpoint()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var path = "/var/spool/postfix/public/cleanup";
+
+        var frame = CreateFrame(
+            CommandCode.Connect,
+            ConnectPayload("localhost", ProtocolFamily.UnixSocket, port: 0, addressText: path));
+
+        // Act
+        var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
+
+        // Assert
+        Assert.That(packet.EndPoint, Is.EqualTo(new UnixDomainSocketEndPoint(path)));
+    }
+
+    [Test]
+    public void Connect_with_an_unknown_family_yields_no_endpoint()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var frame = CreateFrame(
+            CommandCode.Connect,
+            ConnectPayload("localhost", ProtocolFamily.Unknown, port: 0, addressText: null));
+
+        // Act
+        var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
+
+        // Assert
+        Assert.Multiple(() =>
+        {
+            Assert.That(packet.HostName, Is.EqualTo("localhost"));
+            Assert.That(packet.EndPoint, Is.Null);
+        });
+    }
+
+    [Test]
+    public void Connect_with_an_unparsable_address_yields_no_endpoint()
+    {
+        // Arrange
+        var factory = new RequestPacketFactory();
+
+        var frame = CreateFrame(
+            CommandCode.Connect,
+            ConnectPayload("localhost", ProtocolFamily.Ip4, port: 25, addressText: "unknown"));
+
+        // Act
+        var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
+
+        // Assert
+        Assert.That(packet.EndPoint, Is.Null);
     }
 
     [Test]
@@ -134,6 +215,29 @@ public sealed class RequestPacketFactoryTests
         data.CopyTo(owner.Memory.Span);
 
         return new RequestFrame(commandCode, owner, new Range(start: 0, end: data.Length));
+    }
+
+    private static byte[] ConnectPayload(string hostName, ProtocolFamily family, ushort port, string? addressText)
+    {
+        var bytes = new List<byte>();
+
+        bytes.AddRange(Encoding.Latin1.GetBytes(hostName));
+        bytes.Add(0);
+        bytes.Add((byte)family);
+
+        // SMFIA_UNKNOWN omits both trailing fields.
+        if (addressText == null)
+            return bytes.ToArray();
+
+        var portBytes = new byte[2];
+
+        BinaryPrimitives.WriteUInt16BigEndian(portBytes, port);
+
+        bytes.AddRange(portBytes);
+        bytes.AddRange(Encoding.Latin1.GetBytes(addressText));
+        bytes.Add(0);
+
+        return bytes.ToArray();
     }
 
     private static byte[] OptionNegotiationPayload(uint version, uint actions, uint events)

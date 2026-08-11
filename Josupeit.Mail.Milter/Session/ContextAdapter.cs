@@ -54,7 +54,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
 
     public async IAsyncEnumerable<ResponsePacket> OnConnectionEstablished(ConnectRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        var info = new ConnectionInformation(request.HostName, request.Family, request.Port, request.Address);
+        var info = new ConnectionInformation(request.HostName, request.EndPoint);
         var context = _context ??= contextFactory();
 
         var commitAction = await context.OnConnectionEstablished(info, cancellationToken).ConfigureAwait(false);

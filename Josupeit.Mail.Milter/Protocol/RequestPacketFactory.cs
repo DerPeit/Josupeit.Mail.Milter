@@ -66,39 +66,28 @@ public class RequestPacketFactory : IRequestPacketFactory
 
         EnsureHasReadEverything(hasReadEverything);
 
-        var addressFamily = (ProtocolFamily)family switch
-        {
-            ProtocolFamily.Unknown => AddressFamily.Unknown,
-            ProtocolFamily.UnixSocket => AddressFamily.Unix,
-            ProtocolFamily.Ip4 => AddressFamily.InterNetwork,
-            ProtocolFamily.Ip6 => AddressFamily.InterNetworkV6,
+        var protocolFamily = (ProtocolFamily)family;
 
-            _ => throw new InvalidOperationException("Protocol violation: Unrecognized family code in connect packet."),
-        };
+        if (protocolFamily is not (ProtocolFamily.Unknown or ProtocolFamily.UnixSocket or ProtocolFamily.Ip4 or ProtocolFamily.Ip6))
+            throw new InvalidOperationException("Protocol violation: Unrecognized family code in connect packet.");
 
-        ushort port = 0;
-        var address = IPAddress.None;
+        EndPoint? endPoint = null;
 
         // SMFIA_UNKNOWN carries neither port nor address; every other family carries both.
-        // For SMFIA_UNIX the address is a socket path, and an internet address may be the
-        // literal "unknown" (Postfix XCLIENT ADDR=[UNAVAILABLE]) - neither is an IPAddress.
-        if (addressFamily != AddressFamily.Unknown)
+        if (protocolFamily != ProtocolFamily.Unknown)
         {
-            hasReadEverything = TryGetNextUInt16(ref remaining, out port)
+            hasReadEverything = TryGetNextUInt16(ref remaining, out var port)
                                 & TryGetNextStringVariableLength(ref remaining, out var addressText);
 
             EnsureHasReadEverything(hasReadEverything);
 
-            if (addressFamily is AddressFamily.InterNetwork or AddressFamily.InterNetworkV6)
-                address = IPAddress.TryParse(addressText, out var parsedAddress) ? parsedAddress : IPAddress.None;
+            endPoint = CreateEndPoint(protocolFamily, port, addressText!);
         }
 
         var packet = new ConnectRequestPacket
         {
             HostName = hostName!,
-            Family = addressFamily,
-            Port = port,
-            Address = address,
+            EndPoint = endPoint,
         };
 
         return packet;
@@ -341,6 +330,22 @@ public class RequestPacketFactory : IRequestPacketFactory
         value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
 
         return true;
+    }
+
+    private static EndPoint? CreateEndPoint(ProtocolFamily protocolFamily, ushort port, string addressText)
+    {
+        // UnixDomainSocketEndPoint rejects a path outside 1 to 108 bytes, and the path comes off the wire.
+        // We deliberately let that throw: a socket path we cannot represent is not something we can
+        // meaningfully carry forward, and an MTA does not send one.
+        if (protocolFamily == ProtocolFamily.UnixSocket)
+            return new UnixDomainSocketEndPoint(addressText);
+
+        // An internet address may arrive as the literal "unknown" when the MTA has none - Postfix sends
+        // that for XCLIENT ADDR=[UNAVAILABLE]. That is the MTA reporting no address, not a parse failure,
+        // and it is reported to the filter the same way an unknown protocol family is.
+        return IPAddress.TryParse(addressText, out var address)
+            ? new IPEndPoint(address, port)
+            : null;
     }
 
     private static IReadOnlyList<string> ReadESmtpArguments(ref ReadOnlySpan<byte> remaining)

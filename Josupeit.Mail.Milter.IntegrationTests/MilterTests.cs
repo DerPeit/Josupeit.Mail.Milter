@@ -101,10 +101,10 @@ public class MilterTests : MilterFixture
         Assert.That(observedInfo, Is.Not.Null);
 
         // We cannot really say which information is correct, so we're happy to assert non-nullability
-        Assert.That(observedInfo.Value.Address, Is.Not.Null);
-        Assert.That(observedInfo.Value.Family, Is.EqualTo(AddressFamily.InterNetwork));
+        Assert.That(observedInfo.Value.EndPoint, Is.InstanceOf<IPEndPoint>());
+        Assert.That(observedInfo.Value.EndPoint!.AddressFamily, Is.EqualTo(AddressFamily.InterNetwork));
         Assert.That(observedInfo.Value.Hostname, Is.Not.Empty);
-        Assert.That(observedInfo.Value.Port, Is.Not.EqualTo(0));
+        Assert.That(((IPEndPoint)observedInfo.Value.EndPoint).Port, Is.Not.EqualTo(0));
     }
 
     // Postfix never reports SMFIA_UNIX ('L'): a real unix socket peer is downgraded to AF_UNSPEC by
@@ -132,9 +132,9 @@ public class MilterTests : MilterFixture
 
         Assert.That(observedInfo, Is.Not.Null);
 
-        Assert.That(observedInfo.Value.Family, Is.EqualTo(AddressFamily.Unknown));
-        Assert.That(observedInfo.Value.Address, Is.EqualTo(IPAddress.None));
-        Assert.That(observedInfo.Value.Port, Is.EqualTo(0));
+        // SMFIA_UNKNOWN carries neither a port nor an address, and no EndPoint expresses "there is no
+        // address", so the filter sees null.
+        Assert.That(observedInfo.Value.EndPoint, Is.Null);
         Assert.That(observedInfo.Value.Hostname, Is.Not.Empty);
     }
 
@@ -154,8 +154,10 @@ public class MilterTests : MilterFixture
 
         Assert.That(observedInfo, Is.Not.Null);
 
-        Assert.That(observedInfo.Value.Family, Is.EqualTo(AddressFamily.InterNetwork));
-        Assert.That(observedInfo.Value.Address, Is.EqualTo(IPAddress.None));
+        // The family stays AF_INET but the address is the literal "unknown", which is the MTA saying it
+        // has no address. That is reported the same way an unknown family is, so the family itself is
+        // not observable here.
+        Assert.That(observedInfo.Value.EndPoint, Is.Null);
     }
 
     [Test, CancelAfter(30_000)]
@@ -176,8 +178,9 @@ public class MilterTests : MilterFixture
 
         Assert.That(observedInfo, Is.Not.Null);
 
-        Assert.That(observedInfo.Value.Address, Is.Not.EqualTo(IPAddress.None));
-        Assert.That(observedInfo.Value.Port, Is.EqualTo(0));
+        Assert.That(observedInfo.Value.EndPoint, Is.InstanceOf<IPEndPoint>());
+        Assert.That(((IPEndPoint)observedInfo.Value.EndPoint!).Address, Is.Not.EqualTo(IPAddress.None));
+        Assert.That(((IPEndPoint)observedInfo.Value.EndPoint!).Port, Is.EqualTo(0));
     }
 
     [Test]
