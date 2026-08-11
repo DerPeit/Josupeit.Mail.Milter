@@ -81,7 +81,7 @@ public sealed class RequestPacketFactoryTests
         var packet = (OptionNegotiationRequestPacket)factory.CreateRequestPacket(frame);
 
         // Assert
-        Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(6, 0)));
+        Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(major: 6, minor: 0)));
     }
 
     private static RequestFrame CreateFrame(CommandCode commandCode, byte[] data)
@@ -90,7 +90,7 @@ public sealed class RequestPacketFactoryTests
 
         data.CopyTo(owner.Memory.Span);
 
-        return new RequestFrame(commandCode, owner, new Range(0, data.Length));
+        return new RequestFrame(commandCode, owner, new Range(start: 0, end: data.Length));
     }
 
     private static byte[] OptionNegotiationPayload(uint version, uint actions, uint events)

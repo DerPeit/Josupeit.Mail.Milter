@@ -13,10 +13,22 @@ namespace Josupeit.Mail.Milter;
 
 public sealed class Milter<TContext> where TContext : IMilterContext
 {
+    /// <summary>
+    /// The default upper bound for the length prefix of a single request frame, in bytes.
+    /// </summary>
+    /// <remarks>
+    /// The length prefix is attacker-controlled, so it must be bounded before it is used to size a read
+    /// or an allocation. This default sits comfortably above everything Postfix generates: its body
+    /// chunks are capped at MILTER_CHUNK_SIZE (65535) and its default header_size_limit is 102400.
+    /// Lower it if the MTA is known to be more constrained.
+    /// </remarks>
+    public static readonly uint DefaultMaxFrameLength = 1024 * 1024;
+
     private readonly Socket _socket;
     private readonly TimeSpan? _timeout;
     private readonly TimeProvider? _timeProvider;
     private readonly Func<TContext>? _contextFactory;
+    private readonly uint _maxFrameLength;
 
     private CancellationTokenSource? _stopper;
     private Task? _runner;
@@ -24,20 +36,40 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private int _activeSessions;
 
     public Milter(Socket socket)
-        : this(socket ?? throw new ArgumentNullException(nameof(socket)), null)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            timeout: null,
+            timeProvider: null,
+            contextFactory: null,
+            maxFrameLength: null)
+    {
+    }
+
+    public Milter(Socket socket, uint maxFrameLength)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            timeout: null,
+            timeProvider: null,
+            contextFactory: null,
+            maxFrameLength)
     {
     }
 
     internal Milter(
-        Socket socket, 
-        TimeSpan? timeout = null, 
-        TimeProvider? timeProvider = null, 
-        Func<TContext>? contextFactory = null)
+        Socket socket,
+        TimeSpan? timeout = null,
+        TimeProvider? timeProvider = null,
+        Func<TContext>? contextFactory = null,
+        uint? maxFrameLength = null)
     {
+        if (maxFrameLength < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxFrameLength), maxFrameLength, message: null);
+
         _socket = socket;
         _timeout = timeout;
         _timeProvider = timeProvider;
         _contextFactory = contextFactory;
+        _maxFrameLength = maxFrameLength ?? DefaultMaxFrameLength;
     }
 
     public void Start()
@@ -124,10 +156,10 @@ public sealed class Milter<TContext> where TContext : IMilterContext
 
                     try
                     {
-                        var linkReader = new LinkReader(streamReader);
+                        var linkReader = new LinkReader(streamReader, _maxFrameLength);
                         var linkWriter = new LinkWriter(streamWriter);
 
-                        var requestParser = new RequestParser(linkReader, requestFrameChannel.Writer);
+                        var requestParser = new RequestParser(linkReader, requestFrameChannel.Writer, _maxFrameLength);
                         var responseFormatter = new ResponseFormatter(responseFrameChannel.Reader, linkWriter);
 
                         var requestPacketFactory = new RequestPacketFactory();

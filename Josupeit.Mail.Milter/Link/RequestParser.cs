@@ -9,14 +9,19 @@ public class RequestParser : IRequestParser
 {
     private readonly ILinkReader _linkReader;
     private readonly ChannelWriter<RequestFrame> _outputWriter;
+    private readonly uint _maxFrameLength;
 
     private CancellationTokenSource? _stopper;
     private Task? _runner;
 
-    public RequestParser(ILinkReader linkReader, ChannelWriter<RequestFrame> outputWriter)
+    public RequestParser(ILinkReader linkReader, ChannelWriter<RequestFrame> outputWriter, uint maxFrameLength)
     {
+        if (maxFrameLength < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxFrameLength), maxFrameLength, message: null);
+
         _linkReader = linkReader ?? throw new ArgumentNullException(nameof(linkReader));
         _outputWriter = outputWriter ?? throw new ArgumentNullException(nameof(outputWriter));
+        _maxFrameLength = maxFrameLength;
     }
 
     public void Start()
@@ -66,6 +71,12 @@ public class RequestParser : IRequestParser
             while (!cancellationToken.IsCancellationRequested)
             {
                 var length = await _linkReader.ReadUInt32(cancellationToken).ConfigureAwait(false);
+
+                // The length covers the command byte, so it must be at least 1. Guarding here is what
+                // keeps "length - 1" from underflowing to uint.MaxValue and turning a zero-length frame
+                // into a 4 GiB read, and what keeps an announced length from sizing an unbounded rent.
+                EnsureFrameLengthIsInRange(length);
+
                 var commandCode = await _linkReader.ReadCommandCode(cancellationToken).ConfigureAwait(false);
                 var (memory, dataRange) = await _linkReader.ReadData(length - 1, cancellationToken).ConfigureAwait(false);
 
@@ -97,6 +108,15 @@ public class RequestParser : IRequestParser
         {
             _outputWriter.Complete(error);
         }
+    }
+
+    private void EnsureFrameLengthIsInRange(uint length)
+    {
+        if (length >= 1 && length <= _maxFrameLength)
+            return;
+
+        throw new InvalidOperationException(
+            $"Protocol violation: Frame length {length} is outside the accepted range of 1 to {_maxFrameLength} bytes.");
     }
 
     private Task ProcessFramesCore() => ProcessFrames(_stopper!.Token);
