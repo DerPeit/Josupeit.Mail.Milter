@@ -27,7 +27,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
         return new();
     }
 
-    public async IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public async IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var protocolStage = request.CommandCode switch
         {
@@ -51,82 +51,62 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
         await context.OnDefineMacro(info, cancellationToken).ConfigureAwait(false);
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnConnectionEstablished(ConnectRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnConnectionEstablished(ConnectRequestPacket request)
     {
         return Invoke(
             new ConnectionInformation(request.HostName, request.EndPoint),
-            static (context, info, token) => context.OnConnectionEstablished(info, token),
-            cancellationToken);
+            static (context, info, token) => context.OnConnectionEstablished(info, token));
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnClientHello(HeloRequestPacket request)
     {
         return Invoke(
             new ClientHelloInformation(request.HeloString),
-            static (context, info, token) => context.OnClientHello(info, token),
-            cancellationToken);
+            static (context, info, token) => context.OnClientHello(info, token));
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnSender(SenderRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnSender(SenderRequestPacket request)
     {
         return Invoke(
             new SenderRecipientInformation(request.Sender, request.ESmtpArguments),
-            static (context, info, token) => context.OnSender(info, token),
-            cancellationToken);
+            static (context, info, token) => context.OnSender(info, token));
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request)
     {
         return Invoke(
             new SenderRecipientInformation(request.Recipient, request.ESmtpArguments),
-            static (context, info, token) => context.OnRecipient(info, token),
-            cancellationToken);
+            static (context, info, token) => context.OnRecipient(info, token));
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request)
     {
         return Invoke(
             new HeaderInformation(request.Name, request.Value),
-            static (context, info, token) => context.OnHeader(info, token),
-            cancellationToken);
+            static (context, info, token) => context.OnHeader(info, token));
     }
 
-    public IAsyncEnumerable<ResponsePacket> OnEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnEndOfHeaders(EndOfHeadersRequestPacket request)
     {
         return Invoke(
             request,
-            static (context, _, token) => context.OnEndOfHeaders(token),
-            cancellationToken);
+            static (context, _, token) => context.OnEndOfHeaders(token));
     }
 
     // The body arrives as a span, which cannot be a type argument, so this one hands the packet through
     // and reads the span inside the callback instead.
-    public IAsyncEnumerable<ResponsePacket> OnBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnBodyChunk(BodyChunkRequestPacket request)
     {
         return Invoke(
             request,
-            static (context, packet, token) => context.OnBodyChunk(packet.DataSpan, token),
-            cancellationToken);
+            static (context, packet, token) => context.OnBodyChunk(packet.DataSpan, token));
     }
 
-    private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
-        TInfo info,
-        Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
-        [EnumeratorCancellation] CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _)
     {
         var context = _context ??= contextFactory();
 
-        var commitAction = await callback(context, info, cancellationToken).ConfigureAwait(false);
-
-        await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
-            yield return response;
-    }
-
-    public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _, CancellationToken cancellationToken)
-    {
-        var context = _context ??= contextFactory();
-
-        return EnumerateResponses(context.OnEndOfBody(), cancellationToken);
+        return EnumerateResponses(context.OnEndOfBody());
 
         // End-of-body is the one callback that may answer with more than a single decision, and the MTA
         // reads that stream as modifications first and exactly one verdict last. Letting a wrong sequence
@@ -134,7 +114,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
         // it has already been told to ignore - both far harder to place than a throw here.
         static async IAsyncEnumerable<ResponsePacket> EnumerateResponses(
             IAsyncEnumerable<Action> actions,
-            [EnumeratorCancellation] CancellationToken cancellationToken)
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             var isCommitted = false;
 
@@ -152,5 +132,18 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
             if (!isCommitted)
                 throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} must yield exactly one commit action.");
         }
+    }
+
+    private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
+        TInfo info,
+        Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var context = _context ??= contextFactory();
+
+        var commitAction = await callback(context, info, cancellationToken).ConfigureAwait(false);
+
+        await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
+            yield return response;
     }
 }

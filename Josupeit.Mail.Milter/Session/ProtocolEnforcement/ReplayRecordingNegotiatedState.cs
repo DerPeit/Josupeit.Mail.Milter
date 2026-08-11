@@ -26,12 +26,12 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnBodyChunk, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnBodyChunk);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnClientHello, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnClientHello);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessConnectionAttempt(ConnectRequestPacket request, CancellationToken cancellationToken)
@@ -41,22 +41,22 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
         _packetReplayHistory.Add(request);
 
-        return ProcessRequestCore(request, static ca => ca.OnConnectionEstablished, cancellationToken);
+        return ProcessRequestCore(request, static ca => ca.OnConnectionEstablished);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfBody, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfBody);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfHeaders, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfHeaders);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnHeader, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnHeader);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
@@ -68,7 +68,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
         var contextAdapter = stateMachine.EnsureContextAdapter();
 
-        return new(contextAdapter.OnDefineMacro(request, cancellationToken));
+        return new(contextAdapter.OnDefineMacro(request));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
@@ -87,26 +87,26 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnRecipient, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnRecipient);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnSender, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnSender);
     }
 
-    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, CancellationToken cancellationToken)
+    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        return ProcessRequestCore(request, processor, cancellationToken);
+        return ProcessRequestCore(request, processor);
     }
 
-    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequestCore<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, CancellationToken cancellationToken)
+    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequestCore<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor)
     {
         var contextAdapter = stateMachine.EnsureContextAdapter();
-        var responses = processor(contextAdapter).Invoke(request, cancellationToken);
+        var responses = processor(contextAdapter).Invoke(request);
 
         return new(responses.Finally(ToReplayingConnectedState));
 

@@ -98,7 +98,7 @@ public sealed class ContextAdapterTests
         var adapter = new ContextAdapter(() => new EndOfBodyContext(actions));
         var responses = new List<ResponsePacket>();
 
-        await foreach (var response in adapter.OnEndOfBody(EndOfBodyRequestPacket.Instance, CancellationToken.None))
+        await foreach (var response in adapter.OnEndOfBody(EndOfBodyRequestPacket.Instance))
         {
             responses.Add(response);
 

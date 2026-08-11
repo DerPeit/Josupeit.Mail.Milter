@@ -48,7 +48,7 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
     // the fresh context. The macro cannot be handled without it.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnDefineMacro, responseExpected: false, cancellationToken);
+        return ProcessRequest(request, static ca => packet => ca.OnDefineMacro(packet), responseExpected: false, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
@@ -75,7 +75,7 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         return ProcessRequest(request, static ca => ca.OnSender, responseExpected: true, cancellationToken);
     }
 
-    private async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, CancellationToken cancellationToken)
+    private async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
@@ -83,7 +83,7 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         var contextAdapter = stateMachine.EnsureContextAdapter();
 
         var replayed = await Replay(contextAdapter, responseExpected, cancellationToken).ConfigureAwait(false);
-        var responses = replayed ?? processor(contextAdapter).Invoke(request, cancellationToken);
+        var responses = replayed ?? processor(contextAdapter).Invoke(request);
 
         return responses.Finally(ToReplayingConnectedState);
 
@@ -105,8 +105,8 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         {
             var replayed = packet switch
             {
-                DefineMacroRequestPacket defineMacroRequestPacket => contextAdapter.OnDefineMacro(defineMacroRequestPacket, cancellationToken),
-                ConnectRequestPacket connectRequestPacket => contextAdapter.OnConnectionEstablished(connectRequestPacket, cancellationToken),
+                DefineMacroRequestPacket defineMacroRequestPacket => contextAdapter.OnDefineMacro(defineMacroRequestPacket),
+                ConnectRequestPacket connectRequestPacket => contextAdapter.OnConnectionEstablished(connectRequestPacket),
                 _ => null!,
             };
 
