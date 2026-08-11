@@ -99,6 +99,10 @@ public sealed class Milter<TContext> where TContext : IMilterContext
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            // Deliberately unguarded for now. A transient socket error here, EMFILE under connection
+            // pressure for instance, faults this loop and stops the listener while the process stays up
+            // and healthy-looking. Handling it means deciding what to report and whether to continue,
+            // which waits on the diagnostics decision noted in RunSession.
             var connection = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
 
             bool hasCapacity;
@@ -187,7 +191,13 @@ public sealed class Milter<TContext> where TContext : IMilterContext
                 }
                 catch
                 {
-                    // TODO: Add logging
+                    // Every way a session can end badly arrives here indistinguishably: protocol
+                    // violations, negotiation failures, exceptions thrown by the filter's callbacks, a
+                    // frame we refused to parse, and a peer that simply went away. Dropping the
+                    // connection is the right outcome for all of them, so the only thing missing is a
+                    // way to tell them apart from the outside. That is a public API decision - logger,
+                    // event source, or an exception callback - and it has deliberately not been made
+                    // yet, which is why nothing is reported here at all.
                 }
             }
         }
