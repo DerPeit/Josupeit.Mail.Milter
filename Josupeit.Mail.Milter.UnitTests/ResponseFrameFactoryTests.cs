@@ -22,6 +22,46 @@ public sealed class ResponseFrameFactoryTests
         Assert.That(GetData(frame), Is.EqualTo(Latin1("suspicious\0")));
     }
 
+    [Test]
+    public void Replying_doubles_percent_signs_in_the_text()
+    {
+        // Arrange
+        var packet = new ReplyWithCodeResponsePacket { SmtpCode = "550", Text = "5.7.1 blocked 100% of the time" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ReplyWithCode));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("550 5.7.1 blocked 100%% of the time\0")));
+    }
+
+    [Test]
+    public void Replying_leaves_a_text_without_percent_signs_untouched()
+    {
+        // Arrange
+        var packet = new ReplyWithCodeResponsePacket { SmtpCode = "451", Text = "try again later" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("451 try again later\0")));
+    }
+
+    [Test]
+    public void Replying_doubles_adjacent_and_trailing_percent_signs()
+    {
+        // Arrange
+        var packet = new ReplyWithCodeResponsePacket { SmtpCode = "550", Text = "%%%" };
+
+        // Act
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        // Assert
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("550 %%%%%%\0")));
+    }
+
     private static byte[] Latin1(string text)
     {
         return Encoding.Latin1.GetBytes(text);

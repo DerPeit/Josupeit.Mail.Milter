@@ -276,7 +276,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     {
         var codeLength = Encoding.Latin1.GetByteCount(responsePacket.SmtpCode);
         const int endOfCodeMarkLength = 1;
-        var textLength = Encoding.Latin1.GetByteCount(responsePacket.Text);
+        var textLength = GetByteCountWithDoubledPercentSigns(responsePacket.Text);
         const int endOfTextMarkLength = 1;
         var blockLength = codeLength + endOfCodeMarkLength + textLength + endOfTextMarkLength;
 
@@ -295,7 +295,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             endOfTextMarkMemoryBlock.Span[0] = 0;
 
             Encoding.Latin1.GetBytes(responsePacket.SmtpCode, codeMemoryBlock.Span);
-            Encoding.Latin1.GetBytes(responsePacket.Text, textMemoryBlock.Span);
+            WriteWithDoubledPercentSigns(responsePacket.Text, textMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.ReplyWithCode, memoryOwner, ..blockLength);
 
@@ -306,6 +306,37 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             memoryOwner.Dispose();
 
             throw;
+        }
+    }
+
+    // Postfix runs the reply text through a printf-style formatter and un-doubles percent signs on the
+    // way (milter8.c), so a literal one has to reach it doubled or it swallows the character along with
+    // whatever follows it.
+    private static int GetByteCountWithDoubledPercentSigns(string text)
+    {
+        return Encoding.Latin1.GetByteCount(text) + text.AsSpan().Count('%');
+    }
+
+    private static void WriteWithDoubledPercentSigns(string text, Span<byte> destination)
+    {
+        var remaining = text.AsSpan();
+
+        while (true)
+        {
+            var percentIndex = remaining.IndexOf('%');
+
+            if (percentIndex < 0)
+            {
+                Encoding.Latin1.GetBytes(remaining, destination);
+
+                return;
+            }
+
+            var writtenLength = Encoding.Latin1.GetBytes(remaining[..(percentIndex + 1)], destination);
+
+            destination[writtenLength] = (byte)'%';
+            destination = destination[(writtenLength + 1)..];
+            remaining = remaining[(percentIndex + 1)..];
         }
     }
 }
