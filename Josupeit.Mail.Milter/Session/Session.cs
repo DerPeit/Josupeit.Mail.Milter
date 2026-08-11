@@ -74,7 +74,9 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
                             .WaitAsync(_timeout, _timeProvider, cancellationToken)
                             .ConfigureAwait(false);
 
-                        await responseFrame.ConfigureAwait(false);
+                        await responseFrame
+                            .WaitAsync(_timeout, _timeProvider, cancellationToken)
+                            .ConfigureAwait(false);
                     }
                 }
                 finally

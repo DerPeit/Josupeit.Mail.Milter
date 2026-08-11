@@ -25,6 +25,18 @@ public readonly record struct ResponseFrame(ResponseCode ResponseCode, IMemoryOw
         return _taskCompletionSource.Task.GetAwaiter();
     }
 
+    /// <summary>
+    /// Waits for the frame to reach the link, giving up after <paramref name="timeout"/>.
+    /// </summary>
+    /// <remarks>
+    /// A peer that stops reading leaves the formatter unable to flush, which would otherwise park the
+    /// session here indefinitely and, because the session's cleanup never runs, hang Milter.Stop with it.
+    /// </remarks>
+    internal ValueTask WaitAsync(TimeSpan timeout, TimeProvider timeProvider, CancellationToken cancellationToken)
+    {
+        return new(_taskCompletionSource.Task.WaitAsync(timeout, timeProvider, cancellationToken));
+    }
+
     internal void SetCompleted()
     {
         _taskCompletionSource.SetResult();

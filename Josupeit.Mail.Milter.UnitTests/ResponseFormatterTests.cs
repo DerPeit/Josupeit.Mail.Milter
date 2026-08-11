@@ -11,6 +11,8 @@ namespace Josupeit.Mail.Milter.UnitTests;
 [TestFixture]
 public sealed class ResponseFormatterTests
 {
+    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
+
     [Test]
     public async Task Frames_are_written_to_the_link()
     {
@@ -30,7 +32,7 @@ public sealed class ResponseFormatterTests
 
         writer.Complete();
 
-        await StopWithin(formatter);
+        await StopAndAssertItCompletes(formatter);
 
         // Assert
         var result = await pipe.Reader.ReadAsync();
@@ -52,7 +54,7 @@ public sealed class ResponseFormatterTests
         writer.Complete();
 
         // Assert
-        await StopWithin(formatter);
+        await StopAndAssertItCompletes(formatter);
     }
 
     [Test]
@@ -69,7 +71,7 @@ public sealed class ResponseFormatterTests
 
         writer.Complete();
 
-        await StopWithin(formatter);
+        await StopAndAssertItCompletes(formatter);
     }
 
     [Test]
@@ -83,14 +85,16 @@ public sealed class ResponseFormatterTests
         Assert.That(async () => await formatter.StopAsync(), Throws.InstanceOf<InvalidOperationException>());
     }
 
-    private static async Task StopWithin(ResponseFormatter formatter)
+    // Stopping a formatter that is waiting on a channel nobody completed never returns, which would hang
+    // the whole test run rather than fail one test. So we bound the wait and assert on it instead.
+    private static async Task StopAndAssertItCompletes(ResponseFormatter formatter)
     {
         var stopping = formatter.StopAsync().AsTask();
 
         Assert.That(
-            await Task.WhenAny(stopping, Task.Delay(5000)),
+            await Task.WhenAny(stopping, Task.Delay(StopTimeout)),
             Is.SameAs(stopping),
-            "StopAsync did not complete. The formatter is most likely waiting on a channel nobody completed.");
+            "StopAsync did not complete.");
 
         await stopping;
     }
