@@ -25,7 +25,12 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private int _activeSessions;
 
     public Milter(Socket socket, MilterOptions? options = null)
-        : this(socket, contextFactory: null, options, timeout: null, timeProvider: null)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory: null,
+            options,
+            timeout: null,
+            timeProvider: null)
     {
     }
 
@@ -36,7 +41,7 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     /// </param>
     public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
         : this(
-            socket,
+            socket ?? throw new ArgumentNullException(nameof(socket)),
             contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
             options,
             timeout: null,
@@ -51,8 +56,6 @@ public sealed class Milter<TContext> where TContext : IMilterContext
         TimeSpan? timeout,
         TimeProvider? timeProvider)
     {
-        ArgumentNullException.ThrowIfNull(socket);
-
         _socket = socket;
         _options = options ?? new MilterOptions();
         _timeout = timeout;
