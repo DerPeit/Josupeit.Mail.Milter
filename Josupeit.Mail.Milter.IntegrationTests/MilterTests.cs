@@ -71,6 +71,38 @@ public class MilterTests : MilterFixture
         _ = ContextAdapter.ReceivedWithAnyArgs(1).OnClientHello(default, default);
     }
 
+    [Test, CancelAfter(30_000)]
+    public async Task A_reset_abandons_the_transaction_and_the_next_one_still_works()
+    {
+        MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.All;
+        MilterContextAdapter.ActionRequirements = ActionRequirements.None;
+
+        // RSET part way through a transaction is what makes Postfix send SMFIC_ABORT, which is the only
+        // way into the aborted states.
+        await Converse(
+            "EHLO test.example.com",
+            "MAIL FROM:<random@example.com>",
+            "RCPT TO:<root@localhost.localdomain>",
+            "RSET",
+            "MAIL FROM:<random@example.com>",
+            "RCPT TO:<root@localhost.localdomain>",
+            "DATA",
+            "Subject: After reset\r\n\r\nBody\r\n.",
+            "QUIT");
+
+        Assert.That(await ReceiveMail(), Does.Contain("Subject: After reset"));
+
+        // The abandoned transaction never reached end of body, though both transactions reached the filter.
+        _ = ContextAdapter.Received(1).OnEndOfBody();
+        _ = ContextAdapter.ReceivedWithAnyArgs(2).OnSender(default, default);
+
+        // The abort threw the first context away, so the second transaction had the connect event replayed
+        // into a fresh one. The number of contexts created is deliberately not asserted: Postfix sends
+        // macros ahead of every command, and a macro on its own is enough to build one, so the count
+        // follows its macro cadence rather than anything this test controls.
+        _ = ContextAdapter.ReceivedWithAnyArgs(2).OnConnectionEstablished(default, default);
+    }
+
     [Test]
     public async Task All_callbacks_are_being_called()
     {
