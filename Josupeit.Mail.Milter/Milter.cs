@@ -64,7 +64,7 @@ public sealed class Milter<TContext> where TContext : IMilterContext
             .Unwrap();
     }
 
-    public async ValueTask Stop()
+    public async Task Stop()
     {
         if (_runner == null)
             throw new InvalidOperationException("Unable to stop Milter. Milter is not running.");

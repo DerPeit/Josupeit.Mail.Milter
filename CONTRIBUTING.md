@@ -62,7 +62,19 @@ An extra blank line between two groups of the *same* kind is fine when it separa
 ### Async
 
 - **`ConfigureAwait(false)` on every await** - enforced by `ConfigureAwaitChecker.Analyzer`; do not omit it.
-- Prefer **`ValueTask` / `ValueTask<T>`** on paths that usually complete synchronously - the callback surface is the hot path.
+- **`ValueTask<T>` yes; non-generic `ValueTask` usually not.** Measured on net8.0: when the result is already
+  known, an `async Task<T>` or a `Task.FromResult(value)` costs **72 bytes** per call and the `ValueTask<T>`
+  equivalents cost **nothing**; on suspension the two are equal. So `ValueTask<T>` is never worse - use it,
+  and the callback surface and the per-packet paths are where it pays. But a non-generic `async Task` that
+  completes synchronously already hands back a cached `Task.CompletedTask`, so `ValueTask` there is **0 vs 0**
+  and earns nothing. Return plain `Task` unless one of these applies:
+  - it **forwards another `ValueTask`**, where `Task` would force an allocating `.AsTask()` - anything
+    relaying `IAsyncDisposable.DisposeAsync()`, for instance;
+  - it is an **interface contract on a repeated, frequently-suspending operation** that an implementer may
+    want to back with a pooled `IValueTaskSource`. A `Task` is single-use, so every suspension allocates one,
+    while an `IValueTaskSource` can be reused across operations on the same instance. This is why the BCL
+    chose `ValueTask` for `DisposeAsync`, `Stream.ReadAsync` and `PipeWriter.FlushAsync`, and why
+    `ILinkWriter` mirrors it.
 - `CancellationToken` is the **last parameter** and is always passed on. Async iterators take `[EnumeratorCancellation] CancellationToken`.
 
 ### Performance mindset
@@ -70,7 +82,7 @@ An extra blank line between two groups of the *same* kind is fine when it separa
 Not rigid rules - lenses. When writing, reading or reviewing code here, actively look for these and **surface the opportunity even when not taking it**:
 
 - **struct vs class**: is this copied on a hot path? Would `in` / `ref readonly` remove copies without mangling the call chain? Does `Span<T>`, `stackalloc` or `CollectionsMarshal` fit? Think past the obvious - array-of-structs vs struct-of-arrays.
-- **`ValueTask` vs `Task`**: a hot inner method returning `Task` allocates per call even when the outer path is synchronous.
+- **`ValueTask` vs `Task`**: see the async rule above. `ValueTask<T>` saves an allocation whenever the result is known synchronously; non-generic `ValueTask` does not.
 - **Allocation**: object pooling, `ArrayPool<T>`, closures captured in loops, boxing through interface calls on value types, `SearchValues`, frozen collections.
 - **Readability wins.** No manual state machines, no avoiding LINQ where it is clearly right, no `unsafe` for marginal gains. If an optimization meaningfully hurts readability, say so and weigh the trade-off explicitly rather than silently skipping it.
 

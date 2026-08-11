@@ -42,7 +42,7 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         _contextFactory = contextFactory ?? Activator.CreateInstance<TContext>;
     }
 
-    public async ValueTask Run(CancellationToken cancellationToken)
+    public async Task Run(CancellationToken cancellationToken)
     {
         _protocolState = new AwaitingNegotiationState(this, _protocolStateMachineConfiguration);
 

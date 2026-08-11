@@ -33,7 +33,7 @@ public class RequestParser : IRequestParser
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
-    public async ValueTask StopAsync()
+    public async Task StopAsync()
     {
         if (_runner == null)
             throw new InvalidOperationException($"{nameof(RequestParser)} cannot be stopped. It is not running.");

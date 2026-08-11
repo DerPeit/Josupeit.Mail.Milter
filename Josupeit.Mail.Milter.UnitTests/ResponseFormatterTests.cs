@@ -89,7 +89,7 @@ public sealed class ResponseFormatterTests
     // the whole test run rather than fail one test. So we bound the wait and assert on it instead.
     private static async Task StopAndAssertItCompletes(ResponseFormatter formatter)
     {
-        var stopping = formatter.StopAsync().AsTask();
+        var stopping = formatter.StopAsync();
 
         Assert.That(
             await Task.WhenAny(stopping, Task.Delay(StopTimeout)),
