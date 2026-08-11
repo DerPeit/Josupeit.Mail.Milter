@@ -30,7 +30,6 @@ public class RequestParser : IRequestParser
             throw new InvalidOperationException($"{nameof(RequestParser)} cannot be started. It is already running.");
 
         _stopper = new();
-
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 

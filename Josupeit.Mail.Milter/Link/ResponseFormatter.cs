@@ -25,10 +25,6 @@ public class ResponseFormatter
             throw new InvalidOperationException($"{nameof(ResponseFormatter)} cannot be started. It is already running.");
 
         _stopper = new();
-
-        // Task.Run unwraps, so _runner is the real ProcessFrames task rather than the outer Task<Task>
-        // that would complete at its first await. StopAsync depends on that to actually wait for the
-        // formatter to finish and to observe anything it throws.
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
