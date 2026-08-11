@@ -31,12 +31,7 @@ public class RequestParser : IRequestParser
 
         _stopper = new();
 
-        _runner = Task.Factory.StartNew(
-                ProcessFramesCore,
-                _stopper.Token,
-                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default)
-            .Unwrap();
+        _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
     public async ValueTask StopAsync()

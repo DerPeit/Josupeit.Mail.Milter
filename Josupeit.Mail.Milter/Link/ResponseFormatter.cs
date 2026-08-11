@@ -26,15 +26,10 @@ public class ResponseFormatter
 
         _stopper = new();
 
-        // Unwrap matters: without it _runner is the outer Task<Task>, which completes at the first await
-        // inside ProcessFrames. StopAsync would then return while frames are still being written, and any
-        // failure in ProcessFrames would never be observed.
-        _runner = Task.Factory.StartNew(
-                ProcessFramesCore,
-                _stopper.Token,
-                TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
-                TaskScheduler.Default)
-            .Unwrap();
+        // Task.Run unwraps, so _runner is the real ProcessFrames task rather than the outer Task<Task>
+        // that would complete at its first await. StopAsync depends on that to actually wait for the
+        // formatter to finish and to observe anything it throws.
+        _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
     public async ValueTask StopAsync()
