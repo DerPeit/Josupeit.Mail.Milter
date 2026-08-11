@@ -25,22 +25,34 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private int _activeSessions;
 
     public Milter(Socket socket, MilterOptions? options = null)
+        : this(socket, contextFactory: null, options, timeout: null, timeProvider: null)
+    {
+    }
+
+    /// <param name="contextFactory">
+    /// Builds the context for each message. Without one the context comes from
+    /// <see cref="Activator.CreateInstance{T}"/>, which needs a public parameterless constructor and so
+    /// leaves nowhere to hand in a logger, a database handle or anything else a filter is composed from.
+    /// </param>
+    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
         : this(
-            socket ?? throw new ArgumentNullException(nameof(socket)),
+            socket,
+            contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
             options,
             timeout: null,
-            timeProvider: null,
-            contextFactory: null)
+            timeProvider: null)
     {
     }
 
     internal Milter(
         Socket socket,
-        MilterOptions? options = null,
-        TimeSpan? timeout = null,
-        TimeProvider? timeProvider = null,
-        Func<TContext>? contextFactory = null)
+        Func<TContext>? contextFactory,
+        MilterOptions? options,
+        TimeSpan? timeout,
+        TimeProvider? timeProvider)
     {
+        ArgumentNullException.ThrowIfNull(socket);
+
         _socket = socket;
         _options = options ?? new MilterOptions();
         _timeout = timeout;
