@@ -382,6 +382,8 @@ public class MilterTests : MilterFixture
         await Assert.ThatAsync(
             async () => await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body")),
             Throws.InstanceOf<SmtpException>().With.Message.Contains("4.7.1"));
+
+        AssertDecidingCallbackRan(protocolRequirements);
     }
 
     [Test]
@@ -476,6 +478,56 @@ public class MilterTests : MilterFixture
         await Assert.ThatAsync(
             async () => await ReceiveMail().WaitAsync(TimeSpan.FromSeconds(20)),
             Throws.InstanceOf<TimeoutException>());
+    }
+
+    /// <summary>
+    /// Asserts that the callback matching <paramref name="protocolRequirements"/> was actually invoked.
+    /// </summary>
+    /// <remarks>
+    /// Postfix answers 4.7.1 both when the filter defers and when it cannot reach the filter at all, since
+    /// milter_default_action defaults to tempfail. Reading the SMTP reply alone therefore proves nothing: a
+    /// milter that crashed on the first packet, or was never connected to, produces the same 4.7.1.
+    /// </remarks>
+    private void AssertDecidingCallbackRan(ProtocolRequirements protocolRequirements)
+    {
+        switch (protocolRequirements)
+        {
+            case ProtocolRequirements.Connect:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnConnectionEstablished(default, default);
+                break;
+
+            case ProtocolRequirements.ClientHello:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnClientHello(default, default);
+                break;
+
+            case ProtocolRequirements.Sender:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnSender(default, default);
+                break;
+
+            case ProtocolRequirements.Recipient:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnRecipient(default, default);
+                break;
+
+            case ProtocolRequirements.Header:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnHeader(default, default);
+                break;
+
+            case ProtocolRequirements.EndOfHeaders:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnEndOfHeaders(default);
+                break;
+
+            case ProtocolRequirements.Body:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnBodyChunk(default, default);
+                break;
+
+            case ProtocolRequirements.EndOfBody:
+                _ = ContextAdapter.ReceivedWithAnyArgs().OnEndOfBody();
+                break;
+
+            default:
+                Assert.Fail($"No callback is mapped to {protocolRequirements}.");
+                break;
+        }
     }
 
     private static string LoadMultiChunkBody()
