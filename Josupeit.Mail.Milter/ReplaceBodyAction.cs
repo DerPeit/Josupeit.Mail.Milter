@@ -24,7 +24,9 @@ public sealed record ReplaceBodyAction(Stream Body) : ModificationAction
 
                 try
                 {
-                    var buffer = memoryOwner.Memory;
+                    // The pool is free to hand back more than was asked for, and reading into all of it
+                    // would produce a chunk the protocol cannot frame.
+                    var buffer = memoryOwner.Memory[..CHUNK_SIZE];
                     var bytesRead = await Body.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
 
                     if (bytesRead == 0)
