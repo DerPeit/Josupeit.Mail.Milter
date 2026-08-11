@@ -1,4 +1,4 @@
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 internal abstract class MilterContextAdapter : IMilterContext
 {

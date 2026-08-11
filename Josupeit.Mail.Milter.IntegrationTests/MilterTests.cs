@@ -4,7 +4,7 @@ using System.Net.Sockets;
 using System.Text;
 using NSubstitute;
 
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 [TestOf(typeof(Milter<>)), CancelAfter(10_000)]
 public class MilterTests : MilterFixture

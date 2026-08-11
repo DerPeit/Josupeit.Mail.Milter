@@ -4,7 +4,7 @@ using System.Net.Mail;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 public abstract class PostfixFixture
 {

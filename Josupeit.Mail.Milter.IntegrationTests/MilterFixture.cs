@@ -2,7 +2,7 @@
 using System.Net;
 using NSubstitute;
 
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 public abstract class MilterFixture : PostfixFixture
 {

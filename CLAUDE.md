@@ -16,7 +16,7 @@ dotnet test  Josupeit.Mail.Milter.slnx
 dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 ```
 
-**Tests require Docker.** `Josupeit.Mail.Milter.Tests` is integration-only: it uses Testcontainers to build an Ubuntu+Postfix image (`Dockerfile.postfix`) and run a real Postfix that connects back to a milter hosted by the test on the host machine. There are no pure unit tests.
+**The integration tests require Docker.** `Josupeit.Mail.Milter.IntegrationTests` uses Testcontainers to build an Ubuntu+Postfix image (`Dockerfile.postfix`) and run a real Postfix that connects back to a milter hosted by the test on the host machine. `Josupeit.Mail.Milter.UnitTests` is Docker-free and covers what a correct MTA can never produce: malformed frames, protocol violations, and the abort/replay states.
 
 - `PostfixFixture` builds/starts the container and exposes `SendMail` / `ReceiveMail`.
 - `MilterFixture` binds the milter on host port **34000** and the mail-receiving socket on **35000**; `main.cf` points Postfix's `smtpd_milters` at `host.docker.internal:34000` and pipes delivered mail (`mailbox_transport = tcp-loopback` -> `nc` in `master.cf`) back to `35000` so tests can read the resulting message.
@@ -28,7 +28,8 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 | -------------------------------- | -------------- | -------------------------------------------------------- |
 | `Josupeit.Mail.Milter`           | net8.0         | The library. Namespace root `Josupeit.Mail.Milter`.      |
 | `Josupeit.Mail.Milter.Generator` | netstandard2.0 | Roslyn source generator. Experimental (see bottom).      |
-| `Josupeit.Mail.Milter.Tests`     | net8.0         | NUnit + Testcontainers integration tests.                |
+| `Josupeit.Mail.Milter.IntegrationTests` | net8.0  | NUnit + Testcontainers integration tests. Needs Docker.  |
+| `Josupeit.Mail.Milter.UnitTests` | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
 | `Example`                        | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
 
 ## How a filter is written (the user-facing model)
@@ -83,7 +84,7 @@ Bridges protocol packets and the user's context. Lazily creates **one** context 
 
 ## Conventions & gotchas
 
-- Internals are exposed to the test project through `<InternalsVisibleTo Include="Josupeit.Mail.Milter.Tests" />` in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
+- Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
 - NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that *can* be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).

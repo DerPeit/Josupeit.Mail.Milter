@@ -2,5 +2,6 @@
   <Project Path="Example/Example.csproj" />
   <Project Path="Josupeit.Mail.Milter.Generator/Josupeit.Mail.Milter.Generator.csproj" />
   <Project Path="Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj" />
-  <Project Path="Josupeit.Mail.Milter.Tests/Josupeit.Mail.Milter.Tests.csproj" />
+  <Project Path="Josupeit.Mail.Milter.IntegrationTests/Josupeit.Mail.Milter.IntegrationTests.csproj" />
+  <Project Path="Josupeit.Mail.Milter.UnitTests/Josupeit.Mail.Milter.UnitTests.csproj" />
 </Solution>
