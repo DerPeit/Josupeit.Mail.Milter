@@ -33,6 +33,44 @@ public class MilterTests : MilterFixture
         _ = ContextAdapterResolver.Received(1)();
     }
 
+    [Test, CancelAfter(30_000)]
+    public async Task A_second_message_on_the_same_connection_gets_its_own_context()
+    {
+        MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.All;
+        MilterContextAdapter.ActionRequirements = ActionRequirements.None;
+
+        // Two messages inside one SMTP conversation. The body of each is sent as a single write, because
+        // Postfix answers nothing between DATA and the terminating dot.
+        await Converse(
+            "EHLO test.example.com",
+            "MAIL FROM:<random@example.com>",
+            "RCPT TO:<root@localhost.localdomain>",
+            "DATA",
+            "Subject: First\r\n\r\nFirst body\r\n.",
+            "MAIL FROM:<random@example.com>",
+            "RCPT TO:<root@localhost.localdomain>",
+            "DATA",
+            "Subject: Second\r\n\r\nSecond body\r\n.",
+            "QUIT");
+
+        var firstDelivery = await ReceiveMail();
+        var secondDelivery = await ReceiveMail();
+
+        Assert.That(
+            firstDelivery + secondDelivery,
+            Does.Contain("Subject: First").And.Contains("Subject: Second"));
+
+        // One context per message, even though the connection was never re-opened.
+        _ = ContextAdapterResolver.Received(2)();
+        _ = ContextAdapter.Received(2).OnEndOfBody();
+
+        // Postfix sends SMFIC_CONNECT once per connection, so the second message only sees a connect event
+        // because the session replays the recorded one into the new context. HELO is not recorded, which is
+        // what makes these two counts differ - and the difference is the whole point of the replay states.
+        _ = ContextAdapter.ReceivedWithAnyArgs(2).OnConnectionEstablished(default, default);
+        _ = ContextAdapter.ReceivedWithAnyArgs(1).OnClientHello(default, default);
+    }
+
     [Test]
     public async Task All_callbacks_are_being_called()
     {
