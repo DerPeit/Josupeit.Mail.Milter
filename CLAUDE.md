@@ -101,6 +101,8 @@ The goal is to remove the manual `ProtocolRequirements` step by computing that b
 - For each user context class, the generator uses `FindImplementationForInterfaceMember` per callback. If the implementation **equals the interface default** (i.e. the user did not override it), the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in.
 - It emits a `partial class` with the `static ProtocolRequirements` getter. If the user already declared that property, the generator skips the class (so a hand-written declaration always wins).
 
+**It currently leaks Roslyn into consumer output.** `Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
+
 Notes when touching the generator:
 - It is an `ISourceGenerator` (v1), not incremental. A commented-out `ISyntaxContextReceiver`/incremental version exists at the bottom of `MilterContextSourceGenerator.cs`.
 - Marker attributes (`MilterContextMarkerAttribute`, `MilterCallbackMarkerAttribute`, `ProtocolRequirementsMarkerAttribute`) are matched **by assembly+type name string** (`IsDescribedBy`), not by symbol reference, because the generator carries its own copies of the attribute types. The `*Locator`/`*Visitor` classes are the symbol-tree search helpers.

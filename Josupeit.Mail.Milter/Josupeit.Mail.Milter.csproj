@@ -24,6 +24,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!--
+      Known problem, deliberately left alone.
+
+      This is a plain reference rather than an Analyzer one, because the library itself needs the marker
+      attributes (MilterContextMarker, MilterCallbackMarker) that live in the generator project. The price
+      is that consumers inherit all of it: Josupeit.Mail.Milter.Generator.dll lands in the output directory
+      and Microsoft.CodeAnalysis.CSharp and .Common appear in deps.json. A runtime library has no business
+      dragging the compiler along.
+
+      The fix is to move the marker attributes into their own small assembly, or to declare them here and
+      let the generator go on matching them by assembly and type name - which is what IsDescribedBy already
+      does, so the generator would not have to change. It is not done because the generator may be dropped
+      altogether (see CLAUDE.md); that call should come first, since dropping it removes the problem.
+    -->
     <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj" />
   </ItemGroup>
 
