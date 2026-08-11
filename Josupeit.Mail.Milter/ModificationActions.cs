@@ -51,11 +51,15 @@ public static class ModificationActions
         return new DeleteHeaderAction(name, index);
     }
 
-    public static ReplaceBodyAction ReplaceBody(Stream stream)
+    /// <param name="leaveOpen">
+    /// Keeps <paramref name="stream"/> open once the body has been sent. The default disposes it, because
+    /// the usual case builds a stream for this one message and has no use for it afterwards.
+    /// </param>
+    public static ReplaceBodyAction ReplaceBody(Stream stream, bool leaveOpen = false)
     {
         ArgumentNullException.ThrowIfNull(stream);
 
-        return new ReplaceBodyAction(stream);
+        return new ReplaceBodyAction(stream, leaveOpen);
     }
 
     public static QuarantineAction QuarantineMessage(string reason)

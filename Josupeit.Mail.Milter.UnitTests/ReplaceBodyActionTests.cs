@@ -34,4 +34,38 @@ public sealed class ReplaceBodyActionTests
         Assert.That(chunkLengths, Is.All.LessThanOrEqualTo(MaximumChunkLength));
         Assert.That(chunkLengths.Sum(), Is.EqualTo(3 * MaximumChunkLength));
     }
+
+    [Test]
+    public async Task The_body_stream_is_disposed_by_default()
+    {
+        // Arrange
+        var body = new MemoryStream([1, 2, 3]);
+        var action = ModificationActions.ReplaceBody(body);
+
+        // Act
+        await DrainAsync(action);
+
+        // Assert
+        Assert.That(body.CanRead, Is.False);
+    }
+
+    [Test]
+    public async Task The_body_stream_is_left_open_on_request()
+    {
+        // Arrange
+        var body = new MemoryStream([1, 2, 3]);
+        var action = ModificationActions.ReplaceBody(body, leaveOpen: true);
+
+        // Act
+        await DrainAsync(action);
+
+        // Assert
+        Assert.That(body.CanRead, Is.True);
+    }
+
+    private static async Task DrainAsync(Action action)
+    {
+        await foreach (var packet in action.CreateResponsePackets())
+            ((ReplaceBodyResponsePacket)packet).Memory.Dispose();
+    }
 }

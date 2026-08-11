@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -12,16 +11,19 @@ public sealed record ReplaceBodyAction : ModificationAction
 {
     private const int CHUNK_SIZE = 65535;
 
-    internal ReplaceBodyAction(Stream body)
+    internal ReplaceBodyAction(Stream body, bool leaveOpen)
     {
         Body = body;
+        LeaveOpen = leaveOpen;
     }
 
     public Stream Body { get; }
 
+    public bool LeaveOpen { get; }
+
     protected override async IAsyncEnumerable<ResponsePacket> CreateResponsePackets([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await using (Body.ConfigureAwait(false))
+        try
         {
             while (true)
             {
@@ -58,6 +60,11 @@ public sealed record ReplaceBodyAction : ModificationAction
 
                 yield return response;
             }
+        }
+        finally
+        {
+            if (!LeaveOpen)
+                await Body.DisposeAsync().ConfigureAwait(false);
         }
     }
 }
