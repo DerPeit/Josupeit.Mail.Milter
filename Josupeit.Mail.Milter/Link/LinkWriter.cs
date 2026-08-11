@@ -16,44 +16,24 @@ public class LinkWriter : ILinkWriter
         _pipeWriter = pipeWriter ?? throw new ArgumentNullException(nameof(pipeWriter));
     }
 
+    // WriteData hands the span straight to PipeWriter.Write, which copies it synchronously, so the
+    // stack buffer is no longer referenced by the time the returned flush is awaited.
     public virtual ValueTask WriteUInt32(uint value, CancellationToken cancellationToken)
     {
-        var owner = MemoryPool<byte>.Shared.Rent(minBufferSize: 4);
+        Span<byte> buffer = stackalloc byte[sizeof(uint)];
 
-        try
-        {
-            var slice = owner.Memory.Span[..4];
+        BinaryPrimitives.WriteUInt32BigEndian(buffer, value);
 
-            BinaryPrimitives.WriteUInt32BigEndian(slice, value);
-
-            return AwaitAndDispose(WriteData(slice, cancellationToken), owner);
-        }
-        catch
-        {
-            owner.Dispose();
-
-            throw;
-        }
+        return WriteData(buffer, cancellationToken);
     }
 
     public ValueTask WriteResponseCode(ResponseCode responseCode, CancellationToken cancellationToken)
     {
-        var owner = MemoryPool<byte>.Shared.Rent(minBufferSize: 1);
+        Span<byte> buffer = stackalloc byte[sizeof(byte)];
 
-        try
-        {
-            var slice = owner.Memory.Span[..1];
+        buffer[0] = (byte)responseCode;
 
-            slice[0] = (byte)responseCode;
-
-            return AwaitAndDispose(WriteData(slice, cancellationToken), owner);
-        }
-        catch
-        {
-            owner.Dispose();
-
-            throw;
-        }
+        return WriteData(buffer, cancellationToken);
     }
 
     public virtual ValueTask WriteData(ReadOnlySpan<byte> data, CancellationToken cancellationToken)
@@ -61,12 +41,6 @@ public class LinkWriter : ILinkWriter
         _pipeWriter.Write(data);
 
         return FlushAndAssert(cancellationToken);
-    }
-
-    private static async ValueTask AwaitAndDispose(ValueTask promise, IDisposable disposable)
-    {
-        using (disposable)
-            await promise.ConfigureAwait(false);
     }
 
     private async ValueTask FlushAndAssert(CancellationToken cancellationToken)
