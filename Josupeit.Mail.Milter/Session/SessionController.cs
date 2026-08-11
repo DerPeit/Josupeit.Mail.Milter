@@ -46,7 +46,7 @@ internal sealed class SessionController(ISessionControlee controlee) : RequestPa
     protected internal override bool VisitDefineMacroRequestPacket(DefineMacroRequestPacket requestPacket)
     {
         _responses = controlee.ProtocolStateMachine.State.ProcessMacroDefinition(requestPacket, _cancellationToken);
-        
+
         return true;
     }
 

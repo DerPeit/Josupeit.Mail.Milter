@@ -28,7 +28,7 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         IRequestPacketFactory requestPacketFactory,
         IResponseFrameFactory responseFrameFactory,
         ChannelWriter<ResponseFrame> responseFrameWriter,
-        TimeSpan? timeout, 
+        TimeSpan? timeout,
         TimeProvider? timeProvider,
         Func<TContext>? contextFactory)
     {
@@ -36,7 +36,7 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         _requestPacketFactory = requestPacketFactory;
         _responseFrameFactory = responseFrameFactory;
         _responseFrameWriter = responseFrameWriter;
-     
+
         _timeout = timeout ?? TimeSpan.FromMinutes(5);
         _timeProvider = timeProvider ?? TimeProvider.System;
         _contextFactory = contextFactory ?? Activator.CreateInstance<TContext>;

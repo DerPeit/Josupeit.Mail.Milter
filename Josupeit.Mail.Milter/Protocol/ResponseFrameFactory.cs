@@ -1,8 +1,8 @@
-﻿using System;
-using Josupeit.Mail.Milter.Link;
-using System.Buffers.Binary;
+using System;
 using System.Buffers;
+using System.Buffers.Binary;
 using System.Text;
+using Josupeit.Mail.Milter.Link;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
@@ -50,10 +50,15 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var nameMemoryBlock = memoryBlock[..][..nameLength];
-            var endOfNameMarkMemoryBlock = memoryBlock[nameLength..][..1];
-            var valueMemoryBlock = memoryBlock[nameLength..][endOfNameMarkLength..][..valueLength];
-            var endOfValueMarkMemoryBlock = memoryBlock[nameLength..][endOfNameMarkLength..][valueLength..][..1];
+            var nameOffset = 0;
+            var endOfNameMarkOffset = nameOffset + nameLength;
+            var valueOffset = endOfNameMarkOffset + endOfNameMarkLength;
+            var endOfValueMarkOffset = valueOffset + valueLength;
+
+            var nameMemoryBlock = memoryBlock.Slice(nameOffset, nameLength);
+            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, endOfNameMarkLength);
+            var valueMemoryBlock = memoryBlock.Slice(valueOffset, valueLength);
+            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, endOfValueMarkLength);
 
             // I cannot find whether the memory block is guaranteed to be zero-ed.
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
@@ -85,8 +90,11 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var recipientMemoryBlock = memoryBlock[..recipientLength];
-            var endOfRecipientMarkMemoryBlock = memoryBlock[recipientLength..][..endOfRecipientMarkLength];
+            var recipientOffset = 0;
+            var endOfRecipientMarkOffset = recipientOffset + recipientLength;
+
+            var recipientMemoryBlock = memoryBlock.Slice(recipientOffset, recipientLength);
+            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, endOfRecipientMarkLength);
 
             endOfRecipientMarkMemoryBlock.Span[0] = 0;
 
@@ -119,11 +127,17 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var indexMemoryBlock = memoryBlock[..][..indexLength];
-            var nameMemoryBlock = memoryBlock[indexLength..][..nameLength];
-            var endOfNameMarkMemoryBlock = memoryBlock[indexLength..][nameLength..][..endOfNameMarkLength];
-            var valueMemoryBlock = memoryBlock[indexLength..][nameLength..][endOfNameMarkLength..][..valueLength];
-            var endOfValueMarkMemoryBlock = memoryBlock[indexLength..][nameLength..][endOfNameMarkLength..][valueLength..][..endOfValueMarkLength];
+            var indexOffset = 0;
+            var nameOffset = indexOffset + indexLength;
+            var endOfNameMarkOffset = nameOffset + nameLength;
+            var valueOffset = endOfNameMarkOffset + endOfNameMarkLength;
+            var endOfValueMarkOffset = valueOffset + valueLength;
+
+            var indexMemoryBlock = memoryBlock.Slice(indexOffset, indexLength);
+            var nameMemoryBlock = memoryBlock.Slice(nameOffset, nameLength);
+            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, endOfNameMarkLength);
+            var valueMemoryBlock = memoryBlock.Slice(valueOffset, valueLength);
+            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, endOfValueMarkLength);
 
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
 
@@ -151,6 +165,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
         return true;
     }
+
     protected internal override bool VisitDeferMessageResponsePacket(DeferMessageResponsePacket responsePacket)
     {
         _responseFrame = new(ResponseCode.DeferMessage);
@@ -170,8 +185,11 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var recipientMemoryBlock = memoryBlock[..recipientLength];
-            var endOfRecipientMarkMemoryBlock = memoryBlock[recipientLength..][..endOfRecipientMarkLength];
+            var recipientOffset = 0;
+            var endOfRecipientMarkOffset = recipientOffset + recipientLength;
+
+            var recipientMemoryBlock = memoryBlock.Slice(recipientOffset, recipientLength);
+            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, endOfRecipientMarkLength);
 
             endOfRecipientMarkMemoryBlock.Span[0] = 0;
 
@@ -209,9 +227,13 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var protocolVersionMemoryBlock = memoryBlock[..][..versionLength];
-            var requestedActionsMemoryBlock = memoryBlock[versionLength..][..actionsLength];
-            var undesiredProtocolContentMemoryBlock = memoryBlock[versionLength..][actionsLength..][..undesiredContentLength];
+            const int versionOffset = 0;
+            const int actionsOffset = versionOffset + versionLength;
+            const int undesiredContentOffset = actionsOffset + actionsLength;
+
+            var protocolVersionMemoryBlock = memoryBlock.Slice(versionOffset, versionLength);
+            var requestedActionsMemoryBlock = memoryBlock.Slice(actionsOffset, actionsLength);
+            var undesiredProtocolContentMemoryBlock = memoryBlock.Slice(undesiredContentOffset, undesiredContentLength);
 
             BinaryPrimitives.WriteUInt32BigEndian(protocolVersionMemoryBlock.Span, (uint)responsePacket.MilterProtocolVersion.Major);
             BinaryPrimitives.WriteUInt32BigEndian(requestedActionsMemoryBlock.Span, (uint)responsePacket.MilterRequiredActions);
@@ -248,8 +270,11 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var reasonMemoryBlock = memoryBlock[..reasonLength];
-            var endOfReasonMarkMemoryBlock = memoryBlock[reasonLength..][..endOfReasonMarkLength];
+            var reasonOffset = 0;
+            var endOfReasonMarkOffset = reasonOffset + reasonLength;
+
+            var reasonMemoryBlock = memoryBlock.Slice(reasonOffset, reasonLength);
+            var endOfReasonMarkMemoryBlock = memoryBlock.Slice(endOfReasonMarkOffset, endOfReasonMarkLength);
 
             endOfReasonMarkMemoryBlock.Span[0] = 0;
 
@@ -295,12 +320,17 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var codeMemoryBlock = memoryBlock[..][..codeLength];
-            var endOfCodeMarkMemoryBlock = memoryBlock[codeLength..][..endOfCodeMarkLength];
-            var textMemoryBlock = memoryBlock[codeLength..][endOfCodeMarkLength..][..textLength];
-            var endOfTextMarkMemoryBlock = memoryBlock[codeLength..][endOfCodeMarkLength..][textLength..][..endOfTextMarkLength];
+            var codeOffset = 0;
+            var endOfCodeMarkOffset = codeOffset + codeLength;
+            var textOffset = endOfCodeMarkOffset + endOfCodeMarkLength;
+            var endOfTextMarkOffset = textOffset + textLength;
 
-            endOfCodeMarkMemoryBlock.Span[0] = 32;
+            var codeMemoryBlock = memoryBlock.Slice(codeOffset, codeLength);
+            var endOfCodeMarkMemoryBlock = memoryBlock.Slice(endOfCodeMarkOffset, endOfCodeMarkLength);
+            var textMemoryBlock = memoryBlock.Slice(textOffset, textLength);
+            var endOfTextMarkMemoryBlock = memoryBlock.Slice(endOfTextMarkOffset, endOfTextMarkLength);
+
+            endOfCodeMarkMemoryBlock.Span[0] = (byte)' ';
             endOfTextMarkMemoryBlock.Span[0] = 0;
 
             Encoding.Latin1.GetBytes(responsePacket.SmtpCode, codeMemoryBlock.Span);

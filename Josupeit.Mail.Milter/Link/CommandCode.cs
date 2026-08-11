@@ -55,7 +55,7 @@ public enum CommandCode : byte
     // Expected response: Zero or more modification actions, then accept/reject action
     EndOfBody = (byte)'E',
 
-   
+
     // SMFIC_QUIT
     // Quit milter communication
     // Expected response: Close milter connection

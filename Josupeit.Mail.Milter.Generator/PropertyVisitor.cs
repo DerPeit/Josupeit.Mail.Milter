@@ -4,7 +4,7 @@ using Microsoft.CodeAnalysis;
 
 namespace Josupeit.Mail.Milter.Generator;
 
-internal abstract class PropertyVisitor : SymbolVisitor<IEnumerable<IPropertySymbol>> 
+internal abstract class PropertyVisitor : SymbolVisitor<IEnumerable<IPropertySymbol>>
 {
     public override IEnumerable<IPropertySymbol> Visit(ISymbol? symbol)
     {

@@ -13,7 +13,7 @@ public sealed class DefineMacroRequestPacket : RequestPacket
     public required CommandCode CommandCode { get; init; }
 
     public required IReadOnlyDictionary<string, string> Macros { get; init; }
-    
+
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

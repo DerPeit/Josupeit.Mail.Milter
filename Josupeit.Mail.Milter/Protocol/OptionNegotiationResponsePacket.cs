@@ -14,7 +14,7 @@ public sealed class OptionNegotiationResponsePacket : ResponsePacket
     public required ActionDiscriminator MilterRequiredActions { get; init; }
 
     public required ContentBypassDiscriminator MilterUndesiredProtocolContent { get; init; }
-    
+
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

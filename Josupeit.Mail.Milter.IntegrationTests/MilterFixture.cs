@@ -21,7 +21,7 @@ public abstract class MilterFixture : PostfixFixture
 
         _milterSocket.Bind(new IPEndPoint(IPAddress.Any, 34000));
         _milterSocket.Listen();
-        
+
         _milter = new Milter<MilterContextAdapter>(_milterSocket, contextFactory: () => ContextAdapterResolver());
         _milter.Start();
     }
