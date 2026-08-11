@@ -11,6 +11,14 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 {
     private readonly List<RequestPacket> _packetReplayHistory = new(capacity: 8);
 
+    public override IAsyncEnumerable<ResponsePacket> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
+    {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+
+        return ProcessAbortionCore();
+    }
+
     public override IAsyncEnumerable<ResponsePacket> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
         return ProcessRequest(request, static ca => ca.OnBodyChunk, cancellationToken);
@@ -78,6 +86,16 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
     public override IAsyncEnumerable<ResponsePacket> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
         return ProcessRequest(request, static ca => ca.OnSender, cancellationToken);
+    }
+
+    // See NegotiatedState for why an abortion reaches this state at all. The recorded packets are kept:
+    // they describe the connection, which outlives the message that was aborted and still has to be
+    // replayed into the context that serves the next one.
+    private async IAsyncEnumerable<ResponsePacket> ProcessAbortionCore()
+    {
+        await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+
+        yield break;
     }
 
     private IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, CancellationToken cancellationToken)
