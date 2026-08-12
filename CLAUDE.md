@@ -13,6 +13,7 @@ A .NET library that implements the **Milter protocol** (the Sendmail/Postfix mai
 ```pwsh
 dotnet build Josupeit.Mail.Milter.slnx          # solution is .slnx (XML format), needs a recent SDK
 dotnet test  Josupeit.Mail.Milter.slnx
+dotnet test  test/Josupeit.Mail.Milter.UnitTests            # the Docker-free half, seconds instead of minutes
 dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 ```
 
@@ -24,13 +25,15 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 
 ## Projects
 
-| Project                          | TFM            | Role                                                     |
-| -------------------------------- | -------------- | -------------------------------------------------------- |
-| `Josupeit.Mail.Milter`           | net8.0         | The library. Namespace root `Josupeit.Mail.Milter`.      |
-| `Josupeit.Mail.Milter.Generator` | netstandard2.0 | Roslyn source generator. Experimental (see bottom).      |
-| `Josupeit.Mail.Milter.IntegrationTests` | net8.0  | NUnit + Testcontainers integration tests. Needs Docker.  |
-| `Josupeit.Mail.Milter.UnitTests` | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
-| `Example`                        | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
+The tree is split three ways, and the split decides what a project inherits. `src/Directory.Build.props` carries everything to do with shipping a package, so anything under `src/` is packable unless it opts out; `test/Directory.Build.props` carries the test-runner packages and the reference to the library, so the test projects are nearly empty files; `samples/` inherits neither, which is why the example lives there rather than under `src/`.
+
+| Project                                      | TFM            | Role                                                     |
+| -------------------------------------------- | -------------- | -------------------------------------------------------- |
+| `src/Josupeit.Mail.Milter`                   | net8.0         | The library, and the only package. Namespace root `Josupeit.Mail.Milter`. |
+| `src/Josupeit.Mail.Milter.Generator`         | netstandard2.0 | Roslyn source generator. Experimental (see bottom), not packable. |
+| `test/Josupeit.Mail.Milter.IntegrationTests` | net8.0         | NUnit + Testcontainers integration tests. Needs Docker.  |
+| `test/Josupeit.Mail.Milter.UnitTests`        | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
+| `samples/Example`                            | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
 
 ## How a filter is written (the user-facing model)
 
@@ -86,7 +89,7 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 
 ## Conventions & gotchas
 
-- Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
+- Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline. `DynamicProxyGenAssembly2` is granted the same from `test/Directory.Build.props`, which is what lets NSubstitute mock internal types.
 - NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that *can* be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
@@ -101,7 +104,7 @@ The goal is to remove the manual `ProtocolRequirements` step by computing that b
 - For each user context class, the generator uses `FindImplementationForInterfaceMember` per callback. If the implementation **equals the interface default** (i.e. the user did not override it), the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in.
 - It emits a `partial class` with the `static ProtocolRequirements` getter. If the user already declared that property, the generator skips the class (so a hand-written declaration always wins).
 
-**It currently leaks Roslyn into consumer output.** `Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
+**It currently leaks Roslyn into consumer output.** `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
 
 Notes when touching the generator:
 - It is an `ISourceGenerator` (v1), not incremental. A commented-out `ISyntaxContextReceiver`/incremental version exists at the bottom of `MilterContextSourceGenerator.cs`.

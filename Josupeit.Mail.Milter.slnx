@@ -1,7 +1,21 @@
 <Solution>
-  <Project Path="Example/Example.csproj" />
-  <Project Path="Josupeit.Mail.Milter.Generator/Josupeit.Mail.Milter.Generator.csproj" />
-  <Project Path="Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj" />
-  <Project Path="Josupeit.Mail.Milter.IntegrationTests/Josupeit.Mail.Milter.IntegrationTests.csproj" />
-  <Project Path="Josupeit.Mail.Milter.UnitTests/Josupeit.Mail.Milter.UnitTests.csproj" />
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+    <File Path="LICENSE.md" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/src/">
+    <File Path="src/Directory.Build.props" />
+    <File Path="src/Directory.Build.targets" />
+    <Project Path="src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj" />
+    <Project Path="src/Josupeit.Mail.Milter.Generator/Josupeit.Mail.Milter.Generator.csproj" />
+  </Folder>
+  <Folder Name="/test/">
+    <File Path="test/Directory.Build.props" />
+    <Project Path="test/Josupeit.Mail.Milter.UnitTests/Josupeit.Mail.Milter.UnitTests.csproj" />
+    <Project Path="test/Josupeit.Mail.Milter.IntegrationTests/Josupeit.Mail.Milter.IntegrationTests.csproj" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/Example/Example.csproj" />
+  </Folder>
 </Solution>

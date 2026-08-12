@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -9,9 +9,9 @@
   </PropertyGroup>
   
   <ItemGroup>
-    <ProjectReference Include="..\Josupeit.Mail.Milter\Josupeit.Mail.Milter.csproj" />
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter\Josupeit.Mail.Milter.csproj" />
     
-    <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj">
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj">
       <OutputItemType>Analyzer</OutputItemType>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
