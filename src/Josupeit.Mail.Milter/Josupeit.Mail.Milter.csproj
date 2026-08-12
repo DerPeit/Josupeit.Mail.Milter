@@ -52,11 +52,25 @@
   -->
   <PropertyGroup>
     <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeGeneratorAssemblyInPackage</TargetsForTfmSpecificBuildOutput>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeGeneratorAsAnalyzerInPackage</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 
   <Target Name="IncludeGeneratorAssemblyInPackage" DependsOnTargets="ResolveReferences">
     <ItemGroup>
       <BuildOutputInPackage Include="@(ReferencePath)" Condition="'%(Filename)' == 'Josupeit.Mail.Milter.Generator'" />
+    </ItemGroup>
+  </Target>
+
+  <!--
+    The same assembly a second time, under analyzers/. The lib/ copy above only satisfies the reference
+    this assembly's metadata makes to the marker attributes - it is never loaded by the compiler, so on
+    its own the generator would ship with the package and never run in a consumer's build.
+  -->
+  <Target Name="IncludeGeneratorAsAnalyzerInPackage" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <TfmSpecificPackageFile Include="@(ReferencePath)" Condition="'%(Filename)' == 'Josupeit.Mail.Milter.Generator'">
+        <PackagePath>analyzers/dotnet/cs</PackagePath>
+      </TfmSpecificPackageFile>
     </ItemGroup>
   </Target>
 
