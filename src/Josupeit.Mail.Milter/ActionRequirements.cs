@@ -2,7 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
-using Josupeit.Mail.Milter.Generator;
+using Josupeit.Mail.Milter.Generator.Markers;
 
 namespace Josupeit.Mail.Milter;
 

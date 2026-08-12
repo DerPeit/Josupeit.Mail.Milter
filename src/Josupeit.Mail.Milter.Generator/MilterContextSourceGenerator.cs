@@ -7,6 +7,7 @@ using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -33,7 +34,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         [System.Runtime.CompilerServices.CompilerGeneratedAttribute]
         """;
 
-    // NEW_LINE is off limits inside a compiler component - a generator that emitted a
+    // Environment.NewLine is off limits inside a compiler component - a generator that emitted a
     // different file on Linux than on Windows would break deterministic builds.
     private const string NEW_LINE = "\r\n";
 

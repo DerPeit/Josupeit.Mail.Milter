@@ -3,7 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
-using Josupeit.Mail.Milter.Generator;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;

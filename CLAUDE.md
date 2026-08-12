@@ -45,9 +45,9 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 - SourceLink needs no `PackageReference`: since .NET 8 the SDK supplies the GitHub provider for a repository whose origin is github.com. **Moving to Codeberg means adding `Microsoft.SourceLink.Gitea` and a `SourceLinkGiteaHost` item**, because the SDK ships no Gitea provider.
 - The package carries an SBOM, a `snupkg` with embedded sources, `LICENSE.md` and the project's own `README.md`.
 
-**The generator is packed into the library, not depended on.** Its `ProjectReference` is `PrivateAssets="all"` so NuGet does not emit a dependency on a package that will never exist, and two targets put its assembly into the package by hand: `IncludeGeneratorAssemblyInPackage` into `lib/`, because the library's metadata names the marker attribute types and the assembly carrying them has to travel with it, and `IncludeGeneratorAsAnalyzerInPackage` into `analyzers/dotnet/cs/`, because that is the only copy the compiler loads. All three pieces disappear if the generator is ever dropped.
+**The generator is packed into the library as an analyzer, not depended on.** Its `ProjectReference` is `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, so nothing of it reaches this assembly's metadata or `deps.json`, and NuGet emits no dependency on a package that will never exist. `IncludeGeneratorAsAnalyzerInPackage` puts the assembly under `analyzers/dotnet/cs/` by hand. See the generator section at the bottom for how the library gets the marker attributes without referencing it.
 
-Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library, its `.xml` doc file and the generator assembly, `analyzers/dotnet/cs/` holding the generator assembly again, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
+Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library and its `.xml` doc file **and nothing else**, `analyzers/dotnet/cs/` holding the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
 
 ## How a filter is written (the user-facing model)
 
@@ -130,13 +130,25 @@ Decidable only as an over-approximation, and that is exactly what the negotiatio
 ### Notes when touching it
 
 - It is an `IIncrementalGenerator`. The whole analysis runs in the pipeline's `transform`, so what reaches `RegisterSourceOutput` is `MilterContextEmission` - strings and `Diagnostic`s, never symbols.
-- Marker attributes are matched **by assembly+type name string** (`IsDescribedBy`), not by symbol reference, because the generator carries its own copies of the attribute types.
+- Marker attributes are matched **by full type name** (`IsDescribedBy`), not by symbol reference and deliberately **not** by assembly: two assemblies compile the same declaration, so the attribute found on a symbol is never the one the generator can call `typeof` on.
 - Diagnostic ids live in `GeneratorDiagnostics` and are tracked in `AnalyzerReleases.Unshipped.md`, which RS2008 enforces. That file's table format is what Roslyn's parser wants, not what prettier would write - it is in `.prettierignore`.
 - `Environment.NewLine` is banned by `EnforceExtendedAnalyzerRules`; the generator uses its own `NEW_LINE` const.
 - Tests are `MilterContextSourceGeneratorTests` in the unit project, driving the generator through `CSharpGeneratorDriver` (`GeneratorHarness`). They assert on the generated text **and** on compiling it, which is what catches emitted code that merely looks right.
 
-### The Roslyn leak
+### How the marker attributes reach the library
 
-`src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. The fix is to move the marker attributes into the library and let the generator go on matching them by name - `IsDescribedBy` already does, so the generator would not change.
+The library applies the markers but must not reference the generator's assembly, or the compiler comes along with it into every consumer's `deps.json`. So **each marker attribute is two partials**:
 
-The package therefore carries the generator assembly **twice**: `lib/net8.0/` satisfies the metadata reference, `analyzers/dotnet/cs/` is the copy the compiler actually loads. Drop either and the feature silently stops working for consumers - the `analyzers/` one means no generation at all, the `lib/` one means an unresolved reference.
+- `Markers/XMarkerAttribute.cs` - the declaration, `internal sealed partial`, naming nothing outside `System`. Compiled into **both** projects: the generator project holds the file, and `Josupeit.Mail.Milter.csproj` links it in under `Properties\Markers\`.
+- `Markers/XMarkerAttribute.Symbols.cs` - `IsDescribedBy` and the constructor-argument readers, which need `Microsoft.CodeAnalysis`. Compiled into the generator only.
+
+Both halves live in namespace `Josupeit.Mail.Milter.Generator.Markers`, mirroring the folder. `EmbeddedAttribute.cs` stays at the generator project's root next to `IsExternalInit.cs`: both are types the compiler expects to find in a namespace the project does not own, so neither can mirror its folder.
+
+Two consequences worth knowing before touching either half:
+
+- **Nothing Roslyn-shaped may enter the declaration half**, or it lands in the library. `EmbeddedAttribute.cs` is linked alongside them and declares `Microsoft.CodeAnalysis.EmbeddedAttribute` by hand, which is why `using Microsoft.CodeAnalysis;` in those files resolves to the project's own type rather than to the package.
+- **The markers are `[Embedded]`**, so a referencing compilation does not import them at all - a consumer cannot name them (verified: CS0234), and a project referencing both the library and the generator does not get two ambiguous copies. The generator still reads them off a symbol's `GetAttributes()`, which is unaffected.
+
+The library's `ProjectReference` to the generator is therefore `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, and `IncludeGeneratorAsAnalyzerInPackage` packs `@(Analyzer)` into `analyzers/dotnet/cs/`. That is the only copy in the package, and the only one the compiler loads - drop it and the generation silently stops running for consumers while everything still builds here.
+
+Analyzers do not flow across a `ProjectReference` the way they do across a `PackageReference`, so `samples/Example` asks for the generator itself. Verify a change to any of this the way it was verified when it was made: pack, then build a throwaway project against the `.nupkg` and look at the generated file and at `deps.json`.
