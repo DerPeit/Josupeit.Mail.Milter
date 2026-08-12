@@ -35,6 +35,20 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 | `test/Josupeit.Mail.Milter.UnitTests`        | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
 | `samples/Example`                            | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
 
+## Packaging
+
+`src/Josupeit.Mail.Milter` is the only package. Everything about shipping it lives in `src/Directory.Build.props`, so a project is packable by virtue of sitting under `src/` - which is why the generator opts out with `IsPackable=false` and the example lives under `samples/` instead.
+
+- **Versions come from the git history**, via Nerdbank.GitVersioning: `version.json` at the root sets the base version, `src/Josupeit.Mail.Milter/version.json` sets the release tag pattern (`v{version}`). Nothing hand-edits a version number, and a shallow clone gets it wrong - hence `fetch-depth: 0` in CI.
+- **Release notes come from the git log.** `GeneratePackageReleaseNotes` in `src/Directory.Build.targets` runs `git log --pretty=format:"- %s"` over the commits touching the project since the previous release tag. Commit subjects are read by consumers, which is the practical reason the Conventional Commits rule in CONTRIBUTING.md matters.
+- **`GenerateDocumentationFile` is on**, so CS1591/CS1573 police the doc comments. See CONTRIBUTING.md for the rule they enforce.
+- SourceLink needs no `PackageReference`: since .NET 8 the SDK supplies the GitHub provider for a repository whose origin is github.com. **Moving to Codeberg means adding `Microsoft.SourceLink.Gitea` and a `SourceLinkGiteaHost` item**, because the SDK ships no Gitea provider.
+- The package carries an SBOM, a `snupkg` with embedded sources, `LICENSE.md` and the project's own `README.md`.
+
+**The generator is packed into the library, not depended on.** Its `ProjectReference` is `PrivateAssets="all"` so NuGet does not emit a dependency on a package that will never exist, and `IncludeGeneratorAssemblyInPackage` puts its assembly into `lib/` by hand - the library's metadata names the marker attribute types, so the assembly carrying them has to travel with it. Both halves disappear if the generator is ever dropped.
+
+Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library, its `.xml` doc file and the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
+
 ## How a filter is written (the user-facing model)
 
 1. Implement `IMilterContext` (which extends `IMilterCallbacks`) as a **`partial class`**.

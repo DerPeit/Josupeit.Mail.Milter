@@ -5,7 +5,7 @@ For what the project *is* and how it is built, see [CLAUDE.md](CLAUDE.md).
 
 Some of this is machine-enforced, most of it is not.
 
-`.editorconfig` carries the naming rules, file layout and encoding, and `Directory.Build.props` sets `EnforceCodeStyleInBuild`, so a violation is a build warning rather than a mark in the editor - without that property the rules colour the IDE and nothing else. `ConfigureAwaitChecker.Analyzer` covers the `ConfigureAwait` rule.
+`.editorconfig` carries the naming rules, file layout and encoding, and `Directory.Build.props` sets `EnforceCodeStyleInBuild`, so a violation is a build warning rather than a mark in the editor - without that property the rules colour the IDE and nothing else. `ConfigureAwaitChecker.Analyzer` covers the `ConfigureAwait` rule. `src/Directory.Build.props` sets `GenerateDocumentationFile`, which is what turns the doc-comment rules below into build warnings: CS1591 for an undocumented public member, CS1573 for a parameter without its own tag. Neither is suppressed, and both are expected to stay at zero.
 
 Everything else below is a convention no analyzer can express: statement grouping, the visibility tiers, the `ValueTask` policy, the `Async`-suffix ban, the test layout. One naming rule is only *partly* enforced - see the note on the exposed-constants rule in `.editorconfig`. Where a rule appears in both files, keep them saying the same thing.
 

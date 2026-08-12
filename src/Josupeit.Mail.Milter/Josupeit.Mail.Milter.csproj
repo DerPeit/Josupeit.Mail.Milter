@@ -1,9 +1,10 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <LangVersion>latest</LangVersion>
-    <Nullable>enable</Nullable>
+    <Description>An implementation of the Milter protocol (wire version 2), the mail filter protocol spoken by Postfix and Sendmail. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
+    <PackageTags>milter postfix sendmail smtp mail-filter mta email antispam</PackageTags>
+    <PackageVersionTagPrefix>v</PackageVersionTagPrefix>
     <NoWarn>$(NoWarn),CS9107</NoWarn>
   </PropertyGroup>
 
@@ -38,7 +39,25 @@
       does, so the generator would not have to change. It is not done because the generator may be dropped
       altogether (see CLAUDE.md); that call should come first, since dropping it removes the problem.
     -->
-    <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj" />
+    <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj" PrivateAssets="all" />
   </ItemGroup>
+
+  <!--
+    Second half of the same problem. The generator is not a package, so a dependency on it would be a
+    dependency on something that will never exist on nuget.org - hence PrivateAssets above. But this
+    assembly's metadata still names the marker attribute types, so the assembly carrying them has to
+    travel inside the package or the consumer resolves a reference to nothing.
+
+    Both lines disappear along with the ProjectReference itself.
+  -->
+  <PropertyGroup>
+    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeGeneratorAssemblyInPackage</TargetsForTfmSpecificBuildOutput>
+  </PropertyGroup>
+
+  <Target Name="IncludeGeneratorAssemblyInPackage" DependsOnTargets="ResolveReferences">
+    <ItemGroup>
+      <BuildOutputInPackage Include="@(ReferencePath)" Condition="'%(Filename)' == 'Josupeit.Mail.Milter.Generator'" />
+    </ItemGroup>
+  </Target>
 
 </Project>
