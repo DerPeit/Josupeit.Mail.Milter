@@ -1,13 +1,13 @@
 # Contributing
 
 Conventions for this repository: **how code is written** and **how commits are worded**.
-For what the project *is* and how it is built, see [CLAUDE.md](CLAUDE.md).
+For what the project _is_ and how it is built, see [CLAUDE.md](CLAUDE.md).
 
 Some of this is machine-enforced, most of it is not.
 
 `.editorconfig` carries the naming rules, file layout and encoding, and `Directory.Build.props` sets `EnforceCodeStyleInBuild`, so a violation is a build warning rather than a mark in the editor - without that property the rules colour the IDE and nothing else. `ConfigureAwaitChecker.Analyzer` covers the `ConfigureAwait` rule. `src/Directory.Build.props` sets `GenerateDocumentationFile`, which is what turns the doc-comment rules below into build warnings: CS1591 for an undocumented public member, CS1573 for a parameter without its own tag. Neither is suppressed, and both are expected to stay at zero.
 
-Everything else below is a convention no analyzer can express: statement grouping, the visibility tiers, the `ValueTask` policy, the `Async`-suffix ban, the test layout. One naming rule is only *partly* enforced - see the note on the exposed-constants rule in `.editorconfig`. Where a rule appears in both files, keep them saying the same thing.
+Everything else below is a convention no analyzer can express: statement grouping, the visibility tiers, the `ValueTask` policy, the `Async`-suffix ban, the test layout. One naming rule is only _partly_ enforced - see the note on the exposed-constants rule in `.editorconfig`. Where a rule appears in both files, keep them saying the same thing.
 
 ## Code style
 
@@ -67,7 +67,7 @@ Two kinds, and which one to use is decided by who can see the member - not by ho
   - The parameter list must **fit on the declaration line**. If it would wrap, write an explicit constructor instead.
   - As soon as a **second constructor** is needed, **all** constructors are explicit. Never mix a primary constructor with an overload.
 - **Records** for data: `abstract record` / `sealed record` for the `Action` hierarchy, **`readonly record struct`** for the small `*Information` payloads handed to callbacks.
-- **Switch expressions** with a trailing comma on the last arm; blank line between the arms of a switch *statement*.
+- **Switch expressions** with a trailing comma on the last arm; blank line between the arms of a switch _statement_.
 - Nullable annotations and `??=`, `?.` where they shorten the code.
 - **Omit braces** for single-statement `if` / `foreach` / `await foreach` bodies. Braces once the body spans more than one line.
 - Package references use **bounded version ranges** (`[8,9)`), not floating versions.
@@ -76,14 +76,14 @@ Two kinds, and which one to use is decided by who can see the member - not by ho
 
 **Insert a blank line at every transition between statement groups; no blank line within a group.**
 
-| Group                  | Examples                                     |
-| ---------------------- | -------------------------------------------- |
-| Variable declarations  | `var x = ...;`  `Type x = ...;`              |
-| Assignments            | `x = ...;`  `x.Prop = ...;`                  |
-| Invocations            | `x.Method(...);` (local-variable receiver)    |
-| Static invocations     | `Type.Method(...);`                          |
-| Keywords               | `return` / `await` / `throw` / `yield`       |
-| Multi-line statements  | always alone - blank line before *and* after |
+| Group                 | Examples                                     |
+| --------------------- | -------------------------------------------- |
+| Variable declarations | `var x = ...;` `Type x = ...;`               |
+| Assignments           | `x = ...;` `x.Prop = ...;`                   |
+| Invocations           | `x.Method(...);` (local-variable receiver)   |
+| Static invocations    | `Type.Method(...);`                          |
+| Keywords              | `return` / `await` / `throw` / `yield`       |
+| Multi-line statements | always alone - blank line before _and_ after |
 
 Classify by the **outermost** construct:
 
@@ -91,7 +91,7 @@ Classify by the **outermost** construct:
 - `var x = await x.Foo()` -> variable declaration
 - `var x = new Foo { ... }` spanning lines -> multi-line statement
 
-An extra blank line between two groups of the *same* kind is fine when it separates logical steps.
+An extra blank line between two groups of the _same_ kind is fine when it separates logical steps.
 
 ### Async
 

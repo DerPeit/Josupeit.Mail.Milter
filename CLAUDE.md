@@ -27,13 +27,13 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 
 The tree is split three ways, and the split decides what a project inherits. `src/Directory.Build.props` carries everything to do with shipping a package, so anything under `src/` is packable unless it opts out; `test/Directory.Build.props` carries the test-runner packages and the reference to the library, so the test projects are nearly empty files; `samples/` inherits neither, which is why the example lives there rather than under `src/`.
 
-| Project                                      | TFM            | Role                                                     |
-| -------------------------------------------- | -------------- | -------------------------------------------------------- |
+| Project                                      | TFM            | Role                                                                      |
+| -------------------------------------------- | -------------- | ------------------------------------------------------------------------- |
 | `src/Josupeit.Mail.Milter`                   | net8.0         | The library, and the only package. Namespace root `Josupeit.Mail.Milter`. |
-| `src/Josupeit.Mail.Milter.Generator`         | netstandard2.0 | Roslyn source generator. Experimental (see bottom), not packable. |
-| `test/Josupeit.Mail.Milter.IntegrationTests` | net8.0         | NUnit + Testcontainers integration tests. Needs Docker.  |
-| `test/Josupeit.Mail.Milter.UnitTests`        | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
-| `samples/Example`                            | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
+| `src/Josupeit.Mail.Milter.Generator`         | netstandard2.0 | Roslyn source generator. Experimental (see bottom), not packable.         |
+| `test/Josupeit.Mail.Milter.IntegrationTests` | net8.0         | NUnit + Testcontainers integration tests. Needs Docker.                   |
+| `test/Josupeit.Mail.Milter.UnitTests`        | net8.0         | NUnit unit tests over the internal pipeline. No Docker.                   |
+| `samples/Example`                            | net8.0         | Skeleton showing a user `IMilterContext` implementation.                  |
 
 ## Packaging
 
@@ -85,7 +85,7 @@ Three layers, each in its own folder:
 
 ### Protocol state machine (`Session/ProtocolEnforcement/`)
 
-State pattern enforcing legal event ordering. The base `ProtocolState` throws "protocol violation" for *every* event; each concrete state overrides only the events it accepts. `SessionController` dispatches each request packet to the current state, which yields response packets and transitions the machine.
+State pattern enforcing legal event ordering. The base `ProtocolState` throws "protocol violation" for _every_ event; each concrete state overrides only the events it accepts. `SessionController` dispatches each request packet to the current state, which yields response packets and transitions the machine.
 
 Flow: `AwaitingNegotiationState` -> (after OPTNEG, validating version/action/content-bypass support) -> either `NegotiatedState` or `ReplayRecordingNegotiatedState`.
 
@@ -104,7 +104,7 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 ## Conventions & gotchas
 
 - Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline. `DynamicProxyGenAssembly2` is granted the same from `test/Directory.Build.props`, which is what lets NSubstitute mock internal types.
-- NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that *can* be mocked. Keep that shim if you touch body handling in tests.
+- NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that _can_ be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
 
@@ -121,5 +121,6 @@ The goal is to remove the manual `ProtocolRequirements` step by computing that b
 **It currently leaks Roslyn into consumer output.** `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
 
 Notes when touching the generator:
+
 - It is an `ISourceGenerator` (v1), not incremental. A commented-out `ISyntaxContextReceiver`/incremental version exists at the bottom of `MilterContextSourceGenerator.cs`.
 - Marker attributes (`MilterContextMarkerAttribute`, `MilterCallbackMarkerAttribute`, `ProtocolRequirementsMarkerAttribute`) are matched **by assembly+type name string** (`IsDescribedBy`), not by symbol reference, because the generator carries its own copies of the attribute types. The `*Locator`/`*Visitor` classes are the symbol-tree search helpers.
