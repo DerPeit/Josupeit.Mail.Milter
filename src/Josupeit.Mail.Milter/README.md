@@ -1,0 +1,152 @@
+# Josupeit.Mail.Milter
+
+An implementation of the **Milter protocol** - the mail filter protocol that Postfix and Sendmail speak - for .NET.
+
+An MTA connects to a milter over a socket and streams the SMTP conversation to it as it happens: the client connecting, `HELO`, `MAIL FROM`, each `RCPT TO`, every header, the body. After each event the filter answers, and the answer decides what the MTA does next - carry on, accept the message outright, reject it, defer it, or discard it silently. At the end of the body the filter may also rewrite the message: add or change headers, add or remove recipients, replace the body, or quarantine the whole thing.
+
+This package lets you write that filter in C#. You implement the callbacks for the events you care about; the library handles the framing, the option negotiation and the protocol state machine the MTA expects.
+
+```
+dotnet add package Josupeit.Mail.Milter
+```
+
+Targets `net8.0`. Speaks **wire version 2** of the protocol, which every current Postfix and Sendmail accepts.
+
+## Writing a filter
+
+A filter is a class implementing `IMilterContext`. Every callback has a default implementation that answers "continue", so you override only the events you actually want.
+
+```csharp
+using Josupeit.Mail.Milter;
+using Action = Josupeit.Mail.Milter.Action;
+
+internal sealed partial class RejectBigSenders : IMilterContext
+{
+    // Which SMTP events the MTA should send. Declaring fewer means the MTA skips them entirely,
+    // so this should match the callbacks actually overridden below.
+    public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Sender;
+
+    // Which modifications the filter intends to perform. The MTA refuses any it was not told about.
+    public static ActionRequirements ActionRequirements => ActionRequirements.AddHeaders;
+
+    public ValueTask<CommitAction> OnSender(SenderRecipientInformation info, CancellationToken cancellationToken)
+    {
+        // AddressString is the raw envelope argument, angle brackets and all: "<user@example.com>".
+        return info.AddressString.EndsWith("@spam.example.com>", StringComparison.OrdinalIgnoreCase)
+            ? new(CommitActions.Reject)
+            : new(CommitActions.Continue);
+    }
+
+    public async IAsyncEnumerable<Action> OnEndOfBody()
+    {
+        yield return ModificationActions.AddHeader("X-Filtered-By", "RejectBigSenders");
+        yield return CommitActions.Accept;
+    }
+}
+```
+
+Then host it on a socket:
+
+```csharp
+using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+socket.Bind(new IPEndPoint(IPAddress.Loopback, 8894));
+socket.Listen();
+
+var milter = new Milter<RejectBigSenders>(socket);
+
+milter.Start();
+
+// ... run until shutdown ...
+
+// Stop waits for the sessions still in flight, so a message being filtered right now is not cut off.
+await milter.Stop();
+```
+
+and point the MTA at it - for Postfix, in `main.cf`:
+
+```
+smtpd_milters = inet:127.0.0.1:8894
+```
+
+Pass a factory when the filter needs dependencies:
+
+```csharp
+var milter = new Milter<RejectBigSenders>(socket, () => new RejectBigSenders(logger));
+```
+
+Without one the context comes from `Activator.CreateInstance`, which requires a public parameterless constructor.
+
+## Callbacks
+
+| Callback                  | Event                                                 | Returns                    |
+| ------------------------- | ----------------------------------------------------- | -------------------------- |
+| `OnConnectionEstablished` | A client connected; carries the hostname and endpoint | `CommitAction`             |
+| `OnClientHello`           | `HELO` / `EHLO`                                       | `CommitAction`             |
+| `OnSender`                | `MAIL FROM`                                           | `CommitAction`             |
+| `OnRecipient`             | `RCPT TO`, once per recipient                         | `CommitAction`             |
+| `OnHeader`                | One message header                                    | `CommitAction`             |
+| `OnEndOfHeaders`          | The header block ended                                | `CommitAction`             |
+| `OnBodyChunk`             | A slice of the body, as `ReadOnlySpan<byte>`          | `CommitAction`             |
+| `OnEndOfBody`             | The message is complete                               | `IAsyncEnumerable<Action>` |
+| `OnDefineMacro`           | The MTA supplied macro values                         | nothing                    |
+
+The body arrives in chunks, not in one piece - Postfix caps each at 64 KiB - so a filter that needs the whole body has to accumulate it.
+
+**A context instance serves one message, not one connection.** Postfix keeps a connection open across several messages, and the library builds a fresh context for each, so per-message state in a field is safe and state that must outlive a message is not.
+
+## Actions
+
+Every callback except `OnEndOfBody` returns exactly one **commit action**, built from `CommitActions`:
+
+| Action              | Effect                                                      |
+| ------------------- | ----------------------------------------------------------- |
+| `Continue`          | Carry on with the next event                                |
+| `Accept`            | Accept the message, skip the remaining callbacks            |
+| `Reject`            | Reject with a permanent error (5xx)                         |
+| `Defer`             | Reject with a temporary error (4xx), so the sender retries  |
+| `Discard`           | Accept on the wire, then silently drop the message          |
+| `Reply(code, text)` | Reject with a reply you choose; the code must be 4xx or 5xx |
+
+`OnEndOfBody` returns a sequence instead: zero or more **modification actions** from `ModificationActions`, optionally interleaved with `ProgressAction.Instance`, and then **exactly one** commit action to end it. That shape is enforced - yielding nothing, forgetting the commit action, or yielding anything after it throws `InvalidOperationException`.
+
+| Modification                       | Effect                                                       |
+| ---------------------------------- | ------------------------------------------------------------ |
+| `AddHeader(name, value)`           | Append a header                                              |
+| `ChangeHeader(name, value, index)` | Replace the _index_-th occurrence of a header                |
+| `DeleteHeader(name, index)`        | Remove the _index_-th occurrence of a header                 |
+| `AddRecipient(address)`            | Add an envelope recipient                                    |
+| `DeleteRecipient(address)`         | Remove an envelope recipient                                 |
+| `ReplaceBody(stream, leaveOpen)`   | Replace the message body                                     |
+| `QuarantineMessage(reason)`        | Hold the message in the MTA's queue instead of delivering it |
+
+`ProgressAction.Instance` decides nothing; it only tells the MTA that the filter is still working, so the reply timeout restarts. Yield it from a long-running `OnEndOfBody` to avoid being timed out.
+
+Every action is built through those two factories, and there is no other way: the records have internal constructors and get-only properties, so neither `new` nor a `with` expression can get past the validation. Control characters are rejected in every outbound string, and header names must be RFC 5322 `ftext` - which is what stops a filter from splicing a second header, or a whole extra reply, into the message through an unsanitised value.
+
+## Declaring requirements
+
+The two static properties on `IMilterContext` are part of the handshake with the MTA, not decoration:
+
+- **`ProtocolRequirements`** lists the events you want delivered. The MTA skips the rest, so narrowing this is a real saving - a filter that only looks at senders never has the body streamed to it. `EndOfBody` is deliberately `0`: it cannot be excluded.
+- **`ActionRequirements`** lists the modifications you intend to make. The MTA rejects any modification it was not warned about during negotiation, so a filter that adds a header must say `AddHeaders` here.
+
+## Bounding the connection
+
+`MilterOptions` caps two things that are otherwise attacker-controlled:
+
+```csharp
+var milter = new Milter<RejectBigSenders>(socket, new MilterOptions
+{
+    MaxFrameLength = 1024 * 1024,   // default; upper bound on a single frame's length prefix
+    MaxConcurrentSessions = 1024,   // default; connections past this are closed, not queued
+});
+```
+
+## Going further
+
+The wire layer is public and non-sealed on purpose - `LinkReader`/`LinkWriter`, `RequestParser`/`ResponseFormatter`, the packet hierarchies and their visitors - so a consumer who needs to reach below the callback surface can subclass or substitute rather than fork.
+
+## License
+
+[EUPL-1.2](https://joinup.ec.europa.eu/collection/eupl/eupl-text-eupl-12)

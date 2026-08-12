@@ -1,0 +1,30 @@
+﻿// SPDX-License-Identifier: EUPL-1.2
+// Copyright (c) Manuel Josupeit-Walter
+
+using System;
+
+namespace Josupeit.Mail.Milter.Protocol;
+
+/// <summary>
+/// The client greeted the server with <c>HELO</c> or <c>EHLO</c> (<c>SMFIC_HELO</c>).
+/// </summary>
+public sealed class HeloRequestPacket : RequestPacket
+{
+    internal HeloRequestPacket()
+    {
+    }
+
+    /// <summary>
+    /// The name the client announced itself as, unverified.
+    /// </summary>
+    public required string HeloString { get; init; }
+
+    /// <inheritdoc />
+    protected internal override bool Accept(RequestPacketVisitor visitor)
+    {
+        if (visitor == null)
+            throw new ArgumentNullException(nameof(visitor));
+
+        return visitor.VisitHeloRequestPacket(this);
+    }
+}

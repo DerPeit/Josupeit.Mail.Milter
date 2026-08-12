@@ -13,6 +13,7 @@ A .NET library that implements the **Milter protocol** (the Sendmail/Postfix mai
 ```pwsh
 dotnet build Josupeit.Mail.Milter.slnx          # solution is .slnx (XML format), needs a recent SDK
 dotnet test  Josupeit.Mail.Milter.slnx
+dotnet test  test/Josupeit.Mail.Milter.UnitTests            # the Docker-free half, seconds instead of minutes
 dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 ```
 
@@ -24,13 +25,29 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 
 ## Projects
 
-| Project                          | TFM            | Role                                                     |
-| -------------------------------- | -------------- | -------------------------------------------------------- |
-| `Josupeit.Mail.Milter`           | net8.0         | The library. Namespace root `Josupeit.Mail.Milter`.      |
-| `Josupeit.Mail.Milter.Generator` | netstandard2.0 | Roslyn source generator. Experimental (see bottom).      |
-| `Josupeit.Mail.Milter.IntegrationTests` | net8.0  | NUnit + Testcontainers integration tests. Needs Docker.  |
-| `Josupeit.Mail.Milter.UnitTests` | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
-| `Example`                        | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
+The tree is split three ways, and the split decides what a project inherits. `src/Directory.Build.props` carries everything to do with shipping a package, so anything under `src/` is packable unless it opts out; `test/Directory.Build.props` carries the test-runner packages and the reference to the library, so the test projects are nearly empty files; `samples/` inherits neither, which is why the example lives there rather than under `src/`.
+
+| Project                                      | TFM            | Role                                                                      |
+| -------------------------------------------- | -------------- | ------------------------------------------------------------------------- |
+| `src/Josupeit.Mail.Milter`                   | net8.0         | The library, and the only package. Namespace root `Josupeit.Mail.Milter`. |
+| `src/Josupeit.Mail.Milter.Generator`         | netstandard2.0 | Roslyn source generator. Experimental (see bottom), not packable.         |
+| `test/Josupeit.Mail.Milter.IntegrationTests` | net8.0         | NUnit + Testcontainers integration tests. Needs Docker.                   |
+| `test/Josupeit.Mail.Milter.UnitTests`        | net8.0         | NUnit unit tests over the internal pipeline. No Docker.                   |
+| `samples/Example`                            | net8.0         | Skeleton showing a user `IMilterContext` implementation.                  |
+
+## Packaging
+
+`src/Josupeit.Mail.Milter` is the only package. Everything about shipping it lives in `src/Directory.Build.props`, so a project is packable by virtue of sitting under `src/` - which is why the generator opts out with `IsPackable=false` and the example lives under `samples/` instead.
+
+- **Versions come from the git history**, via Nerdbank.GitVersioning: `version.json` at the root sets the base version, `src/Josupeit.Mail.Milter/version.json` sets the release tag pattern (`v{version}`). Nothing hand-edits a version number, and a shallow clone gets it wrong - hence `fetch-depth: 0` in CI.
+- **Release notes come from the git log.** `GeneratePackageReleaseNotes` in `src/Directory.Build.targets` runs `git log --pretty=format:"- %s"` over the commits touching the project since the previous release tag. Commit subjects are read by consumers, which is the practical reason the Conventional Commits rule in CONTRIBUTING.md matters.
+- **`GenerateDocumentationFile` is on**, so CS1591/CS1573 police the doc comments. See CONTRIBUTING.md for the rule they enforce.
+- SourceLink needs no `PackageReference`: since .NET 8 the SDK supplies the GitHub provider for a repository whose origin is github.com. **Moving to Codeberg means adding `Microsoft.SourceLink.Gitea` and a `SourceLinkGiteaHost` item**, because the SDK ships no Gitea provider.
+- The package carries an SBOM, a `snupkg` with embedded sources, `LICENSE.md` and the project's own `README.md`.
+
+**The generator is packed into the library, not depended on.** Its `ProjectReference` is `PrivateAssets="all"` so NuGet does not emit a dependency on a package that will never exist, and `IncludeGeneratorAssemblyInPackage` puts its assembly into `lib/` by hand - the library's metadata names the marker attribute types, so the assembly carrying them has to travel with it. Both halves disappear if the generator is ever dropped.
+
+Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library, its `.xml` doc file and the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
 
 ## How a filter is written (the user-facing model)
 
@@ -68,7 +85,7 @@ Three layers, each in its own folder:
 
 ### Protocol state machine (`Session/ProtocolEnforcement/`)
 
-State pattern enforcing legal event ordering. The base `ProtocolState` throws "protocol violation" for *every* event; each concrete state overrides only the events it accepts. `SessionController` dispatches each request packet to the current state, which yields response packets and transitions the machine.
+State pattern enforcing legal event ordering. The base `ProtocolState` throws "protocol violation" for _every_ event; each concrete state overrides only the events it accepts. `SessionController` dispatches each request packet to the current state, which yields response packets and transitions the machine.
 
 Flow: `AwaitingNegotiationState` -> (after OPTNEG, validating version/action/content-bypass support) -> either `NegotiatedState` or `ReplayRecordingNegotiatedState`.
 
@@ -86,8 +103,8 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 
 ## Conventions & gotchas
 
-- Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
-- NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that *can* be mocked. Keep that shim if you touch body handling in tests.
+- Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline. `DynamicProxyGenAssembly2` is granted the same from `test/Directory.Build.props`, which is what lets NSubstitute mock internal types.
+- NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that _can_ be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
 
@@ -101,8 +118,9 @@ The goal is to remove the manual `ProtocolRequirements` step by computing that b
 - For each user context class, the generator uses `FindImplementationForInterfaceMember` per callback. If the implementation **equals the interface default** (i.e. the user did not override it), the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in.
 - It emits a `partial class` with the `static ProtocolRequirements` getter. If the user already declared that property, the generator skips the class (so a hand-written declaration always wins).
 
-**It currently leaks Roslyn into consumer output.** `Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
+**It currently leaks Roslyn into consumer output.** `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
 
 Notes when touching the generator:
+
 - It is an `ISourceGenerator` (v1), not incremental. A commented-out `ISyntaxContextReceiver`/incremental version exists at the bottom of `MilterContextSourceGenerator.cs`.
 - Marker attributes (`MilterContextMarkerAttribute`, `MilterCallbackMarkerAttribute`, `ProtocolRequirementsMarkerAttribute`) are matched **by assembly+type name string** (`IsDescribedBy`), not by symbol reference, because the generator carries its own copies of the attribute types. The `*Locator`/`*Visitor` classes are the symbol-tree search helpers.

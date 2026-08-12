@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter\Josupeit.Mail.Milter.csproj" />
+    
+    <!--
+      Both an analyzer and a plain reference. As an analyzer it runs the generator over this project; as
+      a reference it supplies the marker attribute types the generator reads off IMilterCallbacks. The
+      library used to hand those over transitively, but it now hides the generator behind
+      PrivateAssets="all" so the attributes have to be asked for here.
+    -->
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj">
+      <OutputItemType>Analyzer</OutputItemType>
+      <ReferenceOutputAssembly>true</ReferenceOutputAssembly>
+    </ProjectReference>
+  </ItemGroup>
+
+</Project>

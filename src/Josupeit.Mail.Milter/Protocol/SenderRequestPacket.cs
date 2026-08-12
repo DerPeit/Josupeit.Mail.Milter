@@ -1,0 +1,36 @@
+﻿// SPDX-License-Identifier: EUPL-1.2
+// Copyright (c) Manuel Josupeit-Walter
+
+using System;
+using System.Collections.Generic;
+
+namespace Josupeit.Mail.Milter.Protocol;
+
+/// <summary>
+/// The client sent <c>MAIL FROM</c> (<c>SMFIC_MAIL</c>).
+/// </summary>
+public sealed class SenderRequestPacket : RequestPacket
+{
+    internal SenderRequestPacket()
+    {
+    }
+
+    /// <summary>
+    /// The envelope sender as it appeared on the command, angle brackets included.
+    /// </summary>
+    public required string Sender { get; init; }
+
+    /// <summary>
+    /// The ESMTP parameters that followed the address, each unparsed. Empty when there were none.
+    /// </summary>
+    public required IReadOnlyList<string> ESmtpArguments { get; init; }
+
+    /// <inheritdoc />
+    protected internal override bool Accept(RequestPacketVisitor visitor)
+    {
+        if (visitor == null)
+            throw new ArgumentNullException(nameof(visitor));
+
+        return visitor.VisitMailFromRequestPacket(this);
+    }
+}

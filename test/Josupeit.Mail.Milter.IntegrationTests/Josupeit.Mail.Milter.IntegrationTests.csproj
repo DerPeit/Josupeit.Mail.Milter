@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MimeKitLite" Version="4.11.0" />
+    <PackageReference Include="Testcontainers" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="DotNet.Testcontainers.Builders" />
+    <Using Include="DotNet.Testcontainers.Containers" />
+    <Using Include="DotNet.Testcontainers.Images" />
+    <Using Include="DotNet.Testcontainers.Volumes" />
+    <Using Include="NUnit.Framework" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="MultiChunkBody.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="Dockerfile.postfix">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="main.cf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="master.cf">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>
