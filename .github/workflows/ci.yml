@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      # Nerdbank.GitVersioning derives the version from the commit height, so a shallow clone
+      # produces a wrong version - or no version at all.
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Deliberately the hosted runner rather than a container job: the integration tests drive a
+      # real Postfix through Testcontainers, which needs the host's Docker daemon.
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore local tools
+        run: dotnet tool restore
+
+      - name: Build
+        run: dotnet build --configuration Release
+
+      - name: Unit tests
+        run: dotnet test test/Josupeit.Mail.Milter.UnitTests --configuration Release --no-build
+
+      # Builds an Ubuntu+Postfix image and lets it talk back to a milter hosted on the runner.
+      # Slower than the rest of the workflow put together, and the only test of the real MTA.
+      - name: Integration tests
+        run: dotnet test test/Josupeit.Mail.Milter.IntegrationTests --configuration Release --no-build
+
+      - name: Pack
+        if: github.ref == 'refs/heads/main'
+        run: dotnet pack --configuration Release --no-build --output packages
+
+      - name: Push to NuGet
+        if: github.ref == 'refs/heads/main'
+        run: >-
+          dotnet nuget push "packages/*.nupkg"
+          --source https://api.nuget.org/v3/index.json
+          --api-key "${{ secrets.NUGET_API_KEY }}"
+          --skip-duplicate
