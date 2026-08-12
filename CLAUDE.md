@@ -30,7 +30,7 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 | Project                                      | TFM            | Role                                                                      |
 | -------------------------------------------- | -------------- | ------------------------------------------------------------------------- |
 | `src/Josupeit.Mail.Milter`                   | net8.0         | The library, and the only package. Namespace root `Josupeit.Mail.Milter`. |
-| `src/Josupeit.Mail.Milter.Generator`         | netstandard2.0 | Roslyn source generator. Experimental (see bottom), not packable.         |
+| `src/Josupeit.Mail.Milter.Generator`         | netstandard2.0 | Roslyn source generator (see bottom). Not packable on its own.            |
 | `test/Josupeit.Mail.Milter.IntegrationTests` | net8.0         | NUnit + Testcontainers integration tests. Needs Docker.                   |
 | `test/Josupeit.Mail.Milter.UnitTests`        | net8.0         | NUnit unit tests over the internal pipeline. No Docker.                   |
 | `samples/Example`                            | net8.0         | Skeleton showing a user `IMilterContext` implementation.                  |
@@ -45,20 +45,20 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 - SourceLink needs no `PackageReference`: since .NET 8 the SDK supplies the GitHub provider for a repository whose origin is github.com. **Moving to Codeberg means adding `Microsoft.SourceLink.Gitea` and a `SourceLinkGiteaHost` item**, because the SDK ships no Gitea provider.
 - The package carries an SBOM, a `snupkg` with embedded sources, `LICENSE.md` and the project's own `README.md`.
 
-**The generator is packed into the library, not depended on.** Its `ProjectReference` is `PrivateAssets="all"` so NuGet does not emit a dependency on a package that will never exist, and `IncludeGeneratorAssemblyInPackage` puts its assembly into `lib/` by hand - the library's metadata names the marker attribute types, so the assembly carrying them has to travel with it. Both halves disappear if the generator is ever dropped.
+**The generator is packed into the library, not depended on.** Its `ProjectReference` is `PrivateAssets="all"` so NuGet does not emit a dependency on a package that will never exist, and two targets put its assembly into the package by hand: `IncludeGeneratorAssemblyInPackage` into `lib/`, because the library's metadata names the marker attribute types and the assembly carrying them has to travel with it, and `IncludeGeneratorAsAnalyzerInPackage` into `analyzers/dotnet/cs/`, because that is the only copy the compiler loads. All three pieces disappear if the generator is ever dropped.
 
-Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library, its `.xml` doc file and the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
+Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library, its `.xml` doc file and the generator assembly, `analyzers/dotnet/cs/` holding the generator assembly again, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
 
 ## How a filter is written (the user-facing model)
 
 1. Implement `IMilterContext` (which extends `IMilterCallbacks`) as a **`partial class`**.
 2. Override only the `On*` callbacks you care about (`OnConnectionEstablished`, `OnClientHello`, `OnSender`, `OnRecipient`, `OnHeader`, `OnEndOfHeaders`, `OnBodyChunk`, `OnEndOfBody`, `OnDefineMacro`). All have default implementations returning `CommitActions.Continue`.
-3. Declare the two static requirement properties yourself:
-   - `static ProtocolRequirements ProtocolRequirements` - which SMTP events you want delivered. Should match the callbacks you actually overrode (Milter negotiation lets the filter tell the MTA which events to skip, so declaring fewer events means the MTA sends fewer).
-   - `static ActionRequirements ActionRequirements` - which message modifications you intend to perform.
+3. Leave the two static requirement properties to the source generator, or declare either by hand to override it:
+   - `static ProtocolRequirements ProtocolRequirements` - which SMTP events you want delivered. Derived from the callbacks you actually overrode (Milter negotiation lets the filter tell the MTA which events to skip, so declaring fewer events means the MTA sends fewer).
+   - `static ActionRequirements ActionRequirements` - which message modifications you intend to perform. Derived from the actions your code builds.
 4. `new Milter<TContext>(socket).Start();` - or `new Milter<TContext>(socket, () => new TContext(logger))` when the context needs dependencies. Without a factory the context comes from `Activator.CreateInstance`, which requires a public parameterless constructor.
 
-See `MilterContextAdapter` in the test project for a complete implementation that declares both properties.
+`samples/Example` declares neither property and relies on the generator. `MilterContextAdapter` in the integration tests declares both, as mutable statics, because the tests rewrite the negotiation per case.
 
 Callbacks return `ValueTask<CommitAction>` except `OnEndOfBody`, which returns `IAsyncEnumerable<Action>`: zero or more `ModificationAction`s and `ProgressAction`s, then **exactly one** terminal `CommitAction`. That sequence is enforced - yielding nothing, omitting the commit action, or yielding anything after it throws `InvalidOperationException`. Build actions via the `CommitActions` and `ModificationActions` static factories. `OnBodyChunk` takes `ReadOnlySpan<byte>`.
 
@@ -108,19 +108,35 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
 
-## Source generator (under development - `Josupeit.Mail.Milter.Generator`)
+## Source generator (`Josupeit.Mail.Milter.Generator`)
 
-**Status: experimental, under active development and consideration.** It is not yet a relied-upon part of the authoring model - for now, context implementations declare `ProtocolRequirements` by hand (see above). Do not assume generated code exists when reasoning about how a filter behaves.
+It writes the two `IMilterContext` requirement properties, and **nothing else**. Both are `static abstract` interface members, which is the safety net the whole design leans on: refusing to emit one fails the build with CS0535 rather than negotiating something wrong. A property the author declared by hand is always left alone.
 
-The goal is to remove the manual `ProtocolRequirements` step by computing that bitmask from which callbacks the user actually overrode:
+### `ProtocolRequirements` - from the callbacks
 
-- Each callback on `IMilterCallbacks` is tagged `[MilterCallbackMarker(nameof(ProtocolRequirements.X))]`.
-- For each user context class, the generator uses `FindImplementationForInterfaceMember` per callback. If the implementation **equals the interface default** (i.e. the user did not override it), the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in.
-- It emits a `partial class` with the `static ProtocolRequirements` getter. If the user already declared that property, the generator skips the class (so a hand-written declaration always wins).
+- Each callback on `IMilterCallbacks` is tagged `[MilterCallbackMarker(nameof(ProtocolRequirements.X))]`. `OnDefineMacro` and `OnEndOfBody` carry none: neither has a flag to clear.
+- `FindImplementationForInterfaceMember` per callback. An implementation that **equals the interface default** means nobody overrode it, so the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in. An explicit interface implementation counts as an override.
 
-**It currently leaks Roslyn into consumer output.** `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
+### `ActionRequirements` - from the actions the code builds
 
-Notes when touching the generator:
+Decidable only as an over-approximation, and that is exactly what the negotiation wants: over-declaring is harmless on the wire, under-declaring makes the MTA refuse the modification with **no runtime check anywhere in this library** to catch it. So `ActionRequirementsAnalysis` is a may-analysis - it unions every action the code mentions and never asks whether a branch is reachable. **Control flow therefore costs nothing**: an action behind an `if`, in a loop, in a `catch`, in a lambda counts like one on the straight path.
 
-- It is an `ISourceGenerator` (v1), not incremental. A commented-out `ISyntaxContextReceiver`/incremental version exists at the bottom of `MilterContextSourceGenerator.cs`.
-- Marker attributes (`MilterContextMarkerAttribute`, `MilterCallbackMarkerAttribute`, `ProtocolRequirementsMarkerAttribute`) are matched **by assembly+type name string** (`IsDescribedBy`), not by symbol reference, because the generator carries its own copies of the attribute types. The `*Locator`/`*Visitor` classes are the symbol-tree search helpers.
+- Each concrete `ModificationAction` record is tagged `[MilterActionMarker(nameof(ActionRequirements.X))]`; `Action` and `ModificationAction` carry a bare `[MilterActionMarker]` marking them as the abstract types a modification can hide behind. `CommitAction` and `ProgressAction` deliberately carry none. The generator never names an action type itself - `ActionTypes` reads it all off the attributes.
+- The walk seeds on the context type, its partials and its base types, then follows every invoked member that has a body **in this compilation**, with a visited set for cycles. Any expression whose type resolves to a marked concrete action contributes its flag.
+- When an action arrives from something with no body here - an interface, an abstract member, another assembly - it reports **MILT002** and emits nothing, so CS0535 forces a hand-written declaration.
+- One deliberate soundness hole, `PassesActionsThrough`: a member whose parameters, receiver or type arguments mention an action is assumed to be moving actions rather than building them, so `ToAsyncEnumerable`, `Select` and `Concat` do not trip MILT002. A generic _factory_ that builds an action from a type argument alone reads the same way and is not caught. Without this the analysis fires on ordinary LINQ and is unusable.
+- The other known gap: a public field of action type written from outside the analysed code.
+
+### Notes when touching it
+
+- It is an `IIncrementalGenerator`. The whole analysis runs in the pipeline's `transform`, so what reaches `RegisterSourceOutput` is `MilterContextEmission` - strings and `Diagnostic`s, never symbols.
+- Marker attributes are matched **by assembly+type name string** (`IsDescribedBy`), not by symbol reference, because the generator carries its own copies of the attribute types.
+- Diagnostic ids live in `GeneratorDiagnostics` and are tracked in `AnalyzerReleases.Unshipped.md`, which RS2008 enforces. That file's table format is what Roslyn's parser wants, not what prettier would write - it is in `.prettierignore`.
+- `Environment.NewLine` is banned by `EnforceExtendedAnalyzerRules`; the generator uses its own `NEW_LINE` const.
+- Tests are `MilterContextSourceGeneratorTests` in the unit project, driving the generator through `CSharpGeneratorDriver` (`GeneratorHarness`). They assert on the generated text **and** on compiling it, which is what catches emitted code that merely looks right.
+
+### The Roslyn leak
+
+`src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. The fix is to move the marker attributes into the library and let the generator go on matching them by name - `IsDescribedBy` already does, so the generator would not change.
+
+The package therefore carries the generator assembly **twice**: `lib/net8.0/` satisfies the metadata reference, `analyzers/dotnet/cs/` is the copy the compiler actually loads. Drop either and the feature silently stops working for consumers - the `analyzers/` one means no generation at all, the `lib/` one means an unresolved reference.
