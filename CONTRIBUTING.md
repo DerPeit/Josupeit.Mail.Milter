@@ -3,7 +3,11 @@
 Conventions for this repository: **how code is written** and **how commits are worded**.
 For what the project *is* and how it is built, see [CLAUDE.md](CLAUDE.md).
 
-There is no `.editorconfig` or analyzer ruleset yet - apart from `ConfigureAwaitChecker.Analyzer`, nothing here is machine-enforced. The rules below describe what the existing code does; follow it.
+Some of this is machine-enforced, most of it is not.
+
+`.editorconfig` carries the naming rules, file layout and encoding, and `Directory.Build.props` sets `EnforceCodeStyleInBuild`, so a violation is a build warning rather than a mark in the editor - without that property the rules colour the IDE and nothing else. `ConfigureAwaitChecker.Analyzer` covers the `ConfigureAwait` rule.
+
+Everything else below is a convention no analyzer can express: statement grouping, the visibility tiers, the `ValueTask` policy, the `Async`-suffix ban, the test layout. One naming rule is only *partly* enforced - see the note on the exposed-constants rule in `.editorconfig`. Where a rule appears in both files, keep them saying the same thing.
 
 ## Code style
 
