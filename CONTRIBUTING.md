@@ -19,6 +19,18 @@ Everything else below is a convention no analyzer can express: statement groupin
 - `using` directives **outside** the namespace, `System.*` first, then the rest, each block alphabetical. **No** global or implicit usings.
 - **4 spaces**, no tabs. **Allman** braces.
 - Line endings: **CRLF** in the working tree (Git normalizes to LF in the repository).
+- **Every `.cs` file opens with the licence header**, before the `using` block and separated from it by a blank line:
+
+  ```csharp
+  // SPDX-License-Identifier: EUPL-1.2
+  // Copyright (c) Manuel Josupeit-Walter
+  ```
+
+  A contributor who touches a file adds their own `// Copyright (c) <name>` line under the existing ones. This is not busywork to do by hand - `.githooks/pre-commit` stamps it into every staged file, taking the name from `git config user.name`. The hook is not installed by default, so enable it once per clone:
+
+  ```bash
+  git config core.hooksPath .githooks
+  ```
 
 ### Naming & visibility
 

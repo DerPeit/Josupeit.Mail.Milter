@@ -1,4 +1,7 @@
-﻿namespace Josupeit.Mail.Milter.Protocol;
+﻿// SPDX-License-Identifier: EUPL-1.2
+// Copyright (c) Manuel Josupeit-Walter
+
+namespace Josupeit.Mail.Milter.Protocol;
 
 public abstract class RequestPacket
 {

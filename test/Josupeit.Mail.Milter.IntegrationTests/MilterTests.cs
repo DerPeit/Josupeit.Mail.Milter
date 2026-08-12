@@ -1,4 +1,7 @@
-﻿using System.Net;
+﻿// SPDX-License-Identifier: EUPL-1.2
+// Copyright (c) Manuel Josupeit-Walter
+
+using System.Net;
 using System.Net.Mail;
 using System.Net.Sockets;
 using System.Text;

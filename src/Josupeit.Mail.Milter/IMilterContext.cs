@@ -1,4 +1,7 @@
-﻿using Josupeit.Mail.Milter.Generator;
+﻿// SPDX-License-Identifier: EUPL-1.2
+// Copyright (c) Manuel Josupeit-Walter
+
+using Josupeit.Mail.Milter.Generator;
 
 namespace Josupeit.Mail.Milter;
 

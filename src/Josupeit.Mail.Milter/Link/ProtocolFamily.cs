@@ -1,4 +1,7 @@
-﻿namespace Josupeit.Mail.Milter.Link;
+﻿// SPDX-License-Identifier: EUPL-1.2
+// Copyright (c) Manuel Josupeit-Walter
+
+namespace Josupeit.Mail.Milter.Link;
 
 // These values map to the SMFIA_ constants.
 public enum ProtocolFamily : byte
