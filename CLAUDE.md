@@ -133,20 +133,21 @@ Decidable only as an over-approximation, and that is exactly what the negotiatio
 - Marker attributes are matched **by full type name** (`IsDescribedBy`), not by symbol reference and deliberately **not** by assembly: two assemblies compile the same declaration, so the attribute found on a symbol is never the one the generator can call `typeof` on.
 - Diagnostic ids live in `GeneratorDiagnostics` and are tracked in `AnalyzerReleases.Unshipped.md`, which RS2008 enforces. That file's table format is what Roslyn's parser wants, not what prettier would write - it is in `.prettierignore`.
 - `Environment.NewLine` is banned by `EnforceExtendedAnalyzerRules`; the generator uses its own `NEW_LINE` const.
+- The project targets netstandard2.0, so the types modern C# compiles down to are missing. **PolySharp** supplies them, from the root `Directory.Build.props`, along with the `EmbeddedAttribute` the markers wear. See the comment there for the one assumption that rests on.
 - Tests are `MilterContextSourceGeneratorTests` in the unit project, driving the generator through `CSharpGeneratorDriver` (`GeneratorHarness`). They assert on the generated text **and** on compiling it, which is what catches emitted code that merely looks right.
 
 ### How the marker attributes reach the library
 
 The library applies the markers but must not reference the generator's assembly, or the compiler comes along with it into every consumer's `deps.json`. So **each marker attribute is two partials**:
 
-- `Markers/XMarkerAttribute.cs` - the declaration, `internal sealed partial`, naming nothing outside `System`. Compiled into **both** projects: the generator project holds the file, and `Josupeit.Mail.Milter.csproj` links it in under `Properties\Markers\`.
+- `Markers/XMarkerAttribute.cs` - the declaration, `internal sealed partial`, naming nothing outside `System`. Compiled into **both** projects: the generator project holds the file, and `Josupeit.Mail.Milter.csproj` links it in under `Properties\`.
 - `Markers/XMarkerAttribute.Symbols.cs` - `IsDescribedBy` and the constructor-argument readers, which need `Microsoft.CodeAnalysis`. Compiled into the generator only.
 
-Both halves live in namespace `Josupeit.Mail.Milter.Generator.Markers`, mirroring the folder. `EmbeddedAttribute.cs` stays at the generator project's root next to `IsExternalInit.cs`: both are types the compiler expects to find in a namespace the project does not own, so neither can mirror its folder.
+Both halves live in namespace `Josupeit.Mail.Milter.Generator.Markers`, mirroring the folder.
 
 Two consequences worth knowing before touching either half:
 
-- **Nothing Roslyn-shaped may enter the declaration half**, or it lands in the library. `EmbeddedAttribute.cs` is linked alongside them and declares `Microsoft.CodeAnalysis.EmbeddedAttribute` by hand, which is why `using Microsoft.CodeAnalysis;` in those files resolves to the project's own type rather than to the package.
+- **Nothing Roslyn-shaped may enter the declaration half**, or it lands in the library. The one thing those files do take from the `Microsoft.CodeAnalysis` namespace is `[Embedded]`, and that resolves to **PolySharp's** generated `EmbeddedAttribute` rather than to anything in the package - so `using Microsoft.CodeAnalysis;` there is not the dependency it looks like.
 - **The markers are `[Embedded]`**, so a referencing compilation does not import them at all - a consumer cannot name them (verified: CS0234), and a project referencing both the library and the generator does not get two ambiguous copies. The generator still reads them off a symbol's `GetAttributes()`, which is unaffected.
 
 The library's `ProjectReference` to the generator is therefore `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, and `IncludeGeneratorAsAnalyzerInPackage` packs `@(Analyzer)` into `analyzers/dotnet/cs/`. That is the only copy in the package, and the only one the compiler loads - drop it and the generation silently stops running for consumers while everything still builds here.

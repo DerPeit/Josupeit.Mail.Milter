@@ -45,9 +45,9 @@
 
       They are internal and [Embedded], so a consumer never sees them: an embedded type is not imported by
       a referencing compilation at all, which also stops this copy and the generator's own from ever being
-      ambiguous in a project that happens to reference both.
+      ambiguous in a project that happens to reference both. EmbeddedAttribute itself comes from PolySharp,
+      wired up in the repository's Directory.Build.props.
     -->
-    <Compile Include="..\Josupeit.Mail.Milter.Generator\EmbeddedAttribute.cs" Link="Properties\EmbeddedAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ActionRequirementsMarkerAttribute.cs" Link="Properties\ActionRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterActionMarkerAttribute.cs" Link="Properties\MilterActionMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterCallbackMarkerAttribute.cs" Link="Properties\MilterCallbackMarkerAttribute.cs" />
