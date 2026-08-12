@@ -3,11 +3,9 @@ using System.Runtime.CompilerServices;
 
 namespace Josupeit.Mail.Milter;
 
-/// <summary>
-/// Guards the strings a filter hands to the MTA. Each one ends up in a NUL-terminated field and, for
-/// headers and replies, in the delivered message, so a stray control character either cuts the field
-/// short or forges a line the sender never wrote.
-/// </summary>
+// Guards the strings a filter hands to the MTA. Each one ends up in a NUL-terminated field and, for
+// headers and replies, in the delivered message, so a stray control character either cuts the field
+// short or forges a line the sender never wrote.
 internal static class WireText
 {
     private const char FIRST_CONTROL_CHARACTER = (char)0;

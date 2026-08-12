@@ -36,6 +36,16 @@ Everything else below is a convention no analyzer can express: statement groupin
 - **No `Async` suffix** on async methods - `Session.Run`, `Milter.Stop` and `LinkWriter.WriteData` are all async. Exception: names dictated by a framework contract (`DisposeAsync`).
 - Names spell out the domain term rather than the wire mnemonic: `OnConnectionEstablished`, not `OnConnect`; `ContentBypassDiscriminator`, not `SmfipFlags`. Map the `SMFI*` name in a comment or enum member instead.
 
+### Comments
+
+Two kinds, and which one to use is decided by who can see the member - not by how much there is to say.
+
+- **`///` doc comments are for the public surface of `Josupeit.Mail.Milter`**, and nothing else: public members of public types, protected members of public types. They are what a consumer reads in IntelliSense and what ends up in the generated XML file.
+- **`//` comments everywhere else** - non-public members of the library, and every other project in the solution. Same prose, no tags: `<see cref="X"/>` becomes the bare name, `<see langword="null"/>` becomes `null`, a `<summary>` and a `<remarks>` become one block split by a bare `//` line.
+- **A doc comment is complete or it is wrong.** `<summary>` always, plus a tag for every parameter, type parameter, return value and exception the member documents. Half a doc comment is worse than none: IntelliSense shows the summary and silently omits the parameter the caller was actually asking about.
+- **`<inheritdoc />` wherever a base or interface already says it.** An override or an interface implementation repeats nothing; the one description then cannot drift from its copies.
+- Explain **why**, not what. The signature already says what a member is called and what it takes. The doc comment earns its place by saying what the caller cannot see: what is guaranteed, what is not, what the value means when it is `null`, and which mistake the API is shaped to prevent.
+
 ### Language features
 
 `LangVersion` is `latest`, `Nullable` is `enable`. Use modern C# freely:

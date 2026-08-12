@@ -9,10 +9,8 @@ namespace Josupeit.Mail.Milter.IntegrationTests;
 [TestOf(typeof(Milter<>)), CancelAfter(10_000)]
 public class MilterTests : MilterFixture
 {
-    /// <summary>
-    /// A body long enough to cross Postfix's MILTER_CHUNK_SIZE, so it arrives as several SMFIC_BODY frames
-    /// and the body test covers reassembly rather than a single chunk.
-    /// </summary>
+    // A body long enough to cross Postfix's MILTER_CHUNK_SIZE, so it arrives as several SMFIC_BODY frames
+    // and the body test covers reassembly rather than a single chunk.
     private static readonly string _multiChunkBody = LoadMultiChunkBody();
 
     [Test]
@@ -577,14 +575,11 @@ public class MilterTests : MilterFixture
         Assert.That(delivered, Does.Not.Contain("Original subject"));
     }
 
-    /// <summary>
-    /// The end-to-end proof that the header index is translated for the wire.
-    /// </summary>
-    /// <remarks>
-    /// A default index cannot show this: SMFIR_CHGHEADER counts occurrences from one, and Postfix quietly
-    /// treats the zero a naive implementation sends as a one, so changing the only occurrence works either
-    /// way. It is the second occurrence that separates them - untranslated, index 1 rewrites the first.
-    /// </remarks>
+    // The end-to-end proof that the header index is translated for the wire.
+    //
+    // A default index cannot show this: SMFIR_CHGHEADER counts occurrences from one, and Postfix quietly
+    // treats the zero a naive implementation sends as a one, so changing the only occurrence works either
+    // way. It is the second occurrence that separates them - untranslated, index 1 rewrites the first.
     [Test, CancelAfter(30_000)]
     public async Task Changing_the_second_occurrence_of_a_header_leaves_the_first_alone()
     {
@@ -665,16 +660,13 @@ public class MilterTests : MilterFixture
             Throws.InstanceOf<TimeoutException>());
     }
 
-    /// <summary>
-    /// A quarantined message is held in the queue instead of being delivered.
-    /// </summary>
-    /// <remarks>
-    /// The reason deliberately goes unasserted, because against Postfix it is unobservable. Postfix reads
-    /// the reason off SMFIR_QUARANTINE and then logs its own fixed "milter triggers HOLD action" text, and
-    /// it holds the message just as readily when the reason is missing altogether - which was measured
-    /// here, not assumed. So the reason reaching the wire is only provable at the byte level; see
-    /// ResponseFrameFactoryTests.Quarantining_carries_the_reason.
-    /// </remarks>
+    // A quarantined message is held in the queue instead of being delivered.
+    //
+    // The reason deliberately goes unasserted, because against Postfix it is unobservable. Postfix reads
+    // the reason off SMFIR_QUARANTINE and then logs its own fixed "milter triggers HOLD action" text, and
+    // it holds the message just as readily when the reason is missing altogether - which was measured
+    // here, not assumed. So the reason reaching the wire is only provable at the byte level; see
+    // ResponseFrameFactoryTests.Quarantining_carries_the_reason.
     [Test, CancelAfter(30_000)]
     public async Task Quarantining_holds_the_message_in_the_queue()
     {
@@ -690,9 +682,7 @@ public class MilterTests : MilterFixture
         Assert.That(await ReadPostfixLog(), Does.Contain("milter-hold"));
     }
 
-    /// <summary>
-    /// Answers end-of-body with <paramref name="actions"/> and then accepts the message.
-    /// </summary>
+    // Answers end-of-body with the given actions and then accepts the message.
     private void RespondAtEndOfBody(ActionRequirements actionRequirements, params Action[] actions)
     {
         MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.EndOfBody;
@@ -703,14 +693,11 @@ public class MilterTests : MilterFixture
             .ReturnsForAnyArgs(actions.Append<Action>(CommitActions.Accept).ToAsyncEnumerable());
     }
 
-    /// <summary>
-    /// Asserts that the callback matching <paramref name="protocolRequirements"/> was actually invoked.
-    /// </summary>
-    /// <remarks>
-    /// Postfix answers 4.7.1 both when the filter defers and when it cannot reach the filter at all, since
-    /// milter_default_action defaults to tempfail. Reading the SMTP reply alone therefore proves nothing: a
-    /// milter that crashed on the first packet, or was never connected to, produces the same 4.7.1.
-    /// </remarks>
+    // Asserts that the callback matching the given protocol requirements was actually invoked.
+    //
+    // Postfix answers 4.7.1 both when the filter defers and when it cannot reach the filter at all, since
+    // milter_default_action defaults to tempfail. Reading the SMTP reply alone therefore proves nothing: a
+    // milter that crashed on the first packet, or was never connected to, produces the same 4.7.1.
     private void AssertDecidingCallbackRan(ProtocolRequirements protocolRequirements)
     {
         switch (protocolRequirements)

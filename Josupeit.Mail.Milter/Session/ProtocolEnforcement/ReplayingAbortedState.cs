@@ -90,15 +90,12 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         async Task ToReplayingConnectedState() => await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, packetReplayHistory)).ConfigureAwait(false);
     }
 
-    /// <summary>
-    /// Replays the recorded connection packets into the fresh context, returning the decision that ends
-    /// processing early, or <see langword="null"/> when everything replayed asked to continue.
-    /// </summary>
-    /// <remarks>
-    /// An abortion "resets internal state of milter program to before SMFIC_HELO, but keeps the connection
-    /// open", so the connection the next message arrives on has to be described to the context again. Only
-    /// the connection request and macros can be in the history, by construction of the states that record it.
-    /// </remarks>
+    // Replays the recorded connection packets into the fresh context, returning the decision that ends
+    // processing early, or null when everything replayed asked to continue.
+    //
+    // An abortion "resets internal state of milter program to before SMFIC_HELO, but keeps the connection
+    // open", so the connection the next message arrives on has to be described to the context again. Only
+    // the connection request and macros can be in the history, by construction of the states that record it.
     private async ValueTask<IAsyncEnumerable<ResponsePacket>?> Replay(ContextAdapter contextAdapter, bool responseExpected, CancellationToken cancellationToken)
     {
         foreach (var packet in packetReplayHistory)

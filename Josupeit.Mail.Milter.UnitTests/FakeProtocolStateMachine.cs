@@ -6,14 +6,11 @@ using Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
 namespace Josupeit.Mail.Milter.UnitTests;
 
-/// <summary>
-/// Drives a single <see cref="IProtocolState"/> without a socket, a session or an MTA, and records what
-/// the state asked the machine to do.
-/// </summary>
-/// <remarks>
-/// Hand-written rather than substituted because <see cref="IProtocolStateMachine"/> is internal to the
-/// library, which a mocking proxy cannot see without widening the library's internals to it.
-/// </remarks>
+// Drives a single IProtocolState without a socket, a session or an MTA, and records what the state asked
+// the machine to do.
+//
+// Hand-written rather than substituted because IProtocolStateMachine is internal to the library, which a
+// mocking proxy cannot see without widening the library's internals to it.
 internal sealed class FakeProtocolStateMachine : IProtocolStateMachine
 {
     private readonly Func<IMilterCallbacks> _contextFactory;

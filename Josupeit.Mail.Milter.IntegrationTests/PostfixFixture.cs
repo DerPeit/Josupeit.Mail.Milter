@@ -80,10 +80,8 @@ public abstract class PostfixFixture
         await _image.DisposeAsync();
     }
 
-    /// <summary>
-    /// Everything Postfix has logged during the current test. Some milter outcomes leave no trace in the
-    /// delivered mail - a quarantine is only reported here - so this is the only way to assert on them.
-    /// </summary>
+    // Everything Postfix has logged during the current test. Some milter outcomes leave no trace in the
+    // delivered mail - a quarantine is only reported here - so this is the only way to assert on them.
     protected async Task<string> ReadPostfixLog()
     {
         var (stdout, stderr) = await _container.GetLogsAsync(_startTimestamp, timestampsEnabled: false);

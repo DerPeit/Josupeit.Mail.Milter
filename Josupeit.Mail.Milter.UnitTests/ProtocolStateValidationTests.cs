@@ -6,11 +6,9 @@ using NUnit.Framework;
 
 namespace Josupeit.Mail.Milter.UnitTests;
 
-/// <summary>
-/// The states return async iterators, whose bodies do not run until the sequence is enumerated. Argument
-/// validation therefore has to sit outside the iterator, or it reports the fault from an unrelated stack
-/// long after the offending call.
-/// </summary>
+// The states return async iterators, whose bodies do not run until the sequence is enumerated. Argument
+// validation therefore has to sit outside the iterator, or it reports the fault from an unrelated stack
+// long after the offending call.
 [TestFixture]
 public sealed class ProtocolStateValidationTests
 {
