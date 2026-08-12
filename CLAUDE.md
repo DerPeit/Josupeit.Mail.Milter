@@ -16,7 +16,7 @@ dotnet test  Josupeit.Mail.Milter.slnx
 dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 ```
 
-**Tests require Docker.** `Josupeit.Mail.Milter.Tests` is integration-only: it uses Testcontainers to build an Ubuntu+Postfix image (`Dockerfile.postfix`) and run a real Postfix that connects back to a milter hosted by the test on the host machine. There are no pure unit tests.
+**The integration tests require Docker.** `Josupeit.Mail.Milter.IntegrationTests` uses Testcontainers to build an Ubuntu+Postfix image (`Dockerfile.postfix`) and run a real Postfix that connects back to a milter hosted by the test on the host machine. `Josupeit.Mail.Milter.UnitTests` is Docker-free and covers what a correct MTA can never produce: malformed frames, protocol violations, and the abort/replay states.
 
 - `PostfixFixture` builds/starts the container and exposes `SendMail` / `ReceiveMail`.
 - `MilterFixture` binds the milter on host port **34000** and the mail-receiving socket on **35000**; `main.cf` points Postfix's `smtpd_milters` at `host.docker.internal:34000` and pipes delivered mail (`mailbox_transport = tcp-loopback` -> `nc` in `master.cf`) back to `35000` so tests can read the resulting message.
@@ -28,7 +28,8 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 | -------------------------------- | -------------- | -------------------------------------------------------- |
 | `Josupeit.Mail.Milter`           | net8.0         | The library. Namespace root `Josupeit.Mail.Milter`.      |
 | `Josupeit.Mail.Milter.Generator` | netstandard2.0 | Roslyn source generator. Experimental (see bottom).      |
-| `Josupeit.Mail.Milter.Tests`     | net8.0         | NUnit + Testcontainers integration tests.                |
+| `Josupeit.Mail.Milter.IntegrationTests` | net8.0  | NUnit + Testcontainers integration tests. Needs Docker.  |
+| `Josupeit.Mail.Milter.UnitTests` | net8.0         | NUnit unit tests over the internal pipeline. No Docker.  |
 | `Example`                        | net8.0         | Skeleton showing a user `IMilterContext` implementation. |
 
 ## How a filter is written (the user-facing model)
@@ -38,11 +39,11 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 3. Declare the two static requirement properties yourself:
    - `static ProtocolRequirements ProtocolRequirements` - which SMTP events you want delivered. Should match the callbacks you actually overrode (Milter negotiation lets the filter tell the MTA which events to skip, so declaring fewer events means the MTA sends fewer).
    - `static ActionRequirements ActionRequirements` - which message modifications you intend to perform.
-4. `new Milter<TContext>(socket).Start();`
+4. `new Milter<TContext>(socket).Start();` - or `new Milter<TContext>(socket, () => new TContext(logger))` when the context needs dependencies. Without a factory the context comes from `Activator.CreateInstance`, which requires a public parameterless constructor.
 
 See `MilterContextAdapter` in the test project for a complete implementation that declares both properties.
 
-Callbacks return `ValueTask<CommitAction>` except `OnEndOfBody`, which returns `IAsyncEnumerable<Action>` (zero or more `ModificationAction`s followed by a terminal `CommitAction`). Build actions via the `CommitActions` and `ModificationActions` static factories. `OnBodyChunk` takes `ReadOnlySpan<byte>`.
+Callbacks return `ValueTask<CommitAction>` except `OnEndOfBody`, which returns `IAsyncEnumerable<Action>`: zero or more `ModificationAction`s and `ProgressAction`s, then **exactly one** terminal `CommitAction`. That sequence is enforced - yielding nothing, omitting the commit action, or yielding anything after it throws `InvalidOperationException`. Build actions via the `CommitActions` and `ModificationActions` static factories. `OnBodyChunk` takes `ReadOnlySpan<byte>`.
 
 ## Runtime architecture
 
@@ -75,15 +76,17 @@ The **Replay** states handle Postfix keeping a connection alive across multiple 
 
 ### `ContextAdapter`
 
-Bridges protocol packets and the user's context. Lazily creates **one** context instance per session (via the injected factory or `Activator.CreateInstance`), converts request packets into the friendly `*Information` structs, invokes the callback, and turns the returned `CommitAction`/`Action` into `ResponsePacket`s. Disposes the context if it implements `IDisposable`/`IAsyncDisposable`.
+Bridges protocol packets and the user's context. Lazily creates **one context instance per message**, not per session: the states dispose the adapter at every message boundary (ABORT, QUIT, and the end of a message), so the next message on the same connection gets a fresh context from the supplied factory or `Activator.CreateInstance`. A context may therefore hold per-message state, and must not be relied on to see two messages. The adapter converts request packets into the friendly `*Information` structs, invokes the callback, and turns the returned `CommitAction`/`Action` into `ResponsePacket`s. It disposes the context if it implements `IDisposable`/`IAsyncDisposable`.
 
 ### Actions
 
-`Action` (abstract record) splits into `CommitAction` (Continue/Accept/Reject/Discard/Defer/Reply/Quarantine) and `ModificationAction` (AddHeader/ChangeHeader/DeleteHeader/AddRecipient/DeleteRecipient/ReplaceBody). Each knows how to produce its `ResponsePacket`(s) via `CreateResponsePackets`. `CommitActions`/`ModificationActions` are the public factories; the simple commit actions are cached singletons.
+`Action` (abstract record) has three branches: `CommitAction` (Continue/Accept/Reject/Discard/Defer/Reply) decides the message's fate, `ModificationAction` (AddHeader/ChangeHeader/DeleteHeader/AddRecipient/DeleteRecipient/ReplaceBody/**Quarantine**) changes it, and `ProgressAction` sits directly under `Action` because it does neither - it only tells the MTA to restart its reply timeout. Each knows how to produce its `ResponsePacket`(s) via `CreateResponsePackets`.
+
+`CommitActions`/`ModificationActions` are the public factories and the **only** way to build an action: the records have internal constructors and get-only properties, so neither `new` nor a `with` expression can bypass the validation the factories perform (control characters are rejected in every outbound string; header names must be RFC 5322 ftext). The simple commit actions are cached singletons, as are `ProgressAction.Instance` - progress belongs to neither factory, so it is reached through that property.
 
 ## Conventions & gotchas
 
-- Internals are exposed to the test project through `<InternalsVisibleTo Include="Josupeit.Mail.Milter.Tests" />` in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
+- Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline.
 - NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that *can* be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
@@ -97,6 +100,8 @@ The goal is to remove the manual `ProtocolRequirements` step by computing that b
 - Each callback on `IMilterCallbacks` is tagged `[MilterCallbackMarker(nameof(ProtocolRequirements.X))]`.
 - For each user context class, the generator uses `FindImplementationForInterfaceMember` per callback. If the implementation **equals the interface default** (i.e. the user did not override it), the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in.
 - It emits a `partial class` with the `static ProtocolRequirements` getter. If the user already declared that property, the generator skips the class (so a hand-written declaration always wins).
+
+**It currently leaks Roslyn into consumer output.** `Josupeit.Mail.Milter.csproj` references the generator as a normal `ProjectReference` rather than an `Analyzer` one, because the library needs the marker attribute types that live in it. So `Josupeit.Mail.Milter.Generator.dll` ships in the output directory and `Microsoft.CodeAnalysis.CSharp`/`.Common` land in `deps.json`. Known, documented in the csproj, and deliberately not fixed while the generator's future is open - deleting it makes the problem go away.
 
 Notes when touching the generator:
 - It is an `ISourceGenerator` (v1), not incremental. A commented-out `ISyntaxContextReceiver`/incremental version exists at the bottom of `MilterContextSourceGenerator.cs`.

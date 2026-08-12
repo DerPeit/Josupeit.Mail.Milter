@@ -4,7 +4,7 @@ using System.Net.Mail;
 using System.Net.Sockets;
 using System.Text;
 
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 public abstract class PostfixFixture
 {
@@ -78,6 +78,17 @@ public abstract class PostfixFixture
         await _spoolVolume.DisposeAsync();
         await _libVolume.DisposeAsync();
         await _image.DisposeAsync();
+    }
+
+    /// <summary>
+    /// Everything Postfix has logged during the current test. Some milter outcomes leave no trace in the
+    /// delivered mail - a quarantine is only reported here - so this is the only way to assert on them.
+    /// </summary>
+    protected async Task<string> ReadPostfixLog()
+    {
+        var (stdout, stderr) = await _container.GetLogsAsync(_startTimestamp, timestampsEnabled: false);
+
+        return stdout + stderr;
     }
 
     protected Task SendMail(MailMessage message)

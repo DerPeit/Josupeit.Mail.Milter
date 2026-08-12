@@ -3,7 +3,7 @@
 // These values map to the SMFIC_ constants.
 public enum CommandCode : byte
 {
-    Unspecified = default,
+    Unspecified = 0,
 
     // SMFIC_OPTNEG
     // Option negotiation
@@ -55,7 +55,7 @@ public enum CommandCode : byte
     // Expected response: Zero or more modification actions, then accept/reject action
     EndOfBody = (byte)'E',
 
-   
+
     // SMFIC_QUIT
     // Quit milter communication
     // Expected response: Close milter connection

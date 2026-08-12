@@ -10,10 +10,12 @@ namespace Josupeit.Mail.Milter.Link;
 public class LinkReader : ILinkReader
 {
     private readonly PipeReader _pipeReader;
+    private readonly uint _maxDataLength;
 
-    public LinkReader(PipeReader pipeReader)
+    public LinkReader(PipeReader pipeReader, uint maxDataLength)
     {
         _pipeReader = pipeReader ?? throw new ArgumentNullException(nameof(pipeReader));
+        _maxDataLength = maxDataLength;
     }
 
     public virtual async ValueTask<uint> ReadUInt32(CancellationToken cancellationToken)
@@ -44,6 +46,12 @@ public class LinkReader : ILinkReader
     {
         if (length == 0)
             return default;
+
+        // Defence in depth. RequestParser bounds the frame length before it gets here, but this is the
+        // method that buffers and then rents on an attacker-supplied size, so it enforces the bound too.
+        if (length > _maxDataLength)
+            throw new InvalidOperationException(
+                $"Protocol violation: Requested {length} bytes, which exceeds the accepted maximum of {_maxDataLength} bytes.");
 
         ReadOnlySequence<byte> buffer;
 

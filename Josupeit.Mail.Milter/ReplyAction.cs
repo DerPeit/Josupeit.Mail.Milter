@@ -6,8 +6,18 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
-public sealed record ReplyAction(int Code, string Text) : CommitAction
+public sealed record ReplyAction : CommitAction
 {
+    internal ReplyAction(int code, string text)
+    {
+        Code = code;
+        Text = text;
+    }
+
+    public int Code { get; }
+
+    public string Text { get; }
+
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

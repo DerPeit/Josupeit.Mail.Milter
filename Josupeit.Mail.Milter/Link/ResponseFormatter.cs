@@ -21,17 +21,18 @@ public class ResponseFormatter
 
     public void Start()
     {
-        _stopper = new();
+        if (_runner != null)
+            throw new InvalidOperationException($"{nameof(ResponseFormatter)} cannot be started. It is already running.");
 
-        _runner = Task.Factory.StartNew(
-            ProcessFramesCore,
-            _stopper.Token,
-            TaskCreationOptions.LongRunning | TaskCreationOptions.DenyChildAttach,
-            TaskScheduler.Default);
+        _stopper = new();
+        _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
-    public async ValueTask StopAsync()
+    public async Task Stop()
     {
+        if (_runner == null)
+            throw new InvalidOperationException($"{nameof(ResponseFormatter)} cannot be stopped. It is not running.");
+
         await _stopper!.CancelAsync().ConfigureAwait(false);
 
         try

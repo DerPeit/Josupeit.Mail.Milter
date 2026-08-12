@@ -9,7 +9,7 @@ public sealed class QuarantineMessageResponsePacket : ResponsePacket
     }
 
     public required string Reason { get; init; }
-    
+
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

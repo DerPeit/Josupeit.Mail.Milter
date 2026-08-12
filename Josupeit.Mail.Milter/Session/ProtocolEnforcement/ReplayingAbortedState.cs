@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Protocol;
@@ -11,113 +10,128 @@ namespace Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
 internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, IReadOnlyList<RequestPacket> packetReplayHistory) : ProtocolState
 {
-    public override IAsyncEnumerable<ResponsePacket> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        return AsyncEnumerable.Empty<ResponsePacket>();
+        return new(AsyncEnumerable.Empty<ResponsePacket>());
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnBodyChunk, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnBodyChunk, responseExpected: true, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnClientHello, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnClientHello, responseExpected: true, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnEndOfBody, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfBody, responseExpected: true, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnEndOfHeaders, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfHeaders, responseExpected: true, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnHeader, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnHeader, responseExpected: true, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
+    // Unlike AbortedState, a macro definition does transition here, and that difference is deliberate:
+    // replaying is what moves this state on, and it has to happen before the next message's events reach
+    // the fresh context. The macro cannot be handled without it.
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnDefineMacro, cancellationToken);
+        return ProcessRequest(request, static ca => packet => ca.OnDefineMacro(packet), responseExpected: false, cancellationToken);
     }
 
-    public override async IAsyncEnumerable<ResponsePacket> ProcessQuitting(QuitRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        try
-        {
-            yield break;
-        }
-        finally
+        return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
+
+        async Task ToDisconnectedState()
         {
             await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
             await stateMachine.TransitionTo(new DisconnectedState()).ConfigureAwait(false);
         }
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnRecipient, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnRecipient, responseExpected: true, cancellationToken);
     }
 
-    public override IAsyncEnumerable<ResponsePacket> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, ca => ca.OnSender, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnSender, responseExpected: true, cancellationToken);
     }
 
-    private async IAsyncEnumerable<ResponsePacket> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, CancellationToken, IAsyncEnumerable<ResponsePacket>>> processor, [EnumeratorCancellation] CancellationToken cancellationToken)
+    private async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
         var contextAdapter = stateMachine.EnsureContextAdapter();
 
-        try
+        var replayed = await Replay(contextAdapter, responseExpected, cancellationToken).ConfigureAwait(false);
+        var responses = replayed ?? processor(contextAdapter).Invoke(request);
+
+        return responses.Finally(ToReplayingConnectedState);
+
+        async Task ToReplayingConnectedState() => await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, packetReplayHistory)).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Replays the recorded connection packets into the fresh context, returning the decision that ends
+    /// processing early, or <see langword="null"/> when everything replayed asked to continue.
+    /// </summary>
+    /// <remarks>
+    /// An abortion "resets internal state of milter program to before SMFIC_HELO, but keeps the connection
+    /// open", so the connection the next message arrives on has to be described to the context again. Only
+    /// the connection request and macros can be in the history, by construction of the states that record it.
+    /// </remarks>
+    private async ValueTask<IAsyncEnumerable<ResponsePacket>?> Replay(ContextAdapter contextAdapter, bool responseExpected, CancellationToken cancellationToken)
+    {
+        foreach (var packet in packetReplayHistory)
         {
-            // We replay all required packets, because according to the docs, an abortion "resets internal state of milter
-            // program to before SMFIC_HELO, but keeps the connection open". However, we know from the internal states, that
-            // there can only be macros and the connection request. So we implement this with a little smelly code.
-            foreach (var packet in packetReplayHistory)
+            var replayed = packet switch
             {
-                var responses = packet switch
-                {
-                    DefineMacroRequestPacket defineMacroRequestPacket => contextAdapter.OnDefineMacro(defineMacroRequestPacket, cancellationToken),
-                    ConnectRequestPacket connectRequestPacket => contextAdapter.OnConnectionEstablished(connectRequestPacket, cancellationToken),
-                    _ => null!,
-                };
+                DefineMacroRequestPacket defineMacroRequestPacket => contextAdapter.OnDefineMacro(defineMacroRequestPacket),
+                ConnectRequestPacket connectRequestPacket => contextAdapter.OnConnectionEstablished(connectRequestPacket),
+                _ => null!,
+            };
 
-                Debug.Assert(responses != null, "Packet replay history contained unexpected packet.");
+            Debug.Assert(replayed != null, "Packet replay history contained unexpected packet.");
 
-                await foreach (var response in responses.WithCancellation(cancellationToken).ConfigureAwait(false))
-                {
-                    // We know, by design, that the response represents a commit action. Also, we must have come here
-                    // when a previous connection request was responded with a "continue" response. Thus, we expect
-                    // the connection attempt to be deterministic and respond with a continue response, again. If it's
-                    // a different connection response, we respond with this commit in this stage.
-                    if (response is ContinueProcessingResponsePacket)
-                        continue;
+            await foreach (var response in replayed.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                // We got here because a previous connection request was answered with continue, so we
+                // expect the connection callback to be deterministic and answer the same way again.
+                if (response is ContinueProcessingResponsePacket)
+                    continue;
 
-                    yield return response;
-                    yield break;
-                }
+                // Unless the packet we are replaying for expects no reply at all, in which case writing
+                // one would be read by the MTA as the answer to the next command and put every request
+                // and response after it out of step for the rest of the connection. Failing the session
+                // costs one message; a desynchronised connection corrupts all of them.
+                if (!responseExpected)
+                    throw new InvalidOperationException(
+                        "Protocol violation: The replayed connection callback returned a non-continue response "
+                        + "while handling a packet that expects no reply. Connection callbacks must be deterministic.");
+
+                return AsyncEnumerableEx.Return(response);
             }
+        }
 
-            await foreach (var response in processor(contextAdapter).Invoke(request, cancellationToken).ConfigureAwait(false))
-                yield return response;
-        }
-        finally
-        {
-            await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, packetReplayHistory)).ConfigureAwait(false);
-        }
+        return null;
     }
 }

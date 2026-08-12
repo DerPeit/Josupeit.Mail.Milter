@@ -26,6 +26,7 @@ public abstract class ResponsePacketVisitor
     {
         return true;
     }
+
     protected internal virtual bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
     {
         return true;
@@ -35,6 +36,7 @@ public abstract class ResponsePacketVisitor
     {
         return true;
     }
+
     protected internal virtual bool VisitDeferMessageResponsePacket(DeferMessageResponsePacket responsePacket)
     {
         return true;
@@ -51,6 +53,11 @@ public abstract class ResponsePacketVisitor
     }
 
     protected internal virtual bool VisitOptionNegotiationResponsePacket(OptionNegotiationResponsePacket responsePacket)
+    {
+        return true;
+    }
+
+    protected internal virtual bool VisitProgressResponsePacket(ProgressResponsePacket responsePacket)
     {
         return true;
     }

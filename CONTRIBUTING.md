@@ -3,7 +3,11 @@
 Conventions for this repository: **how code is written** and **how commits are worded**.
 For what the project *is* and how it is built, see [CLAUDE.md](CLAUDE.md).
 
-There is no `.editorconfig` or analyzer ruleset yet - apart from `ConfigureAwaitChecker.Analyzer`, nothing here is machine-enforced. The rules below describe what the existing code does; follow it.
+Some of this is machine-enforced, most of it is not.
+
+`.editorconfig` carries the naming rules, file layout and encoding, and `Directory.Build.props` sets `EnforceCodeStyleInBuild`, so a violation is a build warning rather than a mark in the editor - without that property the rules colour the IDE and nothing else. `ConfigureAwaitChecker.Analyzer` covers the `ConfigureAwait` rule.
+
+Everything else below is a convention no analyzer can express: statement grouping, the visibility tiers, the `ValueTask` policy, the `Async`-suffix ban, the test layout. One naming rule is only *partly* enforced - see the note on the exposed-constants rule in `.editorconfig`. Where a rule appears in both files, keep them saying the same thing.
 
 ## Code style
 
@@ -18,8 +22,16 @@ There is no `.editorconfig` or analyzer ruleset yet - apart from `ConfigureAwait
 
 ### Naming & visibility
 
-- **`internal sealed` by default.** Only the user-facing surface is public: `Milter<T>`, `IMilterContext`, `IMilterCallbacks`, `Action` and its subtypes, the `*Information` types, the requirement enums.
-- Private fields `_camelCase`; locals and parameters `camelCase`; everything else `PascalCase`.
+- **Three visibility tiers**, not one default. This is a library, and the wire layer is deliberately reachable so a consumer can extend it rather than fork it:
+  - **The authoring surface** - `Milter<T>`, `IMilterContext`, `IMilterCallbacks`, `Action` and its subtypes, the `CommitActions`/`ModificationActions` factories, the `*Information` types, `MilterOptions`, the requirement enums. Public, and the only tier a normal filter touches.
+  - **The extensible wire layer** - `LinkReader`/`LinkWriter`, `RequestParser`/`ResponseFormatter`, `RequestPacketFactory`/`ResponseFrameFactory`, the packet hierarchies and their visitors, plus the `I*` interfaces over all of them. **Public and non-sealed on purpose**, with `protected internal virtual` members, so a consumer can subclass a visitor or swap a factory. Adding a packet type means adding a `Visit*` to the matching visitor - that is a breaking change for anyone who derived, so weigh it.
+  - **Everything else** - `internal sealed`: the session, the protocol states, `ContextAdapter`, `WireText`. Reachable from the two test projects through `<InternalsVisibleTo />` and from nowhere else.
+- **Sealed unless it is meant to be derived from.** A public type that is not sealed is a statement that overriding it is supported; do not unseal one just to make a test easier.
+- **Validate arguments on the public surface**, not on internal members. An internal method is only reached by this library and its tests, so a guard there checks a caller that cannot get it wrong.
+- **`const` is `SCREAMING_SNAKE_CASE`** - field or local, `CHUNK_SIZE`, `END_OF_NAME_MARK_LENGTH`. The case marks the value as baked in at compile time.
+- **The screaming snake stops at the API boundary.** It is not idiomatic C#, so nothing visible from outside wears it: the public surface is `PascalCase` throughout, constants included. `MilterOptions.DefaultMaxFrameLength`, never `DEFAULT_MAX_FRAME_LENGTH`. Today every constant in the library happens to be private or local, which is why none of them is affected.
+- **Private fields are `_camelCase`**, including `static readonly` ones (`_stopTimeout`).
+- Locals and parameters `camelCase`; everything else `PascalCase`.
 - Interfaces are `I`-prefixed.
 - **No `Async` suffix** on async methods - `Session.Run`, `Milter.Stop` and `LinkWriter.WriteData` are all async. Exception: names dictated by a framework contract (`DisposeAsync`).
 - Names spell out the domain term rather than the wire mnemonic: `OnConnectionEstablished`, not `OnConnect`; `ContentBypassDiscriminator`, not `SmfipFlags`. Map the `SMFI*` name in a comment or enum member instead.
@@ -62,7 +74,19 @@ An extra blank line between two groups of the *same* kind is fine when it separa
 ### Async
 
 - **`ConfigureAwait(false)` on every await** - enforced by `ConfigureAwaitChecker.Analyzer`; do not omit it.
-- Prefer **`ValueTask` / `ValueTask<T>`** on paths that usually complete synchronously - the callback surface is the hot path.
+- **`ValueTask<T>` yes; non-generic `ValueTask` usually not.** Measured on net8.0: when the result is already
+  known, an `async Task<T>` or a `Task.FromResult(value)` costs **72 bytes** per call and the `ValueTask<T>`
+  equivalents cost **nothing**; on suspension the two are equal. So `ValueTask<T>` is never worse - use it,
+  and the callback surface and the per-packet paths are where it pays. But a non-generic `async Task` that
+  completes synchronously already hands back a cached `Task.CompletedTask`, so `ValueTask` there is **0 vs 0**
+  and earns nothing. Return plain `Task` unless one of these applies:
+  - it **forwards another `ValueTask`**, where `Task` would force an allocating `.AsTask()` - anything
+    relaying `IAsyncDisposable.DisposeAsync()`, for instance;
+  - it is an **interface contract on a repeated, frequently-suspending operation** that an implementer may
+    want to back with a pooled `IValueTaskSource`. A `Task` is single-use, so every suspension allocates one,
+    while an `IValueTaskSource` can be reused across operations on the same instance. This is why the BCL
+    chose `ValueTask` for `DisposeAsync`, `Stream.ReadAsync` and `PipeWriter.FlushAsync`, and why
+    `ILinkWriter` mirrors it.
 - `CancellationToken` is the **last parameter** and is always passed on. Async iterators take `[EnumeratorCancellation] CancellationToken`.
 
 ### Performance mindset
@@ -70,14 +94,16 @@ An extra blank line between two groups of the *same* kind is fine when it separa
 Not rigid rules - lenses. When writing, reading or reviewing code here, actively look for these and **surface the opportunity even when not taking it**:
 
 - **struct vs class**: is this copied on a hot path? Would `in` / `ref readonly` remove copies without mangling the call chain? Does `Span<T>`, `stackalloc` or `CollectionsMarshal` fit? Think past the obvious - array-of-structs vs struct-of-arrays.
-- **`ValueTask` vs `Task`**: a hot inner method returning `Task` allocates per call even when the outer path is synchronous.
+- **`ValueTask` vs `Task`**: see the async rule above. `ValueTask<T>` saves an allocation whenever the result is known synchronously; non-generic `ValueTask` does not.
 - **Allocation**: object pooling, `ArrayPool<T>`, closures captured in loops, boxing through interface calls on value types, `SearchValues`, frozen collections.
 - **Readability wins.** No manual state machines, no avoiding LINQ where it is clearly right, no `unsafe` for marginal gains. If an optimization meaningfully hurts readability, say so and weigh the trade-off explicitly rather than silently skipping it.
 
 ### Tests
 
 - **Arrange / Act / Assert**, always separated by blank lines. A comment block is always preceded by a blank line.
-- Tests are integration-only and need Docker; see [CLAUDE.md](CLAUDE.md) for the Postfix/milter fixtures.
+- Two projects, and the split decides where a test belongs. `Josupeit.Mail.Milter.UnitTests` needs no Docker and covers what a correct MTA can never send - malformed frames, protocol violations, byte-exact serialization, the abort and replay states. `Josupeit.Mail.Milter.IntegrationTests` drives a real Postfix through Testcontainers; see [CLAUDE.md](CLAUDE.md) for the fixtures.
+- **Reach for the unit project first.** An integration run costs minutes and a Docker daemon; it earns that only when the point of the test is that Postfix agrees.
+- **Bound every wait on a background worker.** A test that awaits a task which never completes hangs the whole run rather than failing one test, and NUnit's `CancelAfter` cannot break it. Race the wait against a timeout and assert on which won.
 
 ## Commit style
 

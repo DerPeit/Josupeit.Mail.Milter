@@ -9,7 +9,7 @@ public sealed class DeleteRecipientResponsePacket : ResponsePacket
     }
 
     public required string Recipient { get; init; }
-    
+
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

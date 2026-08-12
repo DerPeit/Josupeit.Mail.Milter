@@ -14,6 +14,7 @@ namespace Josupeit.Mail.Milter;
 public sealed class Milter<TContext> where TContext : IMilterContext
 {
     private readonly Socket _socket;
+    private readonly MilterOptions _options;
     private readonly TimeSpan? _timeout;
     private readonly TimeProvider? _timeProvider;
     private readonly Func<TContext>? _contextFactory;
@@ -23,18 +24,35 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private AsyncMonitor? _monitor;
     private int _activeSessions;
 
-    public Milter(Socket socket)
-        : this(socket ?? throw new ArgumentNullException(nameof(socket)), null)
+    public Milter(Socket socket, MilterOptions? options = null)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory: null,
+            options,
+            timeout: null,
+            timeProvider: null)
+    {
+    }
+
+    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
+            options,
+            timeout: null,
+            timeProvider: null)
     {
     }
 
     internal Milter(
-        Socket socket, 
-        TimeSpan? timeout = null, 
-        TimeProvider? timeProvider = null, 
-        Func<TContext>? contextFactory = null)
+        Socket socket,
+        Func<TContext>? contextFactory,
+        MilterOptions? options,
+        TimeSpan? timeout,
+        TimeProvider? timeProvider)
     {
         _socket = socket;
+        _options = options ?? new MilterOptions();
         _timeout = timeout;
         _timeProvider = timeProvider;
         _contextFactory = contextFactory;
@@ -56,7 +74,7 @@ public sealed class Milter<TContext> where TContext : IMilterContext
             .Unwrap();
     }
 
-    public async ValueTask Stop()
+    public async Task Stop()
     {
         if (_runner == null)
             throw new InvalidOperationException("Unable to stop Milter. Milter is not running.");
@@ -75,14 +93,19 @@ public sealed class Milter<TContext> where TContext : IMilterContext
             }
         }
 
-        using (await _monitor!.EnterAsync().ConfigureAwait(false))
-            while (_activeSessions > 0)
-                await _monitor.WaitAsync().ConfigureAwait(false);
+        await WaitForSessionsToEnd().ConfigureAwait(false);
 
         _stopper.Dispose();
         _stopper = null;
         _runner = null;
         _monitor = null;
+    }
+
+    internal async Task WaitForSessionsToEnd()
+    {
+        using (await _monitor!.EnterAsync().ConfigureAwait(false))
+            while (_activeSessions > 0)
+                await _monitor.WaitAsync().ConfigureAwait(false);
     }
 
     private async Task AcceptConnections()
@@ -91,10 +114,30 @@ public sealed class Milter<TContext> where TContext : IMilterContext
 
         while (!cancellationToken.IsCancellationRequested)
         {
+            // Deliberately unguarded for now. A transient socket error here, EMFILE under connection
+            // pressure for instance, faults this loop and stops the listener while the process stays up
+            // and healthy-looking. Handling it means deciding what to report and whether to continue,
+            // which waits on the diagnostics decision noted in RunSession.
             var connection = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
 
+            bool hasCapacity;
+
             using (await _monitor!.EnterAsync(CancellationToken.None).ConfigureAwait(false))
-                _activeSessions++;
+            {
+                hasCapacity = _activeSessions < _options.MaxConcurrentSessions;
+
+                if (hasCapacity)
+                    _activeSessions++;
+            }
+
+            // Refuse rather than queue. A peer we have no capacity for should find that out immediately
+            // instead of holding a socket open while we are saturated.
+            if (!hasCapacity)
+            {
+                connection.Dispose();
+
+                continue;
+            }
 
             _ = Task.Factory.StartNew(
                 RunSession,
@@ -124,10 +167,10 @@ public sealed class Milter<TContext> where TContext : IMilterContext
 
                     try
                     {
-                        var linkReader = new LinkReader(streamReader);
+                        var linkReader = new LinkReader(streamReader, _options.MaxFrameLength);
                         var linkWriter = new LinkWriter(streamWriter);
 
-                        var requestParser = new RequestParser(linkReader, requestFrameChannel.Writer);
+                        var requestParser = new RequestParser(linkReader, requestFrameChannel.Writer, _options.MaxFrameLength);
                         var responseFormatter = new ResponseFormatter(responseFrameChannel.Reader, linkWriter);
 
                         var requestPacketFactory = new RequestPacketFactory();
@@ -151,8 +194,8 @@ public sealed class Milter<TContext> where TContext : IMilterContext
                         }
                         finally
                         {
-                            await requestParser.StopAsync().ConfigureAwait(false);
-                            await responseFormatter.StopAsync().ConfigureAwait(false);
+                            await requestParser.Stop().ConfigureAwait(false);
+                            await responseFormatter.Stop().ConfigureAwait(false);
                         }
                     }
                     finally
@@ -163,7 +206,13 @@ public sealed class Milter<TContext> where TContext : IMilterContext
                 }
                 catch
                 {
-                    // TODO: Add logging
+                    // Every way a session can end badly arrives here indistinguishably: protocol
+                    // violations, negotiation failures, exceptions thrown by the filter's callbacks, a
+                    // frame we refused to parse, and a peer that simply went away. Dropping the
+                    // connection is the right outcome for all of them, so the only thing missing is a
+                    // way to tell them apart from the outside. That is a public API decision - logger,
+                    // event source, or an exception callback - and it has deliberately not been made
+                    // yet, which is why nothing is reported here at all.
                 }
             }
         }

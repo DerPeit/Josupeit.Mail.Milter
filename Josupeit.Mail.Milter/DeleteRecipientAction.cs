@@ -5,8 +5,15 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
-public sealed record DeleteRecipientAction(string Recipient) : ModificationAction
+public sealed record DeleteRecipientAction : ModificationAction
 {
+    internal DeleteRecipientAction(string recipient)
+    {
+        Recipient = recipient;
+    }
+
+    public string Recipient { get; }
+
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

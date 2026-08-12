@@ -5,8 +5,18 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
-public sealed record DeleteHeaderAction(string Name, int Index = 0) : ModificationAction
+public sealed record DeleteHeaderAction : ModificationAction
 {
+    internal DeleteHeaderAction(string name, int index)
+    {
+        Name = name;
+        Index = index;
+    }
+
+    public string Name { get; }
+
+    public int Index { get; }
+
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

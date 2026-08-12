@@ -22,7 +22,7 @@ public sealed class MilterCallbackMarkerAttribute(string protocolRequirementName
     internal static string GetProtocolRequirementName(AttributeData attribute)
     {
         var value = attribute.ConstructorArguments.Single();
-        
+
         return (string)value.Value!;
     }
 }

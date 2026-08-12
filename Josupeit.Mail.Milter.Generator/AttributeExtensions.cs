@@ -41,7 +41,7 @@ internal static class AttributeExtensions
     {
         if (attributeCandidate == null)
             throw new ArgumentNullException(nameof(attributeCandidate));
-        
+
         if (attributeCandidate is not INamedTypeSymbol namedType)
             return false;
 

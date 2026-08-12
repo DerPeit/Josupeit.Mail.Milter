@@ -1,4 +1,4 @@
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 internal abstract class MilterContextAdapter : IMilterContext
 {
@@ -15,7 +15,7 @@ internal abstract class MilterContextAdapter : IMilterContext
     {
         return new(CommitActions.Continue);
     }
-    
+
     public virtual ValueTask<CommitAction> OnClientHello(ClientHelloInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);

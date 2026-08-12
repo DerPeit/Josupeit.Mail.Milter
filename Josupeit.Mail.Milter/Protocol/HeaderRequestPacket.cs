@@ -11,7 +11,7 @@ public sealed class HeaderRequestPacket : RequestPacket
     public required string Name { get; init; }
 
     public required string Value { get; init; }
-    
+
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

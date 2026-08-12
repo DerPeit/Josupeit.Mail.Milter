@@ -13,7 +13,7 @@ public sealed class ChangeOrDeleteHeaderResponsePacket : ResponsePacket
     public required string Name { get; init; }
 
     public required string Value { get; init; }
-    
+
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

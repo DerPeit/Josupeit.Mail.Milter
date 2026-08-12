@@ -1,9 +1,9 @@
 ﻿namespace Josupeit.Mail.Milter.Link;
 
-// These values map to the SMFIC_ constants.
+// These values map to the SMFIR_ constants; the negotiation reply is the exception and reuses SMFIC_OPTNEG.
 public enum ResponseCode : byte
 {
-    Unspecified = default,
+    Unspecified = 0,
     OptionNegotiation = (byte)'O', // SMFIC_OPTNEG Option negotiation (in response to SMFIC_OPTNEG)
 
     // The following are modification actions

@@ -39,7 +39,7 @@ public class MilterContextSourceGenerator : ISourceGenerator
             .LocateMethodsWith<MilterCallbackMarkerAttribute>(milterContextInterface)
             .Select(method => new { Method = method, ProtocolRequirementsName = method.GetAttributes<MilterCallbackMarkerAttribute>().Select(x => x.ProtocolRequirementName).Single() })
             .ToList();
-        
+
         var milterContextImplementations = typeLocator
             .LocateClassesImplementingInterface(context.Compilation.Assembly, milterContextInterface);
 
@@ -59,7 +59,7 @@ public class MilterContextSourceGenerator : ISourceGenerator
             foreach (var callbackDeclaration in milterCallbacks)
             {
                 var candidate = milterContextImplementation.FindImplementationForInterfaceMember(callbackDeclaration.Method)!;
-                
+
                 var isInterfaceDefaultImplementation = candidate.Equals(callbackDeclaration.Method, SymbolEqualityComparer.Default);
                 if (isInterfaceDefaultImplementation)
                     continue;

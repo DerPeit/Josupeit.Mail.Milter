@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,119 +27,128 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
         return new();
     }
 
-    public async IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request)
     {
-        var protocolStage = request.CommandCode switch
+        return Core(CancellationToken.None);
+
+        async IAsyncEnumerable<ResponsePacket> Core([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            CommandCode.Connect => ProtocolStage.Connect,
-            CommandCode.Helo => ProtocolStage.ClientHello,
-            CommandCode.Sender => ProtocolStage.Sender,
-            CommandCode.Recipient => ProtocolStage.Recipient,
-            CommandCode.Header => ProtocolStage.Header,
-            CommandCode.EndOfHeaders => ProtocolStage.EndOfHeaders,
-            CommandCode.BodyChunk => ProtocolStage.Body,
-            CommandCode.EndOfBody => ProtocolStage.EndOfBody,
-            _ => (ProtocolStage)(-1),
-        };
+            var protocolStage = request.CommandCode switch
+            {
+                CommandCode.Connect => ProtocolStage.Connect,
+                CommandCode.Helo => ProtocolStage.ClientHello,
+                CommandCode.Sender => ProtocolStage.Sender,
+                CommandCode.Recipient => ProtocolStage.Recipient,
+                CommandCode.Header => ProtocolStage.Header,
+                CommandCode.EndOfHeaders => ProtocolStage.EndOfHeaders,
+                CommandCode.BodyChunk => ProtocolStage.Body,
+                CommandCode.EndOfBody => ProtocolStage.EndOfBody,
+                _ => (ProtocolStage)(-1),
+            };
 
-        if (!Enum.IsDefined(protocolStage))
-            yield break;
+            if (!Enum.IsDefined(protocolStage))
+                yield break;
 
-        var info = new MacroDefinitionInformation(protocolStage, request.Macros);
-        var context = _context ??= contextFactory();
+            var info = new MacroDefinitionInformation(protocolStage, request.Macros);
+            var context = _context ??= contextFactory();
 
-        await context.OnDefineMacro(info, cancellationToken).ConfigureAwait(false);
+            await context.OnDefineMacro(info, cancellationToken).ConfigureAwait(false);
+        }
     }
 
-    public async IAsyncEnumerable<ResponsePacket> OnConnectionEstablished(ConnectRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    public IAsyncEnumerable<ResponsePacket> OnConnectionEstablished(ConnectRequestPacket request)
     {
-        var info = new ConnectionInformation(request.HostName, request.Family, request.Port, request.Address);
+        return Invoke(
+            new ConnectionInformation(request.HostName, request.EndPoint),
+            static (context, info, token) => context.OnConnectionEstablished(info, token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnClientHello(HeloRequestPacket request)
+    {
+        return Invoke(
+            new ClientHelloInformation(request.HeloString),
+            static (context, info, token) => context.OnClientHello(info, token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnSender(SenderRequestPacket request)
+    {
+        return Invoke(
+            new SenderRecipientInformation(request.Sender, request.ESmtpArguments),
+            static (context, info, token) => context.OnSender(info, token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request)
+    {
+        return Invoke(
+            new SenderRecipientInformation(request.Recipient, request.ESmtpArguments),
+            static (context, info, token) => context.OnRecipient(info, token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request)
+    {
+        return Invoke(
+            new HeaderInformation(request.Name, request.Value),
+            static (context, info, token) => context.OnHeader(info, token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnEndOfHeaders(EndOfHeadersRequestPacket request)
+    {
+        return Invoke(
+            request,
+            static (context, _, token) => context.OnEndOfHeaders(token));
+    }
+
+    // The body arrives as a span, which cannot be a type argument, so this one hands the packet through
+    // and reads the span inside the callback instead.
+    public IAsyncEnumerable<ResponsePacket> OnBodyChunk(BodyChunkRequestPacket request)
+    {
+        return Invoke(
+            request,
+            static (context, packet, token) => context.OnBodyChunk(packet.DataSpan, token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _)
+    {
         var context = _context ??= contextFactory();
 
-        var commitAction = await context.OnConnectionEstablished(info, cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
+        return EnumerateResponses(context.OnEndOfBody());
 
-        await foreach (var response in responses.ConfigureAwait(false))
+        // End-of-body is the one callback that may answer with more than a single decision, and the MTA
+        // reads that stream as modifications first and exactly one verdict last. Letting a wrong sequence
+        // through would leave the MTA waiting for a verdict that never comes, or acting on a modification
+        // it has already been told to ignore - both far harder to place than a throw here.
+        static async IAsyncEnumerable<ResponsePacket> EnumerateResponses(
+            IAsyncEnumerable<Action> actions,
+            [EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            var isCommitted = false;
+
+            await foreach (var action in actions.WithCancellation(cancellationToken).ConfigureAwait(false))
+            {
+                if (isCommitted)
+                    throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} yielded an action after the commit action.");
+
+                isCommitted = action is CommitAction;
+
+                await foreach (var response in action.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
+                    yield return response;
+            }
+
+            if (!isCommitted)
+                throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} must yield exactly one commit action.");
+        }
+    }
+
+    private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
+        TInfo info,
+        Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var context = _context ??= contextFactory();
+
+        var commitAction = await callback(context, info, cancellationToken).ConfigureAwait(false);
+
+        await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
             yield return response;
-    }
-
-    public async IAsyncEnumerable<ResponsePacket> OnClientHello(HeloRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var info = new ClientHelloInformation(request.HeloString);
-        var context = _context ??= contextFactory();
-
-        var commitAction = await context.OnClientHello(info, cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
-
-        await foreach (var response in responses.ConfigureAwait(false))
-            yield return response;
-    }
-
-    public async IAsyncEnumerable<ResponsePacket> OnSender(SenderRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var info = new SenderRecipientInformation(request.Sender, request.ESmtpArguments);
-        var context = _context ??= contextFactory();
-
-        var commitAction = await context.OnSender(info, cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
-
-        await foreach (var response in responses.ConfigureAwait(false))
-            yield return response;
-    }
-
-    public async IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var info = new SenderRecipientInformation(request.Recipient, request.ESmtpArguments);
-        var context = _context ??= contextFactory();
-
-        var commitAction = await context.OnRecipient(info, cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
-
-        await foreach (var response in responses.ConfigureAwait(false))
-            yield return response;
-    }
-
-    public async IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var info = new HeaderInformation(request.Name, request.Value);
-        var context = _context ??= contextFactory();
-
-        var commitAction = await context.OnHeader(info, cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
-
-        await foreach (var response in responses.ConfigureAwait(false))
-            yield return response;
-    }
-
-    public async IAsyncEnumerable<ResponsePacket> OnEndOfHeaders(EndOfHeadersRequestPacket _, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var context = _context ??= contextFactory();
-
-        var commitAction = await context.OnEndOfHeaders(cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
-
-        await foreach (var response in responses.ConfigureAwait(false))
-            yield return response;
-    }
-
-    public async IAsyncEnumerable<ResponsePacket> OnBodyChunk(BodyChunkRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken)
-    {
-        var context = _context ??= contextFactory();
-
-        var commitAction = await context.OnBodyChunk(request.DataSpan, cancellationToken).ConfigureAwait(false);
-        var responses = commitAction.CreateResponsePackets().ConfigureAwait(false).WithCancellation(cancellationToken);
-
-        await foreach (var response in responses.ConfigureAwait(false))
-            yield return response;
-    }
-
-    public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
-    {
-        var context = _context ??= contextFactory();
-
-        var actions = context.OnEndOfBody();
-        var responses = actions.SelectMany(action => action.CreateResponsePackets());
-
-        return responses;
     }
 }

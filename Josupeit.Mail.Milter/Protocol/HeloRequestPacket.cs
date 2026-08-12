@@ -9,7 +9,7 @@ public sealed class HeloRequestPacket : RequestPacket
     }
 
     public required string HeloString { get; init; }
-    
+
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

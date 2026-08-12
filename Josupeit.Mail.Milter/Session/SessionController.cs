@@ -1,4 +1,6 @@
 ﻿using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using Josupeit.Mail.Milter.Protocol;
 
@@ -6,97 +8,100 @@ namespace Josupeit.Mail.Milter.Session;
 
 internal sealed class SessionController(ISessionControlee controlee) : RequestPacketVisitor
 {
-    private IAsyncEnumerable<ResponsePacket>? _responses;
+    private ValueTask<IAsyncEnumerable<ResponsePacket>> _responses;
+    private CancellationToken _cancellationToken;
 
-    public IAsyncEnumerable<ResponsePacket> ProcessRequest(RequestPacket request)
+    public ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest(RequestPacket request, CancellationToken cancellationToken)
     {
+        _cancellationToken = cancellationToken;
+
         var visited = VisitRequestPacket(request);
 
         Debug.Assert(visited);
 
-        return _responses!;
+        return _responses;
     }
 
     protected internal override bool VisitAbortRequestPacket(AbortRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessAbortion(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessAbortion(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitBodyChunkRequestPacket(BodyChunkRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessBodyChunk(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessBodyChunk(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitConnectRequestPacket(ConnectRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessConnectionAttempt(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessConnectionAttempt(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitDefineMacroRequestPacket(DefineMacroRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessMacroDefinition(requestPacket);
-        
+        _responses = controlee.ProtocolStateMachine.State.ProcessMacroDefinition(requestPacket, _cancellationToken);
+
         return true;
     }
 
     protected internal override bool VisitEndOfBodyRequestPacket(EndOfBodyRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessEndOfBody(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessEndOfBody(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitEndOfHeadersRequestPacket(EndOfHeadersRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessEndOfHeaders(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessEndOfHeaders(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitHeaderRequestPacket(HeaderRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessHeader(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessHeader(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitHeloRequestPacket(HeloRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessClientHello(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessClientHello(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitMailFromRequestPacket(SenderRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessSender(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessSender(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitOptionsNegotiationRequestPacket(OptionNegotiationRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessOptionNegotiationAttempt(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessOptionNegotiationAttempt(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitQuitRequestPacket(QuitRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessQuitting(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessQuitting(requestPacket, _cancellationToken);
 
         return true;
     }
 
     protected internal override bool VisitRcptToRequestPacket(RecipientRequestPacket requestPacket)
     {
-        _responses = controlee.ProtocolStateMachine.State.ProcessRecipient(requestPacket);
+        _responses = controlee.ProtocolStateMachine.State.ProcessRecipient(requestPacket, _cancellationToken);
 
         return true;
     }

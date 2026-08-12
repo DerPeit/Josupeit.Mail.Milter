@@ -2,10 +2,12 @@
 using System.Net;
 using NSubstitute;
 
-namespace Josupeit.Mail.Milter.Tests;
+namespace Josupeit.Mail.Milter.IntegrationTests;
 
 public abstract class MilterFixture : PostfixFixture
 {
+    private static readonly TimeSpan _sessionDrainTimeout = TimeSpan.FromSeconds(10);
+
     private readonly Socket _milterSocket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
 
     private Milter<MilterContextAdapter> _milter;
@@ -21,7 +23,7 @@ public abstract class MilterFixture : PostfixFixture
 
         _milterSocket.Bind(new IPEndPoint(IPAddress.Any, 34000));
         _milterSocket.Listen();
-        
+
         _milter = new Milter<MilterContextAdapter>(_milterSocket, contextFactory: () => ContextAdapterResolver());
         _milter.Start();
     }
@@ -37,12 +39,25 @@ public abstract class MilterFixture : PostfixFixture
         ContextAdapterResolver().Returns(_ => _contextAdapter ??= Substitute.ForPartsOf<MilterContextAdapter>());
     }
 
-    public override Task TearDown()
+    public override async Task TearDown()
     {
+        // The container goes first, because its connections are what keep the milter sessions alive. Then
+        // the sessions have to be waited for: clearing the resolver underneath one still in flight either
+        // fails it with a NullReferenceException or, worse, hands it the next test's context adapter and
+        // records callbacks against the wrong test.
+        await base.TearDown();
+
+        var sessionsEnding = _milter.WaitForSessionsToEnd();
+
+        Assert.That(
+            await Task.WhenAny(sessionsEnding, Task.Delay(_sessionDrainTimeout)),
+            Is.SameAs(sessionsEnding),
+            "Milter sessions were still running after the Postfix container stopped.");
+
+        await sessionsEnding;
+
         _contextAdapter = null;
         ContextAdapterResolver = null;
-
-        return base.TearDown();
     }
 
     public override async Task OneTimeTearDown()

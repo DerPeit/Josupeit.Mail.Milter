@@ -5,5 +5,5 @@ namespace Josupeit.Mail.Milter.Session;
 
 public interface ISession
 {
-    ValueTask Run(CancellationToken cancellationToken);
+    Task Run(CancellationToken cancellationToken);
 }

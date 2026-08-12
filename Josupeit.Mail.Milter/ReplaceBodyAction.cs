@@ -3,18 +3,27 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
-public sealed record ReplaceBodyAction(Stream Body) : ModificationAction
+public sealed record ReplaceBodyAction : ModificationAction
 {
     private const int CHUNK_SIZE = 65535;
 
+    internal ReplaceBodyAction(Stream body, bool leaveOpen)
+    {
+        Body = body;
+        LeaveOpen = leaveOpen;
+    }
+
+    public Stream Body { get; }
+
+    public bool LeaveOpen { get; }
+
     protected override async IAsyncEnumerable<ResponsePacket> CreateResponsePackets([EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        await using (Body.ConfigureAwait(false))
+        try
         {
             while (true)
             {
@@ -24,7 +33,9 @@ public sealed record ReplaceBodyAction(Stream Body) : ModificationAction
 
                 try
                 {
-                    var buffer = memoryOwner.Memory;
+                    // The pool is free to hand back more than was asked for, and reading into all of it
+                    // would produce a chunk the protocol cannot frame.
+                    var buffer = memoryOwner.Memory[..CHUNK_SIZE];
                     var bytesRead = await Body.ReadAsync(buffer, cancellationToken).ConfigureAwait(false);
 
                     if (bytesRead == 0)
@@ -49,6 +60,11 @@ public sealed record ReplaceBodyAction(Stream Body) : ModificationAction
 
                 yield return response;
             }
+        }
+        finally
+        {
+            if (!LeaveOpen)
+                await Body.DisposeAsync().ConfigureAwait(false);
         }
     }
 }

@@ -13,7 +13,7 @@ internal sealed class TypeLocator
             throw new ArgumentNullException(nameof(root));
 
         var visitor = new MarkerAttributeVisitor<TMarkerAttribute>(TypeKind.Enum);
-        
+
         return visitor.Visit(root)!;
     }
 
@@ -23,7 +23,7 @@ internal sealed class TypeLocator
             throw new ArgumentNullException(nameof(root));
 
         var visitor = new MarkerAttributeVisitor<TMarkerAttribute>(TypeKind.Interface);
-        
+
         return visitor.Visit(root)!;
     }
 
@@ -36,7 +36,7 @@ internal sealed class TypeLocator
             throw new ArgumentNullException(nameof(@interface));
 
         var visitor = new InterfaceVisitor(@interface);
-        
+
         return visitor.Visit(root)!;
     }
 }
