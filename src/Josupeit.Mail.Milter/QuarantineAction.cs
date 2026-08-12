@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -17,6 +18,7 @@ namespace Josupeit.Mail.Milter;
 /// Requires <see cref="ActionRequirements.QuarantineMessage"/>. Reached through
 /// <see cref="ModificationActions.QuarantineMessage"/>, which is where the reason is validated.
 /// </remarks>
+[MilterActionMarker(nameof(ActionRequirements.QuarantineMessage))]
 public sealed record QuarantineAction : ModificationAction
 {
     internal QuarantineAction(string reason)

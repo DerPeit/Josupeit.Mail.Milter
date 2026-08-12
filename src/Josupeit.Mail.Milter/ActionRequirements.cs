@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using Josupeit.Mail.Milter.Generator;
 
 namespace Josupeit.Mail.Milter;
 
@@ -15,6 +16,7 @@ namespace Josupeit.Mail.Milter;
 /// it matters.
 /// </remarks>
 [Flags]
+[ActionRequirementsMarker]
 public enum ActionRequirements
 {
     /// <summary>

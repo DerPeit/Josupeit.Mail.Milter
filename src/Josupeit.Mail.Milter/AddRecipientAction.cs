@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -17,6 +18,7 @@ namespace Josupeit.Mail.Milter;
 /// <see cref="ActionRequirements.AddRecipients"/>. Reached through
 /// <see cref="ModificationActions.AddRecipient"/>, which is where the address is validated.
 /// </remarks>
+[MilterActionMarker(nameof(ActionRequirements.AddRecipients))]
 public sealed record AddRecipientAction : ModificationAction
 {
     internal AddRecipientAction(string recipient)

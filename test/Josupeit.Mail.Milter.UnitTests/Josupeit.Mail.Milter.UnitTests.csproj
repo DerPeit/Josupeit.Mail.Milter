@@ -4,4 +4,12 @@
     <ImplicitUsings>disable</ImplicitUsings>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- MilterContextSourceGeneratorTests drives the generator through CSharpGeneratorDriver, so it needs
+         the compiler itself, and the generator as a plain reference rather than an analyzer one: the test
+         hands it to the driver by hand instead of letting the build run it over this project. -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="[4.10,5)" />
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj" />
+  </ItemGroup>
+
 </Project>

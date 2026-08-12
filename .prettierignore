@@ -1,0 +1,3 @@
+# Roslyn parses these itself and wants its own table format, which prettier rewrites into something
+# RS2007 then rejects. See src/Josupeit.Mail.Milter.Generator/AnalyzerReleases.Unshipped.md.
+AnalyzerReleases.*.md

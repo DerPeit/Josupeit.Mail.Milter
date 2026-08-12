@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -16,6 +17,7 @@ namespace Josupeit.Mail.Milter;
 /// <see cref="ModificationActions.DeleteHeader"/>, which is where the name is validated. On the wire
 /// this is a change to an empty value, which is how the protocol expresses a deletion.
 /// </remarks>
+[MilterActionMarker(nameof(ActionRequirements.DeleteHeaders))]
 public sealed record DeleteHeaderAction : ModificationAction
 {
     internal DeleteHeaderAction(string name, int index)

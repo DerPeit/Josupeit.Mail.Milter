@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -18,6 +19,7 @@ namespace Josupeit.Mail.Milter;
 /// the properties get-only, so neither <see langword="new"/> nor a <see langword="with"/> expression can
 /// get past the validation the factories perform.
 /// </remarks>
+[MilterActionMarker]
 public abstract record Action
 {
     private protected Action()

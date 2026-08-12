@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -15,6 +16,7 @@ namespace Josupeit.Mail.Milter;
 /// Requires <see cref="ActionRequirements.ChangeHeaders"/>. Reached through
 /// <see cref="ModificationActions.ChangeHeader"/>, which is where the name and value are validated.
 /// </remarks>
+[MilterActionMarker(nameof(ActionRequirements.ChangeHeaders))]
 public sealed record ChangeHeaderAction : ModificationAction
 {
     internal ChangeHeaderAction(string name, string value, int index)
