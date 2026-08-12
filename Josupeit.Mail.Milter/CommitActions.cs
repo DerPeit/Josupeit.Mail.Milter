@@ -15,7 +15,7 @@ public static class CommitActions
         ArgumentOutOfRangeException.ThrowIfLessThan(code, 400);
         ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(code, 600);
         ArgumentException.ThrowIfNullOrWhiteSpace(text);
-        WireText.ThrowIfContainsControlCharacter(text);
+        ArgumentException.ThrowIfContainsControlCharacter(text);
 
         return new ReplyAction(code, text);
     }

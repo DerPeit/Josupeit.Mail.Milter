@@ -10,19 +10,22 @@ namespace Josupeit.Mail.Milter;
 /// </summary>
 internal static class WireText
 {
-    private const char FirstControlCharacter = (char)0;
-    private const char LastControlCharacter = (char)31;
+    private const char FIRST_CONTROL_CHARACTER = (char)0;
+    private const char LAST_CONTROL_CHARACTER = (char)31;
 
-    public static void ThrowIfContainsControlCharacter(string text, [CallerArgumentExpression(nameof(text))] string? paramName = null)
+    extension(ArgumentException)
     {
-        if (text.AsSpan().ContainsAnyInRange(FirstControlCharacter, LastControlCharacter))
-            throw new ArgumentException("The value must not contain control characters.", paramName);
-    }
+        public static void ThrowIfContainsControlCharacter(string text, [CallerArgumentExpression(nameof(text))] string? paramName = null)
+        {
+            if (text.AsSpan().ContainsAnyInRange(FIRST_CONTROL_CHARACTER, LAST_CONTROL_CHARACTER))
+                throw new ArgumentException("The value must not contain control characters.", paramName);
+        }
 
-    // RFC 5322 ftext: printable US-ASCII except the colon that separates the name from the value.
-    public static void ThrowIfNotHeaderName(string name, [CallerArgumentExpression(nameof(name))] string? paramName = null)
-    {
-        if (name.AsSpan().ContainsAnyExceptInRange('!', '~') || name.Contains(':'))
-            throw new ArgumentException("A header name must consist of printable ASCII characters other than a colon.", paramName);
+        // RFC 5322 ftext: printable US-ASCII except the colon that separates the name from the value.
+        public static void ThrowIfNotHeaderName(string name, [CallerArgumentExpression(nameof(name))] string? paramName = null)
+        {
+            if (name.AsSpan().ContainsAnyExceptInRange('!', '~') || name.Contains(':'))
+                throw new ArgumentException("A header name must consist of printable ASCII characters other than a colon.", paramName);
+        }
     }
 }

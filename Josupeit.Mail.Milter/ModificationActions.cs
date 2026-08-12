@@ -8,7 +8,7 @@ public static class ModificationActions
     public static AddRecipientAction AddRecipient(string recipient)
     {
         ArgumentException.ThrowIfNullOrEmpty(recipient);
-        WireText.ThrowIfContainsControlCharacter(recipient);
+        ArgumentException.ThrowIfContainsControlCharacter(recipient);
 
         return new AddRecipientAction(recipient);
     }
@@ -16,7 +16,7 @@ public static class ModificationActions
     public static DeleteRecipientAction DeleteRecipient(string recipient)
     {
         ArgumentException.ThrowIfNullOrEmpty(recipient);
-        WireText.ThrowIfContainsControlCharacter(recipient);
+        ArgumentException.ThrowIfContainsControlCharacter(recipient);
 
         return new DeleteRecipientAction(recipient);
     }
@@ -25,8 +25,8 @@ public static class ModificationActions
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentException.ThrowIfNullOrEmpty(value);
-        WireText.ThrowIfNotHeaderName(name);
-        WireText.ThrowIfContainsControlCharacter(value);
+        ArgumentException.ThrowIfNotHeaderName(name);
+        ArgumentException.ThrowIfContainsControlCharacter(value);
 
         return new AddHeaderAction(name, value);
     }
@@ -36,8 +36,8 @@ public static class ModificationActions
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentException.ThrowIfNullOrEmpty(value);
         ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
-        WireText.ThrowIfNotHeaderName(name);
-        WireText.ThrowIfContainsControlCharacter(value);
+        ArgumentException.ThrowIfNotHeaderName(name);
+        ArgumentException.ThrowIfContainsControlCharacter(value);
 
         return new ChangeHeaderAction(name, value, index);
     }
@@ -46,15 +46,11 @@ public static class ModificationActions
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
-        WireText.ThrowIfNotHeaderName(name);
+        ArgumentException.ThrowIfNotHeaderName(name);
 
         return new DeleteHeaderAction(name, index);
     }
 
-    /// <param name="leaveOpen">
-    /// Keeps <paramref name="stream"/> open once the body has been sent. The default disposes it, because
-    /// the usual case builds a stream for this one message and has no use for it afterwards.
-    /// </param>
     public static ReplaceBodyAction ReplaceBody(Stream stream, bool leaveOpen = false)
     {
         ArgumentNullException.ThrowIfNull(stream);
@@ -65,7 +61,7 @@ public static class ModificationActions
     public static QuarantineAction QuarantineMessage(string reason)
     {
         ArgumentException.ThrowIfNullOrEmpty(reason);
-        WireText.ThrowIfContainsControlCharacter(reason);
+        ArgumentException.ThrowIfContainsControlCharacter(reason);
 
         return new QuarantineAction(reason);
     }
