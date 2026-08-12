@@ -8,6 +8,13 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
+/// <summary>
+/// Appends a header to the message.
+/// </summary>
+/// <remarks>
+/// Requires <see cref="ActionRequirements.AddHeaders"/>. Reached through
+/// <see cref="ModificationActions.AddHeader"/>, which is where the name and value are validated.
+/// </remarks>
 public sealed record AddHeaderAction : ModificationAction
 {
     internal AddHeaderAction(string name, string value)
@@ -16,10 +23,17 @@ public sealed record AddHeaderAction : ModificationAction
         Value = value;
     }
 
+    /// <summary>
+    /// The name of the header to add, without the separating colon.
+    /// </summary>
     public string Name { get; }
 
+    /// <summary>
+    /// The value of the header to add.
+    /// </summary>
     public string Value { get; }
 
+    /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();

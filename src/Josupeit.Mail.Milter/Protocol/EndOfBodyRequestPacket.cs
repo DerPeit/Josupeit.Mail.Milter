@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// The message is complete (<c>SMFIC_BODYEOB</c>). The last point at which the filter can modify or decide.
+/// </summary>
 public sealed class EndOfBodyRequestPacket : RequestPacket
 {
     internal static readonly EndOfBodyRequestPacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class EndOfBodyRequestPacket : RequestPacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

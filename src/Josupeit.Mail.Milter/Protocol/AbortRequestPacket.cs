@@ -5,6 +5,13 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// The MTA abandoned the message it was filtering (<c>SMFIC_ABORT</c>).
+/// </summary>
+/// <remarks>
+/// The connection stays open and the next message arrives on it, so this resets the filter rather than
+/// ending it. No reply is expected.
+/// </remarks>
 public sealed class AbortRequestPacket : RequestPacket
 {
     internal static readonly AbortRequestPacket Instance = new();
@@ -13,6 +20,7 @@ public sealed class AbortRequestPacket : RequestPacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

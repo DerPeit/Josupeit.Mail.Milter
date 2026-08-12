@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
@@ -15,10 +15,25 @@ using ProtocolFamily = Josupeit.Mail.Milter.Link.ProtocolFamily;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// Builds typed request packets from the frames the MTA sent.
+/// </summary>
+/// <remarks>
+/// <para>
+/// This is where attacker-controlled bytes become objects, so every read is bounds-checked: the
+/// <c>TryGetNext*</c> helpers all return <see langword="false"/> rather than reading past the end, and a
+/// payload that runs out mid-field is rejected instead of half-parsed.
+/// </para>
+/// <para>
+/// Each packet kind has its own <see langword="protected virtual"/> method, so a derived factory can
+/// change how one of them is read without touching the rest.
+/// </para>
+/// </remarks>
 public class RequestPacketFactory : IRequestPacketFactory
 {
     private static readonly IReadOnlyDictionary<string, string> _emptyMacros = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(capacity: 0));
 
+    /// <inheritdoc />
     public RequestPacket CreateRequestPacket(RequestFrame frame)
     {
         try
@@ -58,11 +73,22 @@ public class RequestPacketFactory : IRequestPacketFactory
         }
     }
 
+    /// <summary>
+    /// Builds an <see cref="AbortRequestPacket"/> from the frame's payload. Override to change how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
     protected virtual AbortRequestPacket CreateAbortRequestPacket(ReadOnlyMemory<byte> data)
     {
         return AbortRequestPacket.Instance;
     }
 
+    /// <summary>
+    /// Builds a <see cref="BodyChunkRequestPacket"/>, handing it the payload memory rather than copying it.
+    /// </summary>
+    /// <param name="memory">The rented memory holding the chunk. Ownership passes to the packet.</param>
+    /// <param name="dataRange">The range within <paramref name="memory"/> that the chunk occupies.</param>
+    /// <returns>The packet.</returns>
     protected virtual BodyChunkRequestPacket CreateBodyChunkRequestPacket(IMemoryOwner<byte>? memory, Range dataRange)
     {
         var packet = new BodyChunkRequestPacket(memory, dataRange);
@@ -70,6 +96,12 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds a <see cref="ConnectRequestPacket"/> from the frame's payload. Override to change how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Connect frame.</exception>
     protected virtual ConnectRequestPacket CreateConnectRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -106,6 +138,14 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds a <see cref="DefineMacroRequestPacket"/> from the frame's payload. Override to change how it is
+    /// read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed DefineMacro
+    /// frame.</exception>
     protected virtual DefineMacroRequestPacket CreateDefineMacroRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -137,16 +177,34 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds an <see cref="EndOfBodyRequestPacket"/> from the frame's payload. Override to change how it is
+    /// read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
     protected virtual EndOfBodyRequestPacket CreateEndOfBodyRequestPacket(ReadOnlyMemory<byte> data)
     {
         return EndOfBodyRequestPacket.Instance;
     }
 
+    /// <summary>
+    /// Builds an <see cref="EndOfHeadersRequestPacket"/> from the frame's payload. Override to change how it is
+    /// read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
     protected virtual EndOfHeadersRequestPacket CreateEndOfHeadersRequestPacket(ReadOnlyMemory<byte> data)
     {
         return EndOfHeadersRequestPacket.Instance;
     }
 
+    /// <summary>
+    /// Builds a <see cref="HeaderRequestPacket"/> from the frame's payload. Override to change how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Header frame.</exception>
     protected virtual HeaderRequestPacket CreateHeaderRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -165,6 +223,12 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds a <see cref="HeloRequestPacket"/> from the frame's payload. Override to change how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Helo frame.</exception>
     protected virtual HeloRequestPacket CreateHeloRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -180,6 +244,14 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds an <see cref="OptionNegotiationRequestPacket"/> from the frame's payload. Override to change how
+    /// it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed OptionNegotiation
+    /// frame.</exception>
     protected virtual OptionNegotiationRequestPacket CreateOptionNegotiationRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -208,11 +280,24 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds a <see cref="QuitRequestPacket"/> from the frame's payload. Override to change how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
     protected virtual QuitRequestPacket CreateQuitRequestPacket(ReadOnlyMemory<byte> data)
     {
         return QuitRequestPacket.Instance;
     }
 
+    /// <summary>
+    /// Builds a <see cref="RecipientRequestPacket"/> from the frame's payload. Override to change how it is
+    /// read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Recipient
+    /// frame.</exception>
     protected virtual RecipientRequestPacket CreateRecipientRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -231,6 +316,12 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Builds a <see cref="SenderRequestPacket"/> from the frame's payload. Override to change how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Sender frame.</exception>
     protected virtual SenderRequestPacket CreateSenderRequestPacket(ReadOnlyMemory<byte> data)
     {
         var remaining = data.Span;
@@ -249,11 +340,23 @@ public class RequestPacketFactory : IRequestPacketFactory
         return packet;
     }
 
+    /// <summary>
+    /// Whether any bytes are left to read.
+    /// </summary>
+    /// <param name="remaining">The unread remainder of the payload.</param>
+    /// <returns><see langword="true"/> when at least one byte is left.</returns>
     protected static bool HasNext(ReadOnlySpan<byte> remaining)
     {
         return !remaining.IsEmpty;
     }
 
+    /// <summary>
+    /// Takes a fixed number of bytes off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="length">How many bytes to take.</param>
+    /// <param name="value">The bytes taken, or empty when there were too few.</param>
+    /// <returns><see langword="false"/> when fewer than <paramref name="length"/> bytes are left.</returns>
     protected static bool TryGetNextBytes(ref ReadOnlySpan<byte> remaining, int length, out ReadOnlySpan<byte> value)
     {
         if (length < 0)
@@ -272,6 +375,12 @@ public class RequestPacketFactory : IRequestPacketFactory
         return true;
     }
 
+    /// <summary>
+    /// Takes a single byte off the front of the payload and reads it as a character.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="value">The character read, or the default when nothing was left.</param>
+    /// <returns><see langword="false"/> when the payload is exhausted.</returns>
     protected static bool TryGetNextChar(ref ReadOnlySpan<byte> remaining, out char value)
     {
         if (!TryGetNextBytes(ref remaining, length: 1, out var bytes))
@@ -286,6 +395,13 @@ public class RequestPacketFactory : IRequestPacketFactory
         return true;
     }
 
+    /// <summary>
+    /// Takes a string of known length off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="length">How many bytes the string occupies.</param>
+    /// <param name="value">The string read, or <see langword="null"/> when there were too few bytes.</param>
+    /// <returns><see langword="false"/> when fewer than <paramref name="length"/> bytes are left.</returns>
     protected static bool TryGetNextStringFixedLength(ref ReadOnlySpan<byte> remaining, int length, [NotNullWhen(true)] out string? value)
     {
         if (!TryGetNextBytes(ref remaining, length, out var bytes))
@@ -300,6 +416,16 @@ public class RequestPacketFactory : IRequestPacketFactory
         return true;
     }
 
+    /// <summary>
+    /// Takes a NUL-terminated string off the front of the payload.
+    /// </summary>
+    /// <remarks>
+    /// The protocol's usual string form. A payload whose last string is unterminated is malformed, which is why
+    /// a missing terminator fails rather than yielding the rest.
+    /// </remarks>
+    /// <param name="remaining">The unread remainder, advanced past the string and its terminator.</param>
+    /// <param name="value">The string read, or <see langword="null"/> when no terminator was found.</param>
+    /// <returns><see langword="false"/> when the payload holds no NUL terminator.</returns>
     protected static bool TryGetNextStringVariableLength(ref ReadOnlySpan<byte> remaining, [NotNullWhen(true)] out string? value)
     {
         var terminator = remaining.IndexOf((byte)0);
@@ -317,6 +443,12 @@ public class RequestPacketFactory : IRequestPacketFactory
         return true;
     }
 
+    /// <summary>
+    /// Takes a big-endian unsigned 16-bit integer off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="value">The value read, or zero when there were too few bytes.</param>
+    /// <returns><see langword="false"/> when fewer than two bytes are left.</returns>
     protected static bool TryGetNextUInt16(ref ReadOnlySpan<byte> remaining, out ushort value)
     {
         if (!TryGetNextBytes(ref remaining, sizeof(ushort), out var bytes))
@@ -331,6 +463,12 @@ public class RequestPacketFactory : IRequestPacketFactory
         return true;
     }
 
+    /// <summary>
+    /// Takes a big-endian unsigned 32-bit integer off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="value">The value read, or zero when there were too few bytes.</param>
+    /// <returns><see langword="false"/> when fewer than four bytes are left.</returns>
     protected static bool TryGetNextUInt32(ref ReadOnlySpan<byte> remaining, out uint value)
     {
         if (!TryGetNextBytes(ref remaining, sizeof(uint), out var bytes))

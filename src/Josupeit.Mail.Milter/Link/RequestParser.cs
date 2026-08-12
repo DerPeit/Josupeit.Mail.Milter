@@ -8,6 +8,14 @@ using System.Threading.Tasks;
 
 namespace Josupeit.Mail.Milter.Link;
 
+/// <summary>
+/// Reads frames off an <see cref="ILinkReader"/> and publishes them to a channel.
+/// </summary>
+/// <remarks>
+/// The reading half of a session, run as its own long-lived task. The channel it writes to is bounded at
+/// one, so it stays exactly one frame ahead of the session handling them - enough to overlap reading with
+/// handling, not enough for a fast peer to pile up work.
+/// </remarks>
 public class RequestParser : IRequestParser
 {
     private readonly ILinkReader _linkReader;
@@ -17,6 +25,14 @@ public class RequestParser : IRequestParser
     private CancellationTokenSource? _stopper;
     private Task? _runner;
 
+    /// <summary>
+    /// Creates a parser over a link.
+    /// </summary>
+    /// <param name="linkReader">The link to read frames from.</param>
+    /// <param name="outputWriter">The channel the frames are published to.</param>
+    /// <param name="maxFrameLength">
+    /// The largest frame to accept, in bytes. See <see cref="MilterOptions.MaxFrameLength"/>.
+    /// </param>
     public RequestParser(ILinkReader linkReader, ChannelWriter<RequestFrame> outputWriter, uint maxFrameLength)
     {
         if (maxFrameLength < 1)
@@ -27,6 +43,7 @@ public class RequestParser : IRequestParser
         _maxFrameLength = maxFrameLength;
     }
 
+    /// <inheritdoc />
     public void Start()
     {
         if (_runner != null)
@@ -36,6 +53,7 @@ public class RequestParser : IRequestParser
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
+    /// <inheritdoc />
     public async Task Stop()
     {
         if (_runner == null)
@@ -59,6 +77,12 @@ public class RequestParser : IRequestParser
         }
     }
 
+    /// <summary>
+    /// The loop the worker runs: reads frames off the link and publishes them until the token is
+    /// cancelled or the link ends.
+    /// </summary>
+    /// <param name="cancellationToken">A token that ends the loop.</param>
+    /// <returns>A task that completes when the loop has ended.</returns>
     protected virtual async Task ProcessFrames(CancellationToken cancellationToken)
     {
         Exception? error = null;

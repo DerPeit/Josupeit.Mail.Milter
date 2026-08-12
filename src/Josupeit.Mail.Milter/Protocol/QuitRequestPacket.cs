@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// The MTA is ending the conversation (<c>SMFIC_QUIT</c>). The connection closes after this.
+/// </summary>
 public sealed class QuitRequestPacket : RequestPacket
 {
     internal static readonly QuitRequestPacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class QuitRequestPacket : RequestPacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

@@ -10,10 +10,17 @@ using System.Threading.Tasks;
 
 namespace Josupeit.Mail.Milter.Link;
 
+/// <summary>
+/// Writes response frames to a <see cref="PipeWriter"/>.
+/// </summary>
 public class LinkWriter : ILinkWriter
 {
     private readonly PipeWriter _pipeWriter;
 
+    /// <summary>
+    /// Creates a writer over a pipe.
+    /// </summary>
+    /// <param name="pipeWriter">The pipe to write frames to.</param>
     public LinkWriter(PipeWriter pipeWriter)
     {
         _pipeWriter = pipeWriter ?? throw new ArgumentNullException(nameof(pipeWriter));
@@ -21,6 +28,7 @@ public class LinkWriter : ILinkWriter
 
     // WriteData hands the span straight to PipeWriter.Write, which copies it synchronously, so the
     // stack buffer is no longer referenced by the time the returned flush is awaited.
+    /// <inheritdoc />
     public virtual ValueTask WriteUInt32(uint value, CancellationToken cancellationToken)
     {
         Span<byte> buffer = stackalloc byte[sizeof(uint)];
@@ -30,6 +38,7 @@ public class LinkWriter : ILinkWriter
         return WriteData(buffer, cancellationToken);
     }
 
+    /// <inheritdoc />
     public ValueTask WriteResponseCode(ResponseCode responseCode, CancellationToken cancellationToken)
     {
         Span<byte> buffer = stackalloc byte[sizeof(byte)];
@@ -39,6 +48,7 @@ public class LinkWriter : ILinkWriter
         return WriteData(buffer, cancellationToken);
     }
 
+    /// <inheritdoc />
     public virtual ValueTask WriteData(ReadOnlySpan<byte> data, CancellationToken cancellationToken)
     {
         _pipeWriter.Write(data);

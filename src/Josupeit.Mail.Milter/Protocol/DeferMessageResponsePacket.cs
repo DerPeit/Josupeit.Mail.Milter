@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// Reject the message temporarily so the sender retries (<c>SMFIR_TEMPFAIL</c>).
+/// </summary>
 public sealed class DeferMessageResponsePacket : ResponsePacket
 {
     internal static readonly DeferMessageResponsePacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class DeferMessageResponsePacket : ResponsePacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

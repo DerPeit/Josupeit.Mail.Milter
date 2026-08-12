@@ -8,6 +8,14 @@ using System.Threading.Tasks;
 
 namespace Josupeit.Mail.Milter.Link;
 
+/// <summary>
+/// Takes frames off a channel and writes them to an <see cref="ILinkWriter"/>.
+/// </summary>
+/// <remarks>
+/// The writing half of a session, and the mirror of <see cref="RequestParser"/>. Each frame is completed
+/// once it has been written, which is what lets the session wait for a response to have actually left
+/// rather than merely been queued.
+/// </remarks>
 public class ResponseFormatter
 {
     private readonly ChannelReader<ResponseFrame> _inputReader;
@@ -16,12 +24,20 @@ public class ResponseFormatter
     private CancellationTokenSource? _stopper;
     private Task? _runner;
 
+    /// <summary>
+    /// Creates a formatter over a link.
+    /// </summary>
+    /// <param name="inputReader">The channel the frames to write arrive on.</param>
+    /// <param name="linkWriter">The link to write them to.</param>
     public ResponseFormatter(ChannelReader<ResponseFrame> inputReader, ILinkWriter linkWriter)
     {
         _inputReader = inputReader ?? throw new ArgumentNullException(nameof(inputReader));
         _linkWriter = linkWriter ?? throw new ArgumentNullException(nameof(linkWriter));
     }
 
+    /// <summary>
+    /// Starts the worker and returns immediately.
+    /// </summary>
     public void Start()
     {
         if (_runner != null)
@@ -31,6 +47,10 @@ public class ResponseFormatter
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
+    /// <summary>
+    /// Stops the worker and waits for it to finish.
+    /// </summary>
+    /// <returns>A task that completes once the worker has ended.</returns>
     public async Task Stop()
     {
         if (_runner == null)
@@ -54,6 +74,12 @@ public class ResponseFormatter
         }
     }
 
+    /// <summary>
+    /// The loop the worker runs: takes frames off the channel and writes them to the link until the token
+    /// is cancelled or the channel completes.
+    /// </summary>
+    /// <param name="cancellationToken">A token that ends the loop.</param>
+    /// <returns>A task that completes when the loop has ended.</returns>
     protected virtual async Task ProcessFrames(CancellationToken cancellationToken)
     {
         try

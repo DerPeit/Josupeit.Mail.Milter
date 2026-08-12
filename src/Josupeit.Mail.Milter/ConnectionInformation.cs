@@ -6,6 +6,9 @@ using System.Net.Sockets;
 
 namespace Josupeit.Mail.Milter;
 
+/// <summary>
+/// What the MTA reports about the client that has just connected.
+/// </summary>
 /// <param name="Hostname">The hostname the MTA resolved for the connecting client.</param>
 /// <param name="EndPoint">
 /// The endpoint the client connected from, or <see langword="null"/> when the MTA reported none.

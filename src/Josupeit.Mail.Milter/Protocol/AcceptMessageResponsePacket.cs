@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// Accept the message and send no further events about it (<c>SMFIR_ACCEPT</c>).
+/// </summary>
 public sealed class AcceptMessageResponsePacket : ResponsePacket
 {
     internal static readonly AcceptMessageResponsePacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class AcceptMessageResponsePacket : ResponsePacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

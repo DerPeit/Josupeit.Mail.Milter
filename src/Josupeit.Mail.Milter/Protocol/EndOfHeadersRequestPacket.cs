@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// The header block has ended and the body is about to start (<c>SMFIC_EOH</c>).
+/// </summary>
 public sealed class EndOfHeadersRequestPacket : RequestPacket
 {
     internal static readonly EndOfHeadersRequestPacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class EndOfHeadersRequestPacket : RequestPacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

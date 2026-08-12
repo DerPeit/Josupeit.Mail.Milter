@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// Carry on with the next event (<c>SMFIR_CONTINUE</c>).
+/// </summary>
 public sealed class ContinueProcessingResponsePacket : ResponsePacket
 {
     internal static readonly ContinueProcessingResponsePacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class ContinueProcessingResponsePacket : ResponsePacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

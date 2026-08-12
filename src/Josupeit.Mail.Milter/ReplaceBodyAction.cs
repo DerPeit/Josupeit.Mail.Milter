@@ -10,6 +10,17 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
 
+/// <summary>
+/// Replaces the body of the message with the contents of a stream.
+/// </summary>
+/// <remarks>
+/// The stream is read once, in chunks, as the action is sent, so it must still be readable at that
+/// point - which is after <see cref="IMilterCallbacks.OnEndOfBody"/> has yielded the action, not when it
+/// was built. It replaces the body only; the headers are left exactly as they are, so a filter that
+/// changes the content type or encoding has to say so with a header modification of its own. Requires
+/// <see cref="ActionRequirements.ChangeBody"/>. Reached through
+/// <see cref="ModificationActions.ReplaceBody"/>.
+/// </remarks>
 public sealed record ReplaceBodyAction : ModificationAction
 {
     private const int CHUNK_SIZE = 65535;
@@ -20,10 +31,21 @@ public sealed record ReplaceBodyAction : ModificationAction
         LeaveOpen = leaveOpen;
     }
 
+    /// <summary>
+    /// The stream holding the replacement body.
+    /// </summary>
     public Stream Body { get; }
 
+    /// <summary>
+    /// Whether <see cref="Body"/> is left open once it has been sent.
+    /// </summary>
+    /// <remarks>
+    /// <see langword="false"/>, the default, disposes the stream after the last chunk goes out. Pass
+    /// <see langword="true"/> for a stream the caller owns and means to keep.
+    /// </remarks>
     public bool LeaveOpen { get; }
 
+    /// <inheritdoc />
     protected override async IAsyncEnumerable<ResponsePacket> CreateResponsePackets([EnumeratorCancellation] CancellationToken cancellationToken)
     {
         try

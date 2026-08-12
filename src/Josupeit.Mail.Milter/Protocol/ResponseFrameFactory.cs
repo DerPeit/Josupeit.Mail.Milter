@@ -9,8 +9,17 @@ using Josupeit.Mail.Milter.Link;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// Encodes response packets into the frames that carry them on the wire.
+/// </summary>
+/// <remarks>
+/// The counterpart of <see cref="RequestPacketFactory"/>. The encoding is done by an internal
+/// <see cref="ResponsePacketVisitor"/>, so each packet kind is handled by the method named for it rather
+/// than by a type switch.
+/// </remarks>
 public class ResponseFrameFactory : IResponseFrameFactory
 {
+    /// <inheritdoc />
     public ResponseFrame CreateResponseFrame(ResponsePacket response)
     {
         if (response == null)

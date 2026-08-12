@@ -10,17 +10,33 @@ using System.Threading.Tasks;
 
 namespace Josupeit.Mail.Milter.Link;
 
+/// <summary>
+/// Reads request frames off a <see cref="PipeReader"/>.
+/// </summary>
+/// <remarks>
+/// The length prefix arrives from the peer and is used to size a read and an allocation, so it is
+/// checked against the maximum this reader was given before either happens. A frame claiming more than
+/// that is refused rather than trusted.
+/// </remarks>
 public class LinkReader : ILinkReader
 {
     private readonly PipeReader _pipeReader;
     private readonly uint _maxDataLength;
 
+    /// <summary>
+    /// Creates a reader over a pipe.
+    /// </summary>
+    /// <param name="pipeReader">The pipe to read frames from.</param>
+    /// <param name="maxDataLength">
+    /// The largest payload to accept, in bytes. See <see cref="MilterOptions.MaxFrameLength"/>.
+    /// </param>
     public LinkReader(PipeReader pipeReader, uint maxDataLength)
     {
         _pipeReader = pipeReader ?? throw new ArgumentNullException(nameof(pipeReader));
         _maxDataLength = maxDataLength;
     }
 
+    /// <inheritdoc />
     public virtual async ValueTask<uint> ReadUInt32(CancellationToken cancellationToken)
     {
         var (memory, dataRange) = await ReadData(length: 4, cancellationToken).ConfigureAwait(false);
@@ -33,6 +49,7 @@ public class LinkReader : ILinkReader
         }
     }
 
+    /// <inheritdoc />
     public virtual async ValueTask<CommandCode> ReadCommandCode(CancellationToken cancellationToken)
     {
         var (memory, dataRange) = await ReadData(length: 1, cancellationToken).ConfigureAwait(false);
@@ -45,6 +62,7 @@ public class LinkReader : ILinkReader
         }
     }
 
+    /// <inheritdoc />
     public virtual async ValueTask<(IMemoryOwner<byte>? Memory, Range DataRange)> ReadData(uint length, CancellationToken cancellationToken)
     {
         if (length == 0)

@@ -14,6 +14,27 @@ using Nito.AsyncEx;
 
 namespace Josupeit.Mail.Milter;
 
+/// <summary>
+/// Hosts a filter: accepts connections from the MTA and runs one protocol session per connection.
+/// </summary>
+/// <remarks>
+/// <para>
+/// The socket is supplied already bound and listening, which keeps the choice of endpoint - TCP or a Unix
+/// domain socket - out of here entirely. <see cref="Start"/> returns as soon as the accept loop is
+/// running; <see cref="Stop"/> waits for the sessions still in flight, so a message being filtered at
+/// that moment is not cut off half-way.
+/// </para>
+/// <para>
+/// A session that ends badly - a protocol violation, a frame that was refused, an exception out of a
+/// callback, or a peer that simply went away - drops that one connection and leaves the rest running.
+/// Nothing is reported about it: there is no logging surface yet, deliberately, because what that should
+/// look like is still an open question.
+/// </para>
+/// </remarks>
+/// <typeparam name="TContext">
+/// The filter. One instance is built per message, either through the factory passed to the constructor
+/// or through <see cref="System.Activator"/>, which needs a public parameterless constructor.
+/// </typeparam>
 public sealed class Milter<TContext> where TContext : IMilterContext
 {
     private readonly Socket _socket;
@@ -27,6 +48,14 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private AsyncMonitor? _monitor;
     private int _activeSessions;
 
+    /// <summary>
+    /// Creates a milter that builds each context through <see cref="System.Activator"/>.
+    /// </summary>
+    /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
+    /// it.</param>
+    /// <param name="options">Limits on frame size and session count, or <see langword="null"/> for the
+    /// defaults.</param>
+    /// <exception cref="ArgumentNullException"><paramref name="socket"/> is <see langword="null"/>.</exception>
     public Milter(Socket socket, MilterOptions? options = null)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
@@ -37,6 +66,20 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     {
     }
 
+    /// <summary>
+    /// Creates a milter that builds each context through a factory. Use this when the filter has dependencies.
+    /// </summary>
+    /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
+    /// it.</param>
+    /// <param name="contextFactory">
+    /// Called once per message. It may be called from several sessions at once, so it has to be safe to
+    /// call concurrently - the contexts it returns need not be.
+    /// </param>
+    /// <param name="options">Limits on frame size and session count, or <see langword="null"/> for the
+    /// defaults.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="socket"/> or <paramref name="contextFactory"/> is <see langword="null"/>.
+    /// </exception>
     public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
@@ -61,6 +104,10 @@ public sealed class Milter<TContext> where TContext : IMilterContext
         _contextFactory = contextFactory;
     }
 
+    /// <summary>
+    /// Starts accepting connections and returns immediately.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The milter is already running.</exception>
     public void Start()
     {
         if (_runner != null)
@@ -77,6 +124,17 @@ public sealed class Milter<TContext> where TContext : IMilterContext
             .Unwrap();
     }
 
+    /// <summary>
+    /// Stops accepting connections and waits for the sessions still running to finish.
+    /// </summary>
+    /// <remarks>
+    /// The wait is what makes shutdown graceful: a message under inspection is filtered to its end and
+    /// answered rather than abandoned. It is unbounded, so a filter that never returns from a callback
+    /// will hold this open - bound it from the caller if that is a risk. The milter can be started again
+    /// afterwards.
+    /// </remarks>
+    /// <returns>A task that completes once every session has ended.</returns>
+    /// <exception cref="InvalidOperationException">The milter is not running.</exception>
     public async Task Stop()
     {
         if (_runner == null)

@@ -5,6 +5,9 @@ using System;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// Reject the message permanently (<c>SMFIR_REJECT</c>).
+/// </summary>
 public sealed class RejectMessageResponsePacket : ResponsePacket
 {
     internal static readonly RejectMessageResponsePacket Instance = new();
@@ -13,6 +16,7 @@ public sealed class RejectMessageResponsePacket : ResponsePacket
     {
     }
 
+    /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
         if (visitor == null)

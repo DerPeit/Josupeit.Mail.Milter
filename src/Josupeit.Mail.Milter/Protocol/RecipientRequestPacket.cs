@@ -6,16 +6,26 @@ using System.Collections.Generic;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// The client sent <c>RCPT TO</c> (<c>SMFIC_RCPT</c>). One per recipient.
+/// </summary>
 public sealed class RecipientRequestPacket : RequestPacket
 {
     internal RecipientRequestPacket()
     {
     }
 
+    /// <summary>
+    /// The envelope recipient as it appeared on the command, angle brackets included.
+    /// </summary>
     public required string Recipient { get; init; }
 
+    /// <summary>
+    /// The ESMTP parameters that followed the address, each unparsed. Empty when there were none.
+    /// </summary>
     public required IReadOnlyList<string> ESmtpArguments { get; init; }
 
+    /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

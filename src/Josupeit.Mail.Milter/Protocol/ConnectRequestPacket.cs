@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
@@ -7,12 +7,18 @@ using System.Net.Sockets;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
+/// <summary>
+/// A client has connected to the MTA (<c>SMFIC_CONNECT</c>).
+/// </summary>
 public sealed class ConnectRequestPacket : RequestPacket
 {
     internal ConnectRequestPacket()
     {
     }
 
+    /// <summary>
+    /// The hostname the MTA resolved for the client.
+    /// </summary>
     public required string HostName { get; init; }
 
     /// <summary>
@@ -33,6 +39,7 @@ public sealed class ConnectRequestPacket : RequestPacket
     /// </remarks>
     public EndPoint? EndPoint { get; init; }
 
+    /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
         if (visitor == null)

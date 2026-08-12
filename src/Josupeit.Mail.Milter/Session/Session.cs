@@ -11,6 +11,17 @@ using Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
 namespace Josupeit.Mail.Milter.Session;
 
+/// <summary>
+/// Drives one milter conversation: reads request frames, runs them through the protocol state machine,
+/// and writes back whatever the filter answered.
+/// </summary>
+/// <remarks>
+/// The state machine is what makes an out-of-order event an error rather than a surprise: each state
+/// accepts only the events legal at that point and rejects the rest as a protocol violation. Reading and
+/// writing happen on their own tasks either side of this loop, so a slow filter stalls the conversation
+/// but never the transport.
+/// </remarks>
+/// <typeparam name="TContext">The filter this session runs. One instance is built per message.</typeparam>
 public partial class Session<TContext> : ISession where TContext : IMilterContext
 {
     private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements);
@@ -26,6 +37,25 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
     private IProtocolState? _protocolState;
     private ContextAdapter? _contextAdapter;
 
+    /// <summary>
+    /// Creates a session over an already-connected pair of channels.
+    /// </summary>
+    /// <param name="requestFrameReader">The channel the frames from the MTA arrive on.</param>
+    /// <param name="requestPacketFactory">Turns those frames into typed packets.</param>
+    /// <param name="responseFrameFactory">Turns the answers back into frames.</param>
+    /// <param name="responseFrameWriter">The channel the answers are published to.</param>
+    /// <param name="timeout">
+    /// How long to wait for the next frame, and for an answer to reach the link, before giving up on the
+    /// connection. <see langword="null"/> means five minutes.
+    /// </param>
+    /// <param name="timeProvider">
+    /// The clock behind that timeout, or <see langword="null"/> for the system clock. Tests substitute
+    /// this to avoid waiting in real time.
+    /// </param>
+    /// <param name="contextFactory">
+    /// Builds the filter, once per message. <see langword="null"/> falls back to
+    /// <see cref="Activator"/>, which needs a public parameterless constructor.
+    /// </param>
     public Session(
         ChannelReader<RequestFrame> requestFrameReader,
         IRequestPacketFactory requestPacketFactory,
@@ -45,6 +75,7 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         _contextFactory = contextFactory ?? Activator.CreateInstance<TContext>;
     }
 
+    /// <inheritdoc />
     public async Task Run(CancellationToken cancellationToken)
     {
         _protocolState = new AwaitingNegotiationState(this, _protocolStateMachineConfiguration);
