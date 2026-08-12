@@ -18,34 +18,28 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Duplicate_macro_name_keeps_the_last_definition()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.Macro,
             MacroPayload(CommandCode.Connect, "j", "first", "j", "second"));
 
-        // Act
         var packet = (DefineMacroRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.That(packet.Macros["j"], Is.EqualTo("second"));
     }
 
     [Test]
     public void Distinct_macro_names_are_all_kept()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.Macro,
             MacroPayload(CommandCode.Connect, "j", "mail.example.com", "_", "client"));
 
-        // Act
         var packet = (DefineMacroRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(packet.Macros["j"], Is.EqualTo("mail.example.com"));
@@ -56,17 +50,14 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Connect_over_ip_yields_an_ip_endpoint()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.Connect,
             ConnectPayload("mail.example.com", ProtocolFamily.Ip4, port: 25, addressText: "192.0.2.1"));
 
-        // Act
         var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(packet.HostName, Is.EqualTo("mail.example.com"));
@@ -77,7 +68,6 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Connect_over_a_unix_socket_yields_a_unix_endpoint()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var path = "/var/spool/postfix/public/cleanup";
@@ -86,27 +76,22 @@ public sealed class RequestPacketFactoryTests
             CommandCode.Connect,
             ConnectPayload("localhost", ProtocolFamily.UnixSocket, port: 0, addressText: path));
 
-        // Act
         var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.That(packet.EndPoint, Is.EqualTo(new UnixDomainSocketEndPoint(path)));
     }
 
     [Test]
     public void Connect_with_an_unknown_family_yields_no_endpoint()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.Connect,
             ConnectPayload("localhost", ProtocolFamily.Unknown, port: 0, addressText: null));
 
-        // Act
         var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(packet.HostName, Is.EqualTo("localhost"));
@@ -117,24 +102,20 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Connect_with_an_unparsable_address_yields_no_endpoint()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.Connect,
             ConnectPayload("localhost", ProtocolFamily.Ip4, port: 25, addressText: "unknown"));
 
-        // Act
         var packet = (ConnectRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.That(packet.EndPoint, Is.Null);
     }
 
     [Test]
     public void Header_values_preserve_bytes_above_the_ascii_range()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var value = new byte[] { 0xE9, 0xFF };
@@ -148,10 +129,8 @@ public sealed class RequestPacketFactoryTests
 
         var frame = CreateFrame(CommandCode.Header, payload.ToArray());
 
-        // Act
         var packet = (HeaderRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(packet.Name, Is.EqualTo("Subject"));
@@ -162,13 +141,10 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Unterminated_string_is_rejected_as_malformed()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(CommandCode.Helo, Encoding.Latin1.GetBytes("localhost"));
 
-        // Act
-        // Assert
         Assert.That(
             () => factory.CreateRequestPacket(frame),
             Throws.InstanceOf<InvalidOperationException>());
@@ -177,15 +153,12 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Option_negotiation_version_with_the_high_bit_set_is_rejected_as_unsupported()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.OptionNegotiation,
             OptionNegotiationPayload(version: 0xFFFFFFFF, actions: 0, events: 0));
 
-        // Act
-        // Assert
         Assert.That(
             () => factory.CreateRequestPacket(frame),
             Throws.InstanceOf<NotSupportedException>());
@@ -194,24 +167,20 @@ public sealed class RequestPacketFactoryTests
     [Test]
     public void Option_negotiation_parses_a_plausible_version()
     {
-        // Arrange
         var factory = new RequestPacketFactory();
 
         var frame = CreateFrame(
             CommandCode.OptionNegotiation,
             OptionNegotiationPayload(version: 6, actions: 0, events: 0));
 
-        // Act
         var packet = (OptionNegotiationRequestPacket)factory.CreateRequestPacket(frame);
 
-        // Assert
         Assert.That(packet.MtaProtocolVersion, Is.EqualTo(new Version(6, 0)));
     }
 
     [Test]
     public void A_failing_body_chunk_packet_releases_the_frame_buffer()
     {
-        // Arrange
         var memoryOwner = new TrackingMemoryOwner(size: 16);
         var factory = new ThrowingBodyChunkFactory();
 
@@ -219,8 +188,6 @@ public sealed class RequestPacketFactoryTests
         // disposing itself, so it is the only one that can leak when construction fails.
         var frame = new RequestFrame(CommandCode.BodyChunk, memoryOwner, new Range(start: 0, end: 16));
 
-        // Act
-        // Assert
         Assert.That(
             () => factory.CreateRequestPacket(frame),
             Throws.InstanceOf<InvalidOperationException>());

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using Josupeit.Mail.Milter.Protocol;
 using Josupeit.Mail.Milter.Session.ProtocolEnforcement;
@@ -15,11 +15,8 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Connected_rejects_a_null_request_at_the_call()
     {
-        // Arrange
         var state = new ConnectedState(new FakeProtocolStateMachine());
 
-        // Act
-        // Assert
         Assert.That(
             async () => await state.ProcessHeader(null!, CancellationToken.None),
             Throws.InstanceOf<ArgumentNullException>());
@@ -28,11 +25,8 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Negotiated_rejects_a_null_request_at_the_call()
     {
-        // Arrange
         var state = new NegotiatedState(new FakeProtocolStateMachine());
 
-        // Act
-        // Assert
         Assert.That(
             async () => await state.ProcessMacroDefinition(null!, CancellationToken.None),
             Throws.InstanceOf<ArgumentNullException>());
@@ -41,11 +35,8 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Aborted_rejects_a_null_request_at_the_call()
     {
-        // Arrange
         var state = new AbortedState(new FakeProtocolStateMachine());
 
-        // Act
-        // Assert
         Assert.That(
             async () => await state.ProcessQuitting(null!, CancellationToken.None),
             Throws.InstanceOf<ArgumentNullException>());
@@ -54,7 +45,6 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Awaiting_negotiation_rejects_an_unsupported_version_at_the_call()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine();
 
         var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);
@@ -66,8 +56,6 @@ public sealed class ProtocolStateValidationTests
             MtaSupportedContentBypass = default,
         };
 
-        // Act
-        // Assert
         Assert.That(
             async () => await state.ProcessOptionNegotiationAttempt(request, CancellationToken.None),
             Throws.InstanceOf<NotSupportedException>());

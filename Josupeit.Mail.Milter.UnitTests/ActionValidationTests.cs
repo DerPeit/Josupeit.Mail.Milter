@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Reflection;
 using NUnit.Framework;
@@ -14,8 +14,6 @@ public sealed class ActionValidationTests
     [TestCase("plain\ttabbed")]
     public void A_header_value_carrying_a_control_character_is_rejected(string value)
     {
-        // Act
-        // Assert
         Assert.That(() => ModificationActions.AddHeader("X-Test", value), Throws.ArgumentException);
     }
 
@@ -24,8 +22,6 @@ public sealed class ActionValidationTests
     [TestCase("X-Test\r\n")]
     public void A_malformed_header_name_is_rejected(string name)
     {
-        // Act
-        // Assert
         Assert.That(() => ModificationActions.AddHeader(name, "value"), Throws.ArgumentException);
         Assert.That(() => ModificationActions.ChangeHeader(name, "value"), Throws.ArgumentException);
         Assert.That(() => ModificationActions.DeleteHeader(name), Throws.ArgumentException);
@@ -34,26 +30,20 @@ public sealed class ActionValidationTests
     [Test]
     public void A_header_value_outside_ASCII_is_accepted()
     {
-        // Act
         var action = ModificationActions.AddHeader("X-Test", "Grüße");
 
-        // Assert
         Assert.That(action.Value, Is.EqualTo("Grüße"));
     }
 
     [Test]
     public void A_reply_text_carrying_a_control_character_is_rejected()
     {
-        // Act
-        // Assert
         Assert.That(() => CommitActions.Reply(550, "denied\r\n250 ok"), Throws.ArgumentException);
     }
 
     [Test]
     public void A_recipient_carrying_a_control_character_is_rejected()
     {
-        // Act
-        // Assert
         Assert.That(() => ModificationActions.AddRecipient("bob@example.com\r\nRCPT TO:<eve@example.com>"), Throws.ArgumentException);
         Assert.That(() => ModificationActions.DeleteRecipient("bob@example.com\0"), Throws.ArgumentException);
     }
@@ -61,8 +51,6 @@ public sealed class ActionValidationTests
     [Test]
     public void A_quarantine_reason_carrying_a_control_character_is_rejected()
     {
-        // Act
-        // Assert
         Assert.That(() => ModificationActions.QuarantineMessage("spam\r\nheld"), Throws.ArgumentException);
     }
 
@@ -71,24 +59,19 @@ public sealed class ActionValidationTests
     [Test]
     public void No_action_can_be_built_without_going_through_a_factory()
     {
-        // Arrange
         var actionTypes = typeof(Action).Assembly.GetExportedTypes()
             .Where(type => typeof(Action).IsAssignableFrom(type) && !type.IsAbstract);
 
-        // Act
         var publiclyConstructible = actionTypes
             .Where(type => type.GetConstructors(BindingFlags.Public | BindingFlags.Instance).Length > 0)
             .ToArray();
 
-        // Assert
         Assert.That(publiclyConstructible, Is.Empty);
     }
 
     [Test]
     public void The_rejected_argument_is_named()
     {
-        // Act
-        // Assert
         Assert.That(
             () => ModificationActions.AddHeader("X-Test", "bad\r\n"),
             Throws.ArgumentException.With.Property(nameof(ArgumentException.ParamName)).EqualTo("value"));

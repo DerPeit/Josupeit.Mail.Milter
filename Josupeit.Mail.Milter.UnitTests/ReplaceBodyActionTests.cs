@@ -15,12 +15,10 @@ public sealed class ReplaceBodyActionTests
     [Test]
     public async Task Body_chunks_stay_within_the_protocol_maximum()
     {
-        // Arrange
         var body = new MemoryStream(new byte[3 * MAXIMUM_CHUNK_LENGTH]);
         var action = ModificationActions.ReplaceBody(body);
         var chunkLengths = new List<int>();
 
-        // Act
         await foreach (var packet in action.CreateResponsePackets())
         {
             var replaceBody = (ReplaceBodyResponsePacket)packet;
@@ -30,7 +28,6 @@ public sealed class ReplaceBodyActionTests
             replaceBody.Memory.Dispose();
         }
 
-        // Assert
         Assert.That(chunkLengths, Is.All.LessThanOrEqualTo(MAXIMUM_CHUNK_LENGTH));
         Assert.That(chunkLengths.Sum(), Is.EqualTo(3 * MAXIMUM_CHUNK_LENGTH));
     }
@@ -38,28 +35,22 @@ public sealed class ReplaceBodyActionTests
     [Test]
     public async Task The_body_stream_is_disposed_by_default()
     {
-        // Arrange
         var body = new MemoryStream([1, 2, 3]);
         var action = ModificationActions.ReplaceBody(body);
 
-        // Act
         await DrainAsync(action);
 
-        // Assert
         Assert.That(body.CanRead, Is.False);
     }
 
     [Test]
     public async Task The_body_stream_is_left_open_on_request()
     {
-        // Arrange
         var body = new MemoryStream([1, 2, 3]);
         var action = ModificationActions.ReplaceBody(body, leaveOpen: true);
 
-        // Act
         await DrainAsync(action);
 
-        // Assert
         Assert.That(body.CanRead, Is.True);
     }
 

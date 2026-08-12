@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -14,16 +14,13 @@ public sealed class NegotiatedStateTests
     [Test]
     public async Task Aborting_drops_the_context_without_replying()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine();
         var state = new NegotiatedState(stateMachine);
 
         stateMachine.EnsureContextAdapter();
 
-        // Act
         var responses = await Drain(state.ProcessAbortion(AbortRequestPacket.Instance, CancellationToken.None));
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(responses, Is.Empty, "SMFIC_ABORT expects no response.");
@@ -35,16 +32,13 @@ public sealed class NegotiatedStateTests
     [Test]
     public async Task Aborting_while_recording_a_replay_drops_the_context_without_replying()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine();
         var state = new ReplayRecordingNegotiatedState(stateMachine);
 
         stateMachine.EnsureContextAdapter();
 
-        // Act
         var responses = await Drain(state.ProcessAbortion(AbortRequestPacket.Instance, CancellationToken.None));
 
-        // Assert
         Assert.Multiple(() =>
         {
             Assert.That(responses, Is.Empty, "SMFIC_ABORT expects no response.");
@@ -56,13 +50,10 @@ public sealed class NegotiatedStateTests
     [Test]
     public void Aborting_before_negotiation_is_still_a_protocol_violation()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine();
 
         var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);
 
-        // Act
-        // Assert
         Assert.That(
             () => state.ProcessAbortion(AbortRequestPacket.Instance, CancellationToken.None),
             Throws.InstanceOf<InvalidOperationException>());

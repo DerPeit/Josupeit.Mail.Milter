@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,26 +15,20 @@ public sealed class ReplayingAbortedStateTests
     [Test]
     public async Task A_replayed_continue_produces_no_reply_to_a_macro()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine();
         var state = new ReplayingAbortedState(stateMachine, CreateReplayHistory());
 
-        // Act
         var responses = await Drain(state.ProcessMacroDefinition(CreateMacroPacket(), CancellationToken.None));
 
-        // Assert
         Assert.That(responses, Is.Empty, "SMFIC_MACRO expects no response.");
     }
 
     [Test]
     public void A_replayed_decision_is_refused_rather_than_written_in_reply_to_a_macro()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine(static () => new RejectingContext());
         var state = new ReplayingAbortedState(stateMachine, CreateReplayHistory());
 
-        // Act
-        // Assert
         Assert.That(
             async () => await Drain(state.ProcessMacroDefinition(CreateMacroPacket(), CancellationToken.None)),
             Throws.InstanceOf<InvalidOperationException>(),
@@ -44,16 +38,13 @@ public sealed class ReplayingAbortedStateTests
     [Test]
     public async Task A_replayed_decision_is_written_in_reply_to_a_packet_that_expects_one()
     {
-        // Arrange
         var stateMachine = new FakeProtocolStateMachine(static () => new RejectingContext());
         var state = new ReplayingAbortedState(stateMachine, CreateReplayHistory());
 
         var request = new HeloRequestPacket { HeloString = "mail.example.com" };
 
-        // Act
         var responses = await Drain(state.ProcessClientHello(request, CancellationToken.None));
 
-        // Assert
         Assert.That(responses, Has.Count.EqualTo(1));
     }
 

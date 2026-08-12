@@ -16,13 +16,10 @@ public sealed class ContextAdapterTests
     [Test]
     public async Task Modifications_before_a_commit_action_are_passed_on()
     {
-        // Arrange
         Action[] actions = [ModificationActions.AddHeader("X-Test", "1"), CommitActions.Accept];
 
-        // Act
         var responses = await EnumerateEndOfBodyAsync(actions);
 
-        // Assert
         Assert.That(responses, Has.Exactly(2).Items);
         Assert.That(responses[0], Is.InstanceOf<AddHeaderResponsePacket>());
         Assert.That(responses[1], Is.InstanceOf<AcceptMessageResponsePacket>());
@@ -31,13 +28,10 @@ public sealed class ContextAdapterTests
     [Test]
     public async Task Progress_may_be_reported_before_the_commit_action()
     {
-        // Arrange
         Action[] actions = [ProgressAction.Instance, ProgressAction.Instance, CommitActions.Continue];
 
-        // Act
         var responses = await EnumerateEndOfBodyAsync(actions);
 
-        // Assert
         Assert.That(responses, Has.Exactly(3).Items);
         Assert.That(responses[2], Is.InstanceOf<ContinueProcessingResponsePacket>());
     }
@@ -45,11 +39,8 @@ public sealed class ContextAdapterTests
     [Test]
     public void An_action_after_the_commit_action_is_rejected()
     {
-        // Arrange
         Action[] actions = [CommitActions.Accept, ModificationActions.AddHeader("X-Test", "1")];
 
-        // Act
-        // Assert
         Assert.That(
             async () => await EnumerateEndOfBodyAsync(actions),
             Throws.InvalidOperationException);
@@ -58,11 +49,8 @@ public sealed class ContextAdapterTests
     [Test]
     public void A_second_commit_action_is_rejected()
     {
-        // Arrange
         Action[] actions = [CommitActions.Accept, CommitActions.Reject];
 
-        // Act
-        // Assert
         Assert.That(
             async () => await EnumerateEndOfBodyAsync(actions),
             Throws.InvalidOperationException);
@@ -71,11 +59,8 @@ public sealed class ContextAdapterTests
     [Test]
     public void A_missing_commit_action_is_rejected()
     {
-        // Arrange
         Action[] actions = [ModificationActions.AddHeader("X-Test", "1")];
 
-        // Act
-        // Assert
         Assert.That(
             async () => await EnumerateEndOfBodyAsync(actions),
             Throws.InvalidOperationException);
@@ -84,8 +69,6 @@ public sealed class ContextAdapterTests
     [Test]
     public void An_empty_sequence_is_rejected()
     {
-        // Act
-        // Assert
         Assert.That(
             async () => await EnumerateEndOfBodyAsync([]),
             Throws.InvalidOperationException);

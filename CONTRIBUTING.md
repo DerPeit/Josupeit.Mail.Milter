@@ -110,7 +110,7 @@ Not rigid rules - lenses. When writing, reading or reviewing code here, actively
 
 ### Tests
 
-- **Arrange / Act / Assert**, always separated by blank lines. A comment block is always preceded by a blank line.
+- **Arrange / Act / Assert**, always separated by blank lines - and by nothing else. `// Arrange` and its siblings only label what the blank lines already show, so do not write them. A comment block is always preceded by a blank line.
 - Two projects, and the split decides where a test belongs. `Josupeit.Mail.Milter.UnitTests` needs no Docker and covers what a correct MTA can never send - malformed frames, protocol violations, byte-exact serialization, the abort and replay states. `Josupeit.Mail.Milter.IntegrationTests` drives a real Postfix through Testcontainers; see [CLAUDE.md](CLAUDE.md) for the fixtures.
 - **Reach for the unit project first.** An integration run costs minutes and a Docker daemon; it earns that only when the point of the test is that Postfix agrees.
 - **Bound every wait on a background worker.** A test that awaits a task which never completes hangs the whole run rather than failing one test, and NUnit's `CancelAfter` cannot break it. Race the wait against a timeout and assert on which won.

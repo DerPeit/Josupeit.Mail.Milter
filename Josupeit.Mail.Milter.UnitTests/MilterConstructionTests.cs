@@ -24,18 +24,14 @@ public sealed class MilterConstructionTests
     [Test]
     public void A_context_factory_can_be_supplied()
     {
-        // Act
         var milter = new Milter<TestMilterContext>(_socket, () => new TestMilterContext());
 
-        // Assert
         Assert.That(milter, Is.Not.Null);
     }
 
     [Test]
     public void A_missing_context_factory_is_rejected()
     {
-        // Act
-        // Assert
         Assert.That(
             () => new Milter<TestMilterContext>(_socket, contextFactory: null!),
             Throws.ArgumentNullException);
@@ -44,8 +40,6 @@ public sealed class MilterConstructionTests
     [Test]
     public void A_missing_socket_is_rejected()
     {
-        // Act
-        // Assert
         Assert.That(() => new Milter<TestMilterContext>(null!), Throws.ArgumentNullException);
         Assert.That(
             () => new Milter<TestMilterContext>(null!, () => new TestMilterContext()),

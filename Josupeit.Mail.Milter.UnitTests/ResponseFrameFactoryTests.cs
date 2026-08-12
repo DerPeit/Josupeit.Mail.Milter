@@ -14,13 +14,10 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Quarantining_carries_the_reason()
     {
-        // Arrange
         var packet = new QuarantineMessageResponsePacket { Reason = "suspicious" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.QuarantineMessage));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("suspicious\0")));
     }
@@ -28,13 +25,10 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Replying_doubles_percent_signs_in_the_text()
     {
-        // Arrange
         var packet = new ReplyWithCodeResponsePacket { SmtpCode = "550", Text = "5.7.1 blocked 100% of the time" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ReplyWithCode));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("550 5.7.1 blocked 100%% of the time\0")));
     }
@@ -42,39 +36,30 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Replying_leaves_a_text_without_percent_signs_untouched()
     {
-        // Arrange
         var packet = new ReplyWithCodeResponsePacket { SmtpCode = "451", Text = "try again later" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(GetData(frame), Is.EqualTo(Latin1("451 try again later\0")));
     }
 
     [Test]
     public void Replying_doubles_adjacent_and_trailing_percent_signs()
     {
-        // Arrange
         var packet = new ReplyWithCodeResponsePacket { SmtpCode = "550", Text = "%%%" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(GetData(frame), Is.EqualTo(Latin1("550 %%%%%%\0")));
     }
 
     [Test]
     public void Changing_a_header_counts_occurrences_from_one_on_the_wire()
     {
-        // Arrange
         var packet = new ChangeOrDeleteHeaderResponsePacket { Index = 0, Name = "Received", Value = "redacted" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ChangeOrDeleteHeader));
         Assert.That(GetData(frame), Is.EqualTo(new byte[] { 0, 0, 0, 1 }.Concat(Latin1("Received\0redacted\0"))));
     }
@@ -82,23 +67,18 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Deleting_a_header_keeps_the_index_offset()
     {
-        // Arrange
         var packet = new ChangeOrDeleteHeaderResponsePacket { Index = 2, Name = "Received", Value = string.Empty };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(GetData(frame), Is.EqualTo(new byte[] { 0, 0, 0, 3 }.Concat(Latin1("Received\0\0"))));
     }
 
     [Test]
     public void Reporting_progress_carries_no_data()
     {
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(ProgressResponsePacket.Instance);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.Progress));
         Assert.That(GetData(frame), Is.Empty);
     }
@@ -106,7 +86,6 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void A_decision_without_data_is_a_bare_frame()
     {
-        // Arrange
         (ResponsePacket Packet, ResponseCode Code)[] decisions =
         [
             (AcceptMessageResponsePacket.Instance, ResponseCode.AcceptMessage),
@@ -118,8 +97,6 @@ public sealed class ResponseFrameFactoryTests
 
         var factory = new ResponseFrameFactory();
 
-        // Act
-        // Assert
         foreach (var (packet, code) in decisions)
         {
             using var frame = factory.CreateResponseFrame(packet);
@@ -132,13 +109,10 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Adding_a_header_terminates_both_fields()
     {
-        // Arrange
         var packet = new AddHeaderResponsePacket { Name = "X-Test", Value = "value" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.AddHeader));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("X-Test\0value\0")));
     }
@@ -146,13 +120,10 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Adding_a_recipient_terminates_the_address()
     {
-        // Arrange
         var packet = new AddRecipientResponsePacket { Recipient = "bob@example.com" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.AddRecipient));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("bob@example.com\0")));
     }
@@ -160,13 +131,10 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Deleting_a_recipient_terminates_the_address()
     {
-        // Arrange
         var packet = new DeleteRecipientResponsePacket { Recipient = "eve@example.com" };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.DeleteRecipient));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("eve@example.com\0")));
     }
@@ -174,7 +142,6 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Negotiation_writes_three_big_endian_words()
     {
-        // Arrange
         var packet = new OptionNegotiationResponsePacket
         {
             MilterProtocolVersion = new Version(2, 0),
@@ -182,10 +149,8 @@ public sealed class ResponseFrameFactoryTests
             MilterUndesiredProtocolContent = ContentBypassDiscriminator.NoConnect | ContentBypassDiscriminator.NoHelo,
         };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.OptionNegotiation));
         Assert.That(
             GetData(frame),
@@ -200,17 +165,14 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void Replacing_the_body_hands_the_buffer_through_untouched()
     {
-        // Arrange
         var memoryOwner = MemoryPool<byte>.Shared.Rent(16);
 
         "chunk"u8.CopyTo(memoryOwner.Memory.Span);
 
         var packet = new ReplaceBodyResponsePacket { Memory = memoryOwner, BodyRange = ..5 };
 
-        // Act
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        // Assert
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ReplaceBody));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("chunk")));
     }
@@ -218,8 +180,6 @@ public sealed class ResponseFrameFactoryTests
     [Test]
     public void An_unknown_packet_is_refused()
     {
-        // Act
-        // Assert
         Assert.That(
             () => new ResponseFrameFactory().CreateResponseFrame(null!),
             Throws.ArgumentNullException);

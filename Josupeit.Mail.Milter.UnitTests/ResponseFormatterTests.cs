@@ -16,14 +16,12 @@ public sealed class ResponseFormatterTests
     [Test]
     public async Task Frames_are_written_to_the_link()
     {
-        // Arrange
         var (formatter, writer, pipe) = CreateFormatterHarness();
 
         var frame = new ResponseFrame(ResponseCode.ContinueProcessing);
 
         formatter.Start();
 
-        // Act
         await writer.WriteAsync(frame);
 
         // Awaiting the frame is how a session waits for it to reach the wire. Stopping without this
@@ -34,7 +32,6 @@ public sealed class ResponseFormatterTests
 
         await StopAndAssertItCompletes(formatter);
 
-        // Assert
         var result = await pipe.Reader.ReadAsync();
 
         Assert.That(
@@ -45,28 +42,22 @@ public sealed class ResponseFormatterTests
     [Test]
     public async Task Stopping_completes_once_the_channel_is_completed()
     {
-        // Arrange
         var (formatter, writer, _) = CreateFormatterHarness();
 
         formatter.Start();
 
-        // Act
         writer.Complete();
 
-        // Assert
         await StopAndAssertItCompletes(formatter);
     }
 
     [Test]
     public async Task Starting_twice_is_rejected()
     {
-        // Arrange
         var (formatter, writer, _) = CreateFormatterHarness();
 
         formatter.Start();
 
-        // Act
-        // Assert
         Assert.That(formatter.Start, Throws.InstanceOf<InvalidOperationException>());
 
         writer.Complete();
@@ -77,11 +68,8 @@ public sealed class ResponseFormatterTests
     [Test]
     public void Stopping_before_starting_is_rejected()
     {
-        // Arrange
         var (formatter, _, _) = CreateFormatterHarness();
 
-        // Act
-        // Assert
         Assert.That(async () => await formatter.Stop(), Throws.InstanceOf<InvalidOperationException>());
     }
 
