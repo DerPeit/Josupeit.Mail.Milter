@@ -24,8 +24,9 @@ There is no `.editorconfig` or analyzer ruleset yet - apart from `ConfigureAwait
   - **Everything else** - `internal sealed`: the session, the protocol states, `ContextAdapter`, `WireText`. Reachable from the two test projects through `<InternalsVisibleTo />` and from nowhere else.
 - **Sealed unless it is meant to be derived from.** A public type that is not sealed is a statement that overriding it is supported; do not unseal one just to make a test easier.
 - **Validate arguments on the public surface**, not on internal members. An internal method is only reached by this library and its tests, so a guard there checks a caller that cannot get it wrong.
-- **`const` is `SCREAMING_SNAKE_CASE`**, whether it is a field or a local - `CHUNK_SIZE`, `END_OF_NAME_MARK_LENGTH`. The case is the signal that the value is baked in at compile time.
-- **Private fields are `_camelCase`**, including `static readonly` ones (`_stopTimeout`). A `static readonly` that is *public* is part of the surface and stays `PascalCase` (`MilterOptions.DefaultMaxFrameLength`).
+- **`const` is `SCREAMING_SNAKE_CASE`** - field or local, `CHUNK_SIZE`, `END_OF_NAME_MARK_LENGTH`. The case marks the value as baked in at compile time.
+- **The screaming snake stops at the API boundary.** It is not idiomatic C#, so nothing visible from outside wears it: the public surface is `PascalCase` throughout, constants included. `MilterOptions.DefaultMaxFrameLength`, never `DEFAULT_MAX_FRAME_LENGTH`. Today every constant in the library happens to be private or local, which is why none of them is affected.
+- **Private fields are `_camelCase`**, including `static readonly` ones (`_stopTimeout`).
 - Locals and parameters `camelCase`; everything else `PascalCase`.
 - Interfaces are `I`-prefixed.
 - **No `Async` suffix** on async methods - `Session.Run`, `Milter.Stop` and `LinkWriter.WriteData` are all async. Exception: names dictated by a framework contract (`DisposeAsync`).
