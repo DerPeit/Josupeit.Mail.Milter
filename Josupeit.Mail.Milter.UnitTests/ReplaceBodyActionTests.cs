@@ -10,13 +10,13 @@ namespace Josupeit.Mail.Milter.UnitTests;
 [TestFixture]
 public sealed class ReplaceBodyActionTests
 {
-    private const int MaximumChunkLength = 65535;
+    private const int MAXIMUM_CHUNK_LENGTH = 65535;
 
     [Test]
     public async Task Body_chunks_stay_within_the_protocol_maximum()
     {
         // Arrange
-        var body = new MemoryStream(new byte[3 * MaximumChunkLength]);
+        var body = new MemoryStream(new byte[3 * MAXIMUM_CHUNK_LENGTH]);
         var action = ModificationActions.ReplaceBody(body);
         var chunkLengths = new List<int>();
 
@@ -31,8 +31,8 @@ public sealed class ReplaceBodyActionTests
         }
 
         // Assert
-        Assert.That(chunkLengths, Is.All.LessThanOrEqualTo(MaximumChunkLength));
-        Assert.That(chunkLengths.Sum(), Is.EqualTo(3 * MaximumChunkLength));
+        Assert.That(chunkLengths, Is.All.LessThanOrEqualTo(MAXIMUM_CHUNK_LENGTH));
+        Assert.That(chunkLengths.Sum(), Is.EqualTo(3 * MAXIMUM_CHUNK_LENGTH));
     }
 
     [Test]

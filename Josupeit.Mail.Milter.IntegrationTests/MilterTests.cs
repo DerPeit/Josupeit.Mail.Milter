@@ -13,7 +13,7 @@ public class MilterTests : MilterFixture
     /// A body long enough to cross Postfix's MILTER_CHUNK_SIZE, so it arrives as several SMFIC_BODY frames
     /// and the body test covers reassembly rather than a single chunk.
     /// </summary>
-    private static readonly string MultiChunkBody = LoadMultiChunkBody();
+    private static readonly string _multiChunkBody = LoadMultiChunkBody();
 
     [Test]
     public async Task Minimum_test_setup_works()
@@ -377,7 +377,7 @@ public class MilterTests : MilterFixture
             },
             Subject = "Hello world 😀",
             SubjectEncoding = Encoding.UTF8,
-            Body = MultiChunkBody,
+            Body = _multiChunkBody,
             BodyEncoding = Encoding.ASCII,
         };
 

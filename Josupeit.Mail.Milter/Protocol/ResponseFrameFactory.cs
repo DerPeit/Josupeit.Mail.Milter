@@ -39,10 +39,10 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     protected internal override bool VisitAddHeaderResponsePacket(AddHeaderResponsePacket responsePacket)
     {
         var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
-        const int endOfNameMarkLength = 1;
+        const int END_OF_NAME_MARK_LENGTH = 1;
         var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
-        const int endOfValueMarkLength = 1;
-        var blockLength = nameLength + endOfNameMarkLength + valueLength + endOfValueMarkLength;
+        const int END_OF_VALUE_MARK_LENGTH = 1;
+        var blockLength = nameLength + END_OF_NAME_MARK_LENGTH + valueLength + END_OF_VALUE_MARK_LENGTH;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -50,15 +50,15 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var nameOffset = 0;
-            var endOfNameMarkOffset = nameOffset + nameLength;
-            var valueOffset = endOfNameMarkOffset + endOfNameMarkLength;
+            const int NAME_OFFSET = 0;
+            var endOfNameMarkOffset = NAME_OFFSET + nameLength;
+            var valueOffset = endOfNameMarkOffset + END_OF_NAME_MARK_LENGTH;
             var endOfValueMarkOffset = valueOffset + valueLength;
 
-            var nameMemoryBlock = memoryBlock.Slice(nameOffset, nameLength);
-            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, endOfNameMarkLength);
+            var nameMemoryBlock = memoryBlock.Slice(NAME_OFFSET, nameLength);
+            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, END_OF_NAME_MARK_LENGTH);
             var valueMemoryBlock = memoryBlock.Slice(valueOffset, valueLength);
-            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, endOfValueMarkLength);
+            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, END_OF_VALUE_MARK_LENGTH);
 
             // I cannot find whether the memory block is guaranteed to be zero-ed.
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
@@ -81,8 +81,8 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     protected internal override bool VisitAddRecipientResponsePacket(AddRecipientResponsePacket responsePacket)
     {
         var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
-        const int endOfRecipientMarkLength = 1;
-        var blockLength = recipientLength + endOfRecipientMarkLength;
+        const int END_OF_RECIPIENT_MARK_LENGTH = 1;
+        var blockLength = recipientLength + END_OF_RECIPIENT_MARK_LENGTH;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -90,11 +90,11 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var recipientOffset = 0;
-            var endOfRecipientMarkOffset = recipientOffset + recipientLength;
+            const int RECIPIENT_OFFSET = 0;
+            var endOfRecipientMarkOffset = RECIPIENT_OFFSET + recipientLength;
 
-            var recipientMemoryBlock = memoryBlock.Slice(recipientOffset, recipientLength);
-            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, endOfRecipientMarkLength);
+            var recipientMemoryBlock = memoryBlock.Slice(RECIPIENT_OFFSET, recipientLength);
+            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, END_OF_RECIPIENT_MARK_LENGTH);
 
             endOfRecipientMarkMemoryBlock.Span[0] = 0;
 
@@ -114,12 +114,12 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
     {
-        const int indexLength = sizeof(uint);
+        const int INDEX_LENGTH = sizeof(uint);
         var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
-        const int endOfNameMarkLength = 1;
+        const int END_OF_NAME_MARK_LENGTH = 1;
         var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
-        const int endOfValueMarkLength = 1;
-        var blockLength = indexLength + nameLength + endOfNameMarkLength + valueLength + endOfValueMarkLength;
+        const int END_OF_VALUE_MARK_LENGTH = 1;
+        var blockLength = INDEX_LENGTH + nameLength + END_OF_NAME_MARK_LENGTH + valueLength + END_OF_VALUE_MARK_LENGTH;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -127,17 +127,17 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var indexOffset = 0;
-            var nameOffset = indexOffset + indexLength;
+            const int INDEX_OFFSET = 0;
+            var nameOffset = INDEX_OFFSET + INDEX_LENGTH;
             var endOfNameMarkOffset = nameOffset + nameLength;
-            var valueOffset = endOfNameMarkOffset + endOfNameMarkLength;
+            var valueOffset = endOfNameMarkOffset + END_OF_NAME_MARK_LENGTH;
             var endOfValueMarkOffset = valueOffset + valueLength;
 
-            var indexMemoryBlock = memoryBlock.Slice(indexOffset, indexLength);
+            var indexMemoryBlock = memoryBlock.Slice(INDEX_OFFSET, INDEX_LENGTH);
             var nameMemoryBlock = memoryBlock.Slice(nameOffset, nameLength);
-            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, endOfNameMarkLength);
+            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, END_OF_NAME_MARK_LENGTH);
             var valueMemoryBlock = memoryBlock.Slice(valueOffset, valueLength);
-            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, endOfValueMarkLength);
+            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, END_OF_VALUE_MARK_LENGTH);
 
             endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
 
@@ -176,8 +176,8 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     protected internal override bool VisitDeleteRecipientResponsePacket(DeleteRecipientResponsePacket responsePacket)
     {
         var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
-        const int endOfRecipientMarkLength = 1;
-        var blockLength = recipientLength + endOfRecipientMarkLength;
+        const int END_OF_RECIPIENT_MARK_LENGTH = 1;
+        var blockLength = recipientLength + END_OF_RECIPIENT_MARK_LENGTH;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -185,11 +185,11 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var recipientOffset = 0;
-            var endOfRecipientMarkOffset = recipientOffset + recipientLength;
+            const int RECIPIENT_OFFSET = 0;
+            var endOfRecipientMarkOffset = RECIPIENT_OFFSET + recipientLength;
 
-            var recipientMemoryBlock = memoryBlock.Slice(recipientOffset, recipientLength);
-            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, endOfRecipientMarkLength);
+            var recipientMemoryBlock = memoryBlock.Slice(RECIPIENT_OFFSET, recipientLength);
+            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, END_OF_RECIPIENT_MARK_LENGTH);
 
             endOfRecipientMarkMemoryBlock.Span[0] = 0;
 
@@ -216,30 +216,30 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
     protected internal override bool VisitOptionNegotiationResponsePacket(OptionNegotiationResponsePacket responsePacket)
     {
-        const int versionLength = sizeof(uint);
-        const int actionsLength = sizeof(uint);
-        const int undesiredContentLength = sizeof(uint);
-        const int blockLength = versionLength + actionsLength + undesiredContentLength;
+        const int VERSION_LENGTH = sizeof(uint);
+        const int ACTIONS_LENGTH = sizeof(uint);
+        const int UNDESIRED_CONTENT_LENGTH = sizeof(uint);
+        const int BLOCK_LENGTH = VERSION_LENGTH + ACTIONS_LENGTH + UNDESIRED_CONTENT_LENGTH;
 
-        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(BLOCK_LENGTH);
 
         try
         {
-            var memoryBlock = memoryOwner.Memory[..blockLength];
+            var memoryBlock = memoryOwner.Memory[..BLOCK_LENGTH];
 
-            const int versionOffset = 0;
-            const int actionsOffset = versionOffset + versionLength;
-            const int undesiredContentOffset = actionsOffset + actionsLength;
+            const int VERSION_OFFSET = 0;
+            const int ACTIONS_OFFSET = VERSION_OFFSET + VERSION_LENGTH;
+            const int UNDESIRED_CONTENT_OFFSET = ACTIONS_OFFSET + ACTIONS_LENGTH;
 
-            var protocolVersionMemoryBlock = memoryBlock.Slice(versionOffset, versionLength);
-            var requestedActionsMemoryBlock = memoryBlock.Slice(actionsOffset, actionsLength);
-            var undesiredProtocolContentMemoryBlock = memoryBlock.Slice(undesiredContentOffset, undesiredContentLength);
+            var protocolVersionMemoryBlock = memoryBlock.Slice(VERSION_OFFSET, VERSION_LENGTH);
+            var requestedActionsMemoryBlock = memoryBlock.Slice(ACTIONS_OFFSET, ACTIONS_LENGTH);
+            var undesiredProtocolContentMemoryBlock = memoryBlock.Slice(UNDESIRED_CONTENT_OFFSET, UNDESIRED_CONTENT_LENGTH);
 
             BinaryPrimitives.WriteUInt32BigEndian(protocolVersionMemoryBlock.Span, (uint)responsePacket.MilterProtocolVersion.Major);
             BinaryPrimitives.WriteUInt32BigEndian(requestedActionsMemoryBlock.Span, (uint)responsePacket.MilterRequiredActions);
             BinaryPrimitives.WriteUInt32BigEndian(undesiredProtocolContentMemoryBlock.Span, (uint)responsePacket.MilterUndesiredProtocolContent);
 
-            _responseFrame = new(ResponseCode.OptionNegotiation, memoryOwner, ..blockLength);
+            _responseFrame = new(ResponseCode.OptionNegotiation, memoryOwner, ..BLOCK_LENGTH);
 
             return true;
         }
@@ -261,8 +261,8 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     protected internal override bool VisitQuarantineMessageResponsePacket(QuarantineMessageResponsePacket responsePacket)
     {
         var reasonLength = Encoding.Latin1.GetByteCount(responsePacket.Reason);
-        const int endOfReasonMarkLength = 1;
-        var blockLength = reasonLength + endOfReasonMarkLength;
+        const int END_OF_REASON_MARK_LENGTH = 1;
+        var blockLength = reasonLength + END_OF_REASON_MARK_LENGTH;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -270,11 +270,11 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var reasonOffset = 0;
-            var endOfReasonMarkOffset = reasonOffset + reasonLength;
+            const int REASON_OFFSET = 0;
+            var endOfReasonMarkOffset = REASON_OFFSET + reasonLength;
 
-            var reasonMemoryBlock = memoryBlock.Slice(reasonOffset, reasonLength);
-            var endOfReasonMarkMemoryBlock = memoryBlock.Slice(endOfReasonMarkOffset, endOfReasonMarkLength);
+            var reasonMemoryBlock = memoryBlock.Slice(REASON_OFFSET, reasonLength);
+            var endOfReasonMarkMemoryBlock = memoryBlock.Slice(endOfReasonMarkOffset, END_OF_REASON_MARK_LENGTH);
 
             endOfReasonMarkMemoryBlock.Span[0] = 0;
 
@@ -309,10 +309,10 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     protected internal override bool VisitReplyWithCodeResponsePacket(ReplyWithCodeResponsePacket responsePacket)
     {
         var codeLength = Encoding.Latin1.GetByteCount(responsePacket.SmtpCode);
-        const int endOfCodeMarkLength = 1;
+        const int END_OF_CODE_MARK_LENGTH = 1;
         var textLength = GetByteCountWithDoubledPercentSigns(responsePacket.Text);
-        const int endOfTextMarkLength = 1;
-        var blockLength = codeLength + endOfCodeMarkLength + textLength + endOfTextMarkLength;
+        const int END_OF_TEXT_MARK_LENGTH = 1;
+        var blockLength = codeLength + END_OF_CODE_MARK_LENGTH + textLength + END_OF_TEXT_MARK_LENGTH;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -320,15 +320,15 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         {
             var memoryBlock = memoryOwner.Memory[..blockLength];
 
-            var codeOffset = 0;
-            var endOfCodeMarkOffset = codeOffset + codeLength;
-            var textOffset = endOfCodeMarkOffset + endOfCodeMarkLength;
+            const int CODE_OFFSET = 0;
+            var endOfCodeMarkOffset = CODE_OFFSET + codeLength;
+            var textOffset = endOfCodeMarkOffset + END_OF_CODE_MARK_LENGTH;
             var endOfTextMarkOffset = textOffset + textLength;
 
-            var codeMemoryBlock = memoryBlock.Slice(codeOffset, codeLength);
-            var endOfCodeMarkMemoryBlock = memoryBlock.Slice(endOfCodeMarkOffset, endOfCodeMarkLength);
+            var codeMemoryBlock = memoryBlock.Slice(CODE_OFFSET, codeLength);
+            var endOfCodeMarkMemoryBlock = memoryBlock.Slice(endOfCodeMarkOffset, END_OF_CODE_MARK_LENGTH);
             var textMemoryBlock = memoryBlock.Slice(textOffset, textLength);
-            var endOfTextMarkMemoryBlock = memoryBlock.Slice(endOfTextMarkOffset, endOfTextMarkLength);
+            var endOfTextMarkMemoryBlock = memoryBlock.Slice(endOfTextMarkOffset, END_OF_TEXT_MARK_LENGTH);
 
             endOfCodeMarkMemoryBlock.Span[0] = (byte)' ';
             endOfTextMarkMemoryBlock.Span[0] = 0;

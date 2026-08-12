@@ -11,7 +11,7 @@ namespace Josupeit.Mail.Milter.UnitTests;
 [TestFixture]
 public sealed class ResponseFormatterTests
 {
-    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
+    private static readonly TimeSpan _stopTimeout = TimeSpan.FromSeconds(5);
 
     [Test]
     public async Task Frames_are_written_to_the_link()
@@ -92,7 +92,7 @@ public sealed class ResponseFormatterTests
         var stopping = formatter.Stop();
 
         Assert.That(
-            await Task.WhenAny(stopping, Task.Delay(StopTimeout)),
+            await Task.WhenAny(stopping, Task.Delay(_stopTimeout)),
             Is.SameAs(stopping),
             "Stop did not complete.");
 

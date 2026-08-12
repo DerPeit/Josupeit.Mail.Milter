@@ -3,7 +3,7 @@
 // These values map to the SMFIC_ constants.
 public enum CommandCode : byte
 {
-    Unspecified = default,
+    Unspecified = 0,
 
     // SMFIC_OPTNEG
     // Option negotiation

@@ -34,11 +34,6 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     {
     }
 
-    /// <param name="contextFactory">
-    /// Builds the context for each message. Without one the context comes from
-    /// <see cref="Activator.CreateInstance{T}"/>, which needs a public parameterless constructor and so
-    /// leaves nowhere to hand in a logger, a database handle or anything else a filter is composed from.
-    /// </param>
     public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
@@ -106,11 +101,6 @@ public sealed class Milter<TContext> where TContext : IMilterContext
         _monitor = null;
     }
 
-    /// <summary>
-    /// Waits until no session is being served any more. The listener is untouched, so new connections are
-    /// still accepted while this waits - it says when the sessions already in flight are finished, nothing
-    /// more.
-    /// </summary>
     internal async Task WaitForSessionsToEnd()
     {
         using (await _monitor!.EnterAsync().ConfigureAwait(false))

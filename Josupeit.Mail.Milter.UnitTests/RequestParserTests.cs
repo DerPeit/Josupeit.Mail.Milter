@@ -14,7 +14,7 @@ namespace Josupeit.Mail.Milter.UnitTests;
 [CancelAfter(10_000)]
 public sealed class RequestParserTests
 {
-    private const uint DefaultMaxFrameLength = 1024 * 1024;
+    private const uint DEFAULT_MAX_FRAME_LENGTH = 1024 * 1024;
 
     [Test]
     public async Task Zero_length_frame_is_rejected_instead_of_underflowing()
@@ -83,7 +83,7 @@ public sealed class RequestParserTests
     }
 
     private static (RequestParser Parser, PipeWriter Writer, ChannelReader<RequestFrame> Reader) CreateParserHarness(
-        uint maxFrameLength = DefaultMaxFrameLength)
+        uint maxFrameLength = DEFAULT_MAX_FRAME_LENGTH)
     {
         var pipe = new Pipe();
 

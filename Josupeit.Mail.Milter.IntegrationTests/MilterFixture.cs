@@ -6,7 +6,7 @@ namespace Josupeit.Mail.Milter.IntegrationTests;
 
 public abstract class MilterFixture : PostfixFixture
 {
-    private static readonly TimeSpan SessionDrainTimeout = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan _sessionDrainTimeout = TimeSpan.FromSeconds(10);
 
     private readonly Socket _milterSocket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.IP);
 
@@ -50,7 +50,7 @@ public abstract class MilterFixture : PostfixFixture
         var sessionsEnding = _milter.WaitForSessionsToEnd();
 
         Assert.That(
-            await Task.WhenAny(sessionsEnding, Task.Delay(SessionDrainTimeout)),
+            await Task.WhenAny(sessionsEnding, Task.Delay(_sessionDrainTimeout)),
             Is.SameAs(sessionsEnding),
             "Milter sessions were still running after the Postfix container stopped.");
 
