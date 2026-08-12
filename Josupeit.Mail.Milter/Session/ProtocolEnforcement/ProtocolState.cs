@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
@@ -78,6 +79,7 @@ internal abstract class ProtocolState : IProtocolState
         throw new InvalidOperationException("Protocol violation: Unexpected packet received.");
     }
 
+    [StackTraceHidden]
     private static ValueTask<IAsyncEnumerable<ResponsePacket>> RejectUnexpected(RequestPacket request)
     {
         if (request == null)

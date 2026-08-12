@@ -28,7 +28,7 @@ public sealed class ConnectRequestPacket : RequestPacket
     /// cannot express those cases any other way.
     /// </para>
     /// </remarks>
-    public required EndPoint? EndPoint { get; init; }
+    public EndPoint? EndPoint { get; init; }
 
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {

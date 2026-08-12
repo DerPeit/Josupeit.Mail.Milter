@@ -27,28 +27,33 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
         return new();
     }
 
-    public async IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request)
     {
-        var protocolStage = request.CommandCode switch
+        return Core(CancellationToken.None);
+
+        async IAsyncEnumerable<ResponsePacket> Core([EnumeratorCancellation] CancellationToken cancellationToken)
         {
-            CommandCode.Connect => ProtocolStage.Connect,
-            CommandCode.Helo => ProtocolStage.ClientHello,
-            CommandCode.Sender => ProtocolStage.Sender,
-            CommandCode.Recipient => ProtocolStage.Recipient,
-            CommandCode.Header => ProtocolStage.Header,
-            CommandCode.EndOfHeaders => ProtocolStage.EndOfHeaders,
-            CommandCode.BodyChunk => ProtocolStage.Body,
-            CommandCode.EndOfBody => ProtocolStage.EndOfBody,
-            _ => (ProtocolStage)(-1),
-        };
+            var protocolStage = request.CommandCode switch
+            {
+                CommandCode.Connect => ProtocolStage.Connect,
+                CommandCode.Helo => ProtocolStage.ClientHello,
+                CommandCode.Sender => ProtocolStage.Sender,
+                CommandCode.Recipient => ProtocolStage.Recipient,
+                CommandCode.Header => ProtocolStage.Header,
+                CommandCode.EndOfHeaders => ProtocolStage.EndOfHeaders,
+                CommandCode.BodyChunk => ProtocolStage.Body,
+                CommandCode.EndOfBody => ProtocolStage.EndOfBody,
+                _ => (ProtocolStage)(-1),
+            };
 
-        if (!Enum.IsDefined(protocolStage))
-            yield break;
+            if (!Enum.IsDefined(protocolStage))
+                yield break;
 
-        var info = new MacroDefinitionInformation(protocolStage, request.Macros);
-        var context = _context ??= contextFactory();
+            var info = new MacroDefinitionInformation(protocolStage, request.Macros);
+            var context = _context ??= contextFactory();
 
-        await context.OnDefineMacro(info, cancellationToken).ConfigureAwait(false);
+            await context.OnDefineMacro(info, cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public IAsyncEnumerable<ResponsePacket> OnConnectionEstablished(ConnectRequestPacket request)
