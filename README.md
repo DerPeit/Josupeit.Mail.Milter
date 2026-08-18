@@ -31,6 +31,8 @@ The solution is in the `.slnx` format, which needs a recent SDK.
 
 There are two test projects, and the split is deliberate. `Josupeit.Mail.Milter.UnitTests` needs nothing but the SDK and covers what a correct MTA can never produce: malformed frames, protocol violations, byte-exact serialization, the abort and replay states. `Josupeit.Mail.Milter.IntegrationTests` **requires Docker** - it builds an Ubuntu image with a real Postfix, points its `smtpd_milters` back at a milter hosted by the test, and asserts on the mail that actually comes out the other end.
 
+CI runs the unit tests only - the shared runners have no Docker daemon to lend - so the integration run is one you do locally before pushing.
+
 ## Contributing
 
 [CONTRIBUTING.md](CONTRIBUTING.md) holds the code style and the commit-message rules; [CLAUDE.md](CLAUDE.md) describes what the project is and how the runtime fits together.

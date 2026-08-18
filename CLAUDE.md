@@ -19,6 +19,8 @@ dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
 
 **The integration tests require Docker.** `Josupeit.Mail.Milter.IntegrationTests` uses Testcontainers to build an Ubuntu+Postfix image (`Dockerfile.postfix`) and run a real Postfix that connects back to a milter hosted by the test on the host machine. `Josupeit.Mail.Milter.UnitTests` is Docker-free and covers what a correct MTA can never produce: malformed frames, protocol violations, and the abort/replay states.
 
+**CI runs the unit tests only.** Codeberg's shared runners are container jobs with no Docker daemon of their own, so the integration half cannot run there - it is a local step before pushing, not a gate. `.forgejo/workflows/ci.yml` is the whole pipeline; there is no `.github/` any more.
+
 - `PostfixFixture` builds/starts the container and exposes `SendMail` / `ReceiveMail`.
 - `MilterFixture` binds the milter on host port **34000** and the mail-receiving socket on **35000**; `main.cf` points Postfix's `smtpd_milters` at `host.docker.internal:34000` and pipes delivered mail (`mailbox_transport = tcp-loopback` -> `nc` in `master.cf`) back to `35000` so tests can read the resulting message.
 - Tests use NSubstitute `ForPartsOf` partial mocks of `MilterContextAdapter`. `ProtocolRequirements`/`ActionRequirements` are **static** on the context, so tests set them as statics in `Setup`.
@@ -39,10 +41,10 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 
 `src/Josupeit.Mail.Milter` is the only package. Everything about shipping it lives in `src/Directory.Build.props`, so a project is packable by virtue of sitting under `src/` - which is why the generator opts out with `IsPackable=false` and the example lives under `samples/` instead.
 
-- **Versions come from the git history**, via Nerdbank.GitVersioning: `version.json` at the root sets the base version, `src/Josupeit.Mail.Milter/version.json` sets the release tag pattern (`v{version}`). Nothing hand-edits a version number, and a shallow clone gets it wrong - hence `fetch-depth: 0` in CI.
+- **Versions come from the git history**, via Nerdbank.GitVersioning: `version.json` at the root sets the base version, `src/Josupeit.Mail.Milter/version.json` sets the release tag pattern (`v{version}`). Nothing hand-edits a version number, and a shallow clone gets it wrong - which is why the CI checkout is a plain full `git clone` rather than anything truncated.
 - **Release notes come from the git log.** `GeneratePackageReleaseNotes` in `src/Directory.Build.targets` runs `git log --pretty=format:"- %s"` over the commits touching the project since the previous release tag. Commit subjects are read by consumers, which is the practical reason the Conventional Commits rule in CONTRIBUTING.md matters.
 - **`GenerateDocumentationFile` is on**, so CS1591/CS1573 police the doc comments. See CONTRIBUTING.md for the rule they enforce.
-- SourceLink needs no `PackageReference`: since .NET 8 the SDK supplies the GitHub provider for a repository whose origin is github.com. **Moving to Codeberg means adding `Microsoft.SourceLink.Gitea` and a `SourceLinkGiteaHost` item**, because the SDK ships no Gitea provider.
+- **SourceLink is wired by hand**, in `src/Directory.Build.props`: the SDK contributes a provider for each host it knows and Gitea is not one of them, so the origin being codeberg.org buys nothing. `Microsoft.SourceLink.Gitea` plus a `SourceLinkGiteaHost` item name the host. Removing either fails nothing - the package simply loses source stepping.
 - The package carries an SBOM, a `snupkg` with embedded sources, `LICENSE.md` and the project's own `README.md`.
 
 **The generator is packed into the library as an analyzer, not depended on.** Its `ProjectReference` is `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, so nothing of it reaches this assembly's metadata or `deps.json`, and NuGet emits no dependency on a package that will never exist. `IncludeGeneratorAsAnalyzerInPackage` puts the assembly under `analyzers/dotnet/cs/` by hand. See the generator section at the bottom for how the library gets the marker attributes without referencing it.
