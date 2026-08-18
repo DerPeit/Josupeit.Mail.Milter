@@ -26,6 +26,7 @@
     <RepositoryUrl>https://github.com/DerPeit/Josupeit.Mail.Milter</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile Condition="Exists('README.md')">README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <NeutralLanguage>en</NeutralLanguage>
     <PackageVersionTagPrefix />
     <PackageReleaseNotesGitPath>. ../Directory.Build.props ../Directory.Build.targets</PackageReleaseNotesGitPath>
@@ -61,6 +62,9 @@
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
     <None Include="$(MSBuildThisFileDirectory)..\LICENSE.md" Pack="true" PackagePath="\" Link="LICENSE.md" Visible="false" />
+
+    <!-- 256x256, not the 1254x1254 master beside it: NuGet caps a package icon at 1 MB. -->
+    <None Include="$(MSBuildThisFileDirectory)..\assets\icon.png" Pack="true" PackagePath="\" Link="icon.png" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
