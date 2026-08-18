@@ -15,9 +15,12 @@ dotnet build Josupeit.Mail.Milter.slnx          # solution is .slnx (XML format)
 dotnet test  Josupeit.Mail.Milter.slnx
 dotnet test  test/Josupeit.Mail.Milter.UnitTests            # the Docker-free half, seconds instead of minutes
 dotnet test --filter "Name~Milter_receives_correct_body"   # single test by name
+dotnet tool restore                                        # once per clone; nbgv is a local tool
 ```
 
 **The integration tests require Docker.** `Josupeit.Mail.Milter.IntegrationTests` uses Testcontainers to build an Ubuntu+Postfix image (`Dockerfile.postfix`) and run a real Postfix that connects back to a milter hosted by the test on the host machine. `Josupeit.Mail.Milter.UnitTests` is Docker-free and covers what a correct MTA can never produce: malformed frames, protocol violations, and the abort/replay states.
+
+**CI runs the unit tests only.** Codeberg's shared runners are container jobs with no Docker daemon of their own, so the integration half cannot run there - it is a local step before pushing, not a gate. `.forgejo/workflows/ci.yml` is the whole pipeline; there is no `.github/` any more.
 
 - `PostfixFixture` builds/starts the container and exposes `SendMail` / `ReceiveMail`.
 - `MilterFixture` binds the milter on host port **34000** and the mail-receiving socket on **35000**; `main.cf` points Postfix's `smtpd_milters` at `host.docker.internal:34000` and pipes delivered mail (`mailbox_transport = tcp-loopback` -> `nc` in `master.cf`) back to `35000` so tests can read the resulting message.
@@ -39,15 +42,53 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 
 `src/Josupeit.Mail.Milter` is the only package. Everything about shipping it lives in `src/Directory.Build.props`, so a project is packable by virtue of sitting under `src/` - which is why the generator opts out with `IsPackable=false` and the example lives under `samples/` instead.
 
-- **Versions come from the git history**, via Nerdbank.GitVersioning: `version.json` at the root sets the base version, `src/Josupeit.Mail.Milter/version.json` sets the release tag pattern (`v{version}`). Nothing hand-edits a version number, and a shallow clone gets it wrong - hence `fetch-depth: 0` in CI.
+- **Versions come from the git history**, via Nerdbank.GitVersioning: `version.json` at the root sets the base version, `src/Josupeit.Mail.Milter/version.json` sets the release tag pattern (`v{version}`). Nothing hand-edits a version number, and a shallow clone gets it wrong - which is why the CI checkout is a plain full `git clone` rather than anything truncated.
 - **Release notes come from the git log.** `GeneratePackageReleaseNotes` in `src/Directory.Build.targets` runs `git log --pretty=format:"- %s"` over the commits touching the project since the previous release tag. Commit subjects are read by consumers, which is the practical reason the Conventional Commits rule in CONTRIBUTING.md matters.
 - **`GenerateDocumentationFile` is on**, so CS1591/CS1573 police the doc comments. See CONTRIBUTING.md for the rule they enforce.
-- SourceLink needs no `PackageReference`: since .NET 8 the SDK supplies the GitHub provider for a repository whose origin is github.com. **Moving to Codeberg means adding `Microsoft.SourceLink.Gitea` and a `SourceLinkGiteaHost` item**, because the SDK ships no Gitea provider.
+- **SourceLink is wired by hand**, in `src/Directory.Build.props`: the SDK contributes a provider for each host it knows and Gitea is not one of them, so the origin being codeberg.org buys nothing. `Microsoft.SourceLink.Gitea` plus a `SourceLinkGiteaHost` item name the host. Removing either fails nothing - the package simply loses source stepping.
 - The package carries an SBOM, a `snupkg` with embedded sources, `LICENSE.md` and the project's own `README.md`.
 
 **The generator is packed into the library as an analyzer, not depended on.** Its `ProjectReference` is `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, so nothing of it reaches this assembly's metadata or `deps.json`, and NuGet emits no dependency on a package that will never exist. `IncludeGeneratorAsAnalyzerInPackage` puts the assembly under `analyzers/dotnet/cs/` by hand. See the generator section at the bottom for how the library gets the marker attributes without referencing it.
 
 Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library and its `.xml` doc file **and nothing else**, `analyzers/dotnet/cs/` holding the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
+
+## Branching & releasing
+
+`development` is the default branch and where feature branches land; `main` is the release branch. **Merge with `--no-ff` in both directions**, so a feature keeps its own commits and the merge commit stays a thing a release can be rewritten onto.
+
+`main` is not merely a convention here. `version.json` sets `publicReleaseRefSpec` to `^refs/heads/main$`, so only a build off `main` produces a clean version - anywhere else Nerdbank.GitVersioning appends the commit id (`0.1.10-g3ec122c51c`). The Pack and Push steps in `.forgejo/workflows/ci.yml` are gated on the same ref, which is why nothing publishes from `development`. **`main` does not exist yet**, so publishing is inert until it does.
+
+After merging `development` into `main`:
+
+1. Dry-run the tag to see the version it would carry:
+
+   ```pwsh
+   dotnet nbgv tag --what-if -p src/Josupeit.Mail.Milter
+   ```
+
+   It prints the tag without creating it - `v0.1.10`, from the `v{version}` pattern in `src/Josupeit.Mail.Milter/version.json` plus the commit height.
+
+2. Reword the merge commit to the release convention:
+
+   ```pwsh
+   git commit --amend -m "chore(release): 0.1"
+   ```
+
+   Major.minor, and no package name: there is only one package here, unlike the multi-package repository this convention is borrowed from.
+
+3. Create the tag for real:
+
+   ```pwsh
+   dotnet nbgv tag -p src/Josupeit.Mail.Milter
+   ```
+
+The tag does more than name the version. `GeneratePackageReleaseNotes` finds the previous release with `git describe --match "v*"`, so the next version's notes cover exactly the commits since this tag. Skip the tag and the following release repeats the whole history instead.
+
+### nbgv notes
+
+- It is a **local dotnet tool**: `dotnet nbgv`, never bare `nbgv`, and `dotnet tool restore` has to have been run once in the clone.
+- `-p` takes the **project directory** (`src/Josupeit.Mail.Milter`), not the `.csproj`.
+- `--what-if` is the dry run for the `tag` subcommand.
 
 ## How a filter is written (the user-facing model)
 

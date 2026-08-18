@@ -22,13 +22,23 @@
     <Copyright>© 2026 Manuel Josupeit-Walter</Copyright>
     <PackageLicenseExpression>EUPL-1.2</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>true</PackageRequireLicenseAcceptance>
-    <PackageProjectUrl>https://github.com/DerPeit/Josupeit.Mail.Milter</PackageProjectUrl>
-    <RepositoryUrl>https://github.com/DerPeit/Josupeit.Mail.Milter</RepositoryUrl>
+    <PackageProjectUrl>https://codeberg.org/DerPeit/Josupeit.Mail.Milter</PackageProjectUrl>
+    <RepositoryUrl>https://codeberg.org/DerPeit/Josupeit.Mail.Milter</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile Condition="Exists('README.md')">README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <NeutralLanguage>en</NeutralLanguage>
     <PackageVersionTagPrefix />
-    <PackageReleaseNotesGitPath>. ../Directory.Build.props ../Directory.Build.targets</PackageReleaseNotesGitPath>
+    <!--
+      Which paths the release notes in Directory.Build.targets watch. The list is everything whose
+      change alters what a consumer receives and nothing else - the project, the two files that shape
+      the package, the generator whose assembly ships under analyzers/, the repository props that
+      supply PolySharp, and the packed icon. Tests, samples and the workflow are absent on purpose.
+
+      They are pathspecs relative to the project directory, so "." is src\Josupeit.Mail.Milter and not
+      src - which is why the sibling generator has to be named even though it shares this props file.
+    -->
+    <PackageReleaseNotesGitPath>. ../Directory.Build.props ../Directory.Build.targets ../Josupeit.Mail.Milter.Generator ../../Directory.Build.props ../../assets/icon.png</PackageReleaseNotesGitPath>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -43,9 +53,10 @@
   <PropertyGroup>
     <!--
       Ship the sources with the package so a consumer can step into this code instead of guessing at
-      it. SourceLink itself needs no PackageReference: since .NET 8 the SDK contributes the GitHub
-      provider on its own for a repository whose origin is github.com. Moving to Codeberg means adding
-      Microsoft.SourceLink.Gitea and a SourceLinkGiteaHost item, because the SDK ships no Gitea provider.
+      it. SourceLink is the part that has to be said out loud: the SDK contributes a provider on its own
+      for each host it knows, and Gitea is not one of them - so Codeberg needs Microsoft.SourceLink.Gitea
+      and the SourceLinkGiteaHost item below. Forget either and nothing fails; the package just quietly
+      loses source stepping.
     -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
@@ -59,8 +70,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Names the host so SourceLink knows codeberg.org is a Gitea instance and not some unknown domain. -->
+    <SourceLinkGiteaHost Include="codeberg.org" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
     <None Include="$(MSBuildThisFileDirectory)..\LICENSE.md" Pack="true" PackagePath="\" Link="LICENSE.md" Visible="false" />
+
+    <!-- 256x256, not the 1254x1254 master beside it: NuGet caps a package icon at 1 MB. -->
+    <None Include="$(MSBuildThisFileDirectory)..\assets\icon.png" Pack="true" PackagePath="\" Link="icon.png" Visible="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -70,6 +89,10 @@
       3.0.24, whose LibGit2Sharp cannot even load on a current runtime.
     -->
     <PackageReference Include="Microsoft.Sbom.Targets" Version="[4.0.2,5)">
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
+    <PackageReference Include="Microsoft.SourceLink.Gitea" Version="[10.0.400,11)">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
 

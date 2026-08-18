@@ -7,6 +7,13 @@
       "env": {
         "CONTEXT7_API_KEY": "${CONTEXT7_API_KEY}"
       }
+    },
+    "forgejo": {
+      "command": "forgejo-mcp",
+      "args": ["--transport", "stdio", "--url", "https://codeberg.org"],
+      "env": {
+        "FORGEJO_ACCESS_TOKEN": "${FORGEJO_MILTER_ACCESS_TOKEN}"
+      }
     }
   }
 }
