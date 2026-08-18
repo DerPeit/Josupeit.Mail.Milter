@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Josupeit.Mail.Milter.Generator;
+using Josupeit.Mail.Milter.Generator.Markers;
 
 namespace Josupeit.Mail.Milter;
 

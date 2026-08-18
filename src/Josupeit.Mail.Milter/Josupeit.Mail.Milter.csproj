@@ -26,37 +26,49 @@
 
   <ItemGroup>
     <!--
-      Known problem, deliberately left alone.
-
-      This is a plain reference rather than an Analyzer one, because the library itself needs the marker
-      attributes (MilterContextMarker, MilterCallbackMarker) that live in the generator project. The price
-      is that consumers inherit all of it: Josupeit.Mail.Milter.Generator.dll lands in the output directory
-      and Microsoft.CodeAnalysis.CSharp and .Common appear in deps.json. A runtime library has no business
-      dragging the compiler along.
-
-      The fix is to move the marker attributes into their own small assembly, or to declare them here and
-      let the generator go on matching them by assembly and type name - which is what IsDescribedBy already
-      does, so the generator would not have to change. It is not done because the generator may be dropped
-      altogether (see CLAUDE.md); that call should come first, since dropping it removes the problem.
+      Analyzer only, and no assembly reference at all: nothing of the compiler reaches this assembly's
+      output or its deps.json. The marker attributes the library applies to IMilterContext and the action
+      records come from the linked sources below rather than from the generator's assembly.
     -->
-    <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj" PrivateAssets="all" />
+    <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false"
+                      PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The declaration half of each marker attribute, compiled into this assembly rather than referenced
+      from the generator's. Each has a partial in the generator project carrying the Roslyn side, which is
+      the half that must not come along - so these files name nothing outside System, and the generator
+      matches them by full type name rather than by symbol.
+
+      They are internal and [Embedded], so a consumer never sees them: an embedded type is not imported by
+      a referencing compilation at all, which also stops this copy and the generator's own from ever being
+      ambiguous in a project that happens to reference both. EmbeddedAttribute itself comes from PolySharp,
+      wired up in the repository's Directory.Build.props.
+    -->
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ActionRequirementsMarkerAttribute.cs" Link="Properties\ActionRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterActionMarkerAttribute.cs" Link="Properties\MilterActionMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterCallbackMarkerAttribute.cs" Link="Properties\MilterCallbackMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterContextMarkerAttribute.cs" Link="Properties\MilterContextMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolRequirementsMarkerAttribute.cs" Link="Properties\ProtocolRequirementsMarkerAttribute.cs" />
   </ItemGroup>
 
   <!--
-    Second half of the same problem. The generator is not a package, so a dependency on it would be a
-    dependency on something that will never exist on nuget.org - hence PrivateAssets above. But this
-    assembly's metadata still names the marker attribute types, so the assembly carrying them has to
-    travel inside the package or the consumer resolves a reference to nothing.
-
-    Both lines disappear along with the ProjectReference itself.
+    The generator is not a package, so a dependency on it would be a dependency on something that will
+    never exist on nuget.org - hence PrivateAssets above. It still has to travel inside this one, under
+    the path the compiler looks in, or the generation simply never runs for a consumer.
   -->
   <PropertyGroup>
-    <TargetsForTfmSpecificBuildOutput>$(TargetsForTfmSpecificBuildOutput);IncludeGeneratorAssemblyInPackage</TargetsForTfmSpecificBuildOutput>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);IncludeGeneratorAsAnalyzerInPackage</TargetsForTfmSpecificContentInPackage>
   </PropertyGroup>
 
-  <Target Name="IncludeGeneratorAssemblyInPackage" DependsOnTargets="ResolveReferences">
+  <Target Name="IncludeGeneratorAsAnalyzerInPackage" DependsOnTargets="ResolveReferences">
     <ItemGroup>
-      <BuildOutputInPackage Include="@(ReferencePath)" Condition="'%(Filename)' == 'Josupeit.Mail.Milter.Generator'" />
+      <TfmSpecificPackageFile Include="@(Analyzer)" Condition="'%(Filename)' == 'Josupeit.Mail.Milter.Generator'">
+        <PackagePath>analyzers/dotnet/cs</PackagePath>
+      </TfmSpecificPackageFile>
     </ItemGroup>
   </Target>
 

@@ -14,7 +14,7 @@ Targets `net8.0`. Speaks **wire version 2** of the protocol, which every current
 
 ## Writing a filter
 
-A filter is a class implementing `IMilterContext`. Every callback has a default implementation that answers "continue", so you override only the events you actually want.
+A filter is a `partial` class implementing `IMilterContext`. Every callback has a default implementation that answers "continue", so you override only the events you actually want.
 
 ```csharp
 using Josupeit.Mail.Milter;
@@ -22,13 +22,6 @@ using Action = Josupeit.Mail.Milter.Action;
 
 internal sealed partial class RejectBigSenders : IMilterContext
 {
-    // Which SMTP events the MTA should send. Declaring fewer means the MTA skips them entirely,
-    // so this should match the callbacks actually overridden below.
-    public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Sender;
-
-    // Which modifications the filter intends to perform. The MTA refuses any it was not told about.
-    public static ActionRequirements ActionRequirements => ActionRequirements.AddHeaders;
-
     public ValueTask<CommitAction> OnSender(SenderRecipientInformation info, CancellationToken cancellationToken)
     {
         // AddressString is the raw envelope argument, angle brackets and all: "<user@example.com>".
@@ -130,6 +123,21 @@ The two static properties on `IMilterContext` are part of the handshake with the
 
 - **`ProtocolRequirements`** lists the events you want delivered. The MTA skips the rest, so narrowing this is a real saving - a filter that only looks at senders never has the body streamed to it. `EndOfBody` is deliberately `0`: it cannot be excluded.
 - **`ActionRequirements`** lists the modifications you intend to make. The MTA rejects any modification it was not warned about during negotiation, so a filter that adds a header must say `AddHeaders` here.
+
+The package writes both for you. That is why the example above declares neither, and why the class is `partial`: a source generator reads which callbacks you overrode and which actions your code builds, and emits the two properties to match. Overriding `OnSender` produces `ProtocolRequirements.Sender`; calling `ModificationActions.AddHeader` anywhere in the filter produces `ActionRequirements.AddHeaders`.
+
+It follows the actions across method and class boundaries, and it takes the union over every branch - a modification behind an `if` still has to be negotiated, whether or not that `if` is ever true. What it cannot follow is an action arriving from outside the compilation: from an interface, an abstract member, or another assembly. Rather than guess - too few makes the MTA refuse the modification, too many hands the filter rights over the message it does not need - it reports **MILT002** and leaves the property to you.
+
+Declaring either property by hand always wins, and is the way out of MILT002 as well as the way to narrow what was derived:
+
+```csharp
+internal sealed partial class RejectBigSenders : IMilterContext
+{
+    public static ActionRequirements ActionRequirements => ActionRequirements.AddHeaders;
+
+    // ...
+}
+```
 
 ## Bounding the connection
 

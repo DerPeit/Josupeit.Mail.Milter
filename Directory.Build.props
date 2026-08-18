@@ -9,4 +9,24 @@
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!--
+      Two jobs, which is why it is here rather than on the one project that obviously needs it.
+
+      The generator targets netstandard2.0, where the types modern C# lowers to are missing - records
+      want IsExternalInit - and there is nothing to hand-write that a maintained package does not do
+      better. Separately, it supplies Microsoft.CodeAnalysis.EmbeddedAttribute, which the marker
+      attributes wear so that no consumer ever imports them. They are compiled into net8.0 as well, and
+      net8.0 turns out to be missing enough of C# 13 and 14 that PolySharp has work to do there too.
+
+      That second job rests on PolySharp having something to polyfill: it only emits the attribute
+      alongside types it actually generates. A future target framework that needs none of them would
+      take EmbeddedAttribute with it - loudly, as an unresolved [Embedded], not silently.
+    -->
+    <PackageReference Include="PolySharp" Version="[1.16,2)">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
 </Project>

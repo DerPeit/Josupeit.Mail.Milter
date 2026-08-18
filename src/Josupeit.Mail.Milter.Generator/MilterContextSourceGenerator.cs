@@ -1,255 +1,300 @@
-﻿// SPDX-License-Identifier: EUPL-1.2
+// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
+using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.Linq;
 using System.Text;
+using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
+using Microsoft.CodeAnalysis.Text;
 
 namespace Josupeit.Mail.Milter.Generator;
 
-[Generator]
-public class MilterContextSourceGenerator : ISourceGenerator
+// Writes the two requirement properties of IMilterContext for a filter that did not write them itself.
+//
+// ProtocolRequirements comes from which callbacks the class overrode: an implementation that is still
+// the interface default is an event the filter does not want delivered. ActionRequirements comes from
+// which actions its code builds - see ActionRequirementsAnalysis for how far that can be taken.
+//
+// A property the class declares by hand is left alone, so the generator never argues with an author who
+// has decided otherwise.
+[Generator(LanguageNames.CSharp)]
+public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 {
-    public void Initialize(GeneratorInitializationContext context)
+    private const string GENERATED_MEMBER_ATTRIBUTES =
+        """
+        [System.ComponentModel.EditorBrowsableAttribute(System.ComponentModel.EditorBrowsableState.Never)]
+        [System.Diagnostics.DebuggerBrowsableAttribute(System.Diagnostics.DebuggerBrowsableState.Never)]
+        [System.Diagnostics.DebuggerNonUserCodeAttribute]
+        [System.Runtime.CompilerServices.CompilerGeneratedAttribute]
+        """;
+
+    // Environment.NewLine is off limits inside a compiler component - a generator that emitted a
+    // different file on Linux than on Windows would break deterministic builds.
+    private const string NEW_LINE = "\r\n";
+
+    public void Initialize(IncrementalGeneratorInitializationContext context)
     {
-        //context.RegisterForSyntaxNotifications(() => new DummyReceiver());
+        var emissions = context.SyntaxProvider
+            .CreateSyntaxProvider(
+                predicate: static (node, _) => node is ClassDeclarationSyntax,
+                transform: static (syntaxContext, cancellationToken) => Analyse(syntaxContext, cancellationToken))
+            .Where(static emission => emission != null);
+
+        context.RegisterSourceOutput(emissions, static (sourceContext, emission) => Emit(sourceContext, emission!));
     }
 
-    public void Execute(GeneratorExecutionContext context)
+    private static MilterContextEmission? Analyse(GeneratorSyntaxContext context, CancellationToken cancellationToken)
     {
-        var typeLocator = new TypeLocator();
-        var methodLocator = new MethodLocator();
-        var propertyLocator = new PropertyLocator();
+        var declaration = (ClassDeclarationSyntax)context.Node;
 
-        var milterContextInterface = context.Compilation.ExternalReferences
-            .Select(context.Compilation.GetAssemblyOrModuleSymbol)
-            .Where(x => x != null)
-            .SelectMany(x => typeLocator.LocateInterfacesWith<MilterContextMarkerAttribute>(x!))
-            .First();
+        if (context.SemanticModel.GetDeclaredSymbol(declaration, cancellationToken) is not { } contextType)
+            return null;
 
-        var protocolRequirementsEnum = typeLocator
-            .LocateEnumsWith<ProtocolRequirementsMarkerAttribute>(milterContextInterface.ContainingAssembly)
-            .First();
+        var contextInterface = contextType.AllInterfaces.FirstOrDefault(HasContextMarker);
+        if (contextInterface == null)
+            return null;
 
-        var protocolRequirementsProperty = propertyLocator
-            .LocatePropertiesOfType(milterContextInterface, protocolRequirementsEnum)
-            .First();
+        // A partial class arrives once per part. Only the first of them writes, or the compiler gets the
+        // same member twice.
+        if (!IsPrimaryDeclaration(contextType, declaration))
+            return null;
 
-        var milterCallbacks = methodLocator
-            .LocateMethodsWith<MilterCallbackMarkerAttribute>(milterContextInterface)
-            .Select(method => new { Method = method, ProtocolRequirementsName = method.GetAttributes<MilterCallbackMarkerAttribute>().Select(x => x.ProtocolRequirementName).Single() })
-            .ToList();
+        var protocolProperty = FindRequirementProperty(contextInterface, ProtocolRequirementsMarkerAttribute.IsDescribedBy);
+        var actionProperty = FindRequirementProperty(contextInterface, ActionRequirementsMarkerAttribute.IsDescribedBy);
 
-        var milterContextImplementations = typeLocator
-            .LocateClassesImplementingInterface(context.Compilation.Assembly, milterContextInterface);
+        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 2);
+        var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
 
-        foreach (var milterContextImplementation in milterContextImplementations)
+        if (NeedsGenerating(contextType, protocolProperty))
         {
-            var doesMilterContextDeclareProtocolRequirements = milterContextImplementation.FindImplementationForInterfaceMember(protocolRequirementsProperty) != null;
-            if (doesMilterContextDeclareProtocolRequirements)
-                continue; // because there is nothing to do for us.
+            var requirements = DeriveProtocolRequirements(contextType, contextInterface, protocolProperty!.Type);
 
-            var protocolRequirementsFullName = protocolRequirementsEnum.ToDisplayString();
-
-            var protocolRequirementsBuilder = new StringBuilder()
-                .Append("default(")
-                .Append(protocolRequirementsFullName)
-                .Append(")");
-
-            foreach (var callbackDeclaration in milterCallbacks)
-            {
-                var candidate = milterContextImplementation.FindImplementationForInterfaceMember(callbackDeclaration.Method)!;
-
-                var isInterfaceDefaultImplementation = candidate.Equals(callbackDeclaration.Method, SymbolEqualityComparer.Default);
-                if (isInterfaceDefaultImplementation)
-                    continue;
-
-                protocolRequirementsBuilder.Append(" | ");
-                protocolRequirementsBuilder.Append(protocolRequirementsFullName);
-                protocolRequirementsBuilder.Append('.');
-                protocolRequirementsBuilder.Append(callbackDeclaration.ProtocolRequirementsName);
-            }
-
-            var sourceCode =
-                $$"""
-                  namespace {{milterContextImplementation.ContainingNamespace}}
-                  {
-                      partial class {{milterContextImplementation.Name}}
-                      {
-                          [System.ComponentModel.EditorBrowsableAttribute(System.ComponentModel.EditorBrowsableState.Never)]
-                          [System.Diagnostics.DebuggerBrowsableAttribute(System.Diagnostics.DebuggerBrowsableState.Never)]
-                          [System.Diagnostics.DebuggerHiddenAttribute]
-                          [System.Diagnostics.DebuggerNonUserCodeAttribute]
-                          [System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-                          public static {{protocolRequirementsEnum.ToDisplayString()}} {{protocolRequirementsProperty!.Name}}
-                          {
-                              get
-                              {
-                                  return {{protocolRequirementsBuilder}};
-                              }
-                          }
-                      }
-                  }
-                  """;
-
-            context.AddSource(hintName: milterContextImplementation.Name + ".g.cs", sourceCode);
+            properties.Add(RenderProperty(protocolProperty, requirements));
         }
+
+        if (NeedsGenerating(contextType, actionProperty))
+        {
+            var analysis = ActionRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
+
+            if (analysis.IsComplete)
+                properties.Add(RenderProperty(actionProperty!, Combine(actionProperty!.Type, analysis.RequirementNames)));
+            else
+                diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedAction, analysis.UntrackedLocation, contextType.Name, analysis.UntrackedSource));
+        }
+
+        // Only worth complaining about once there is something to write. A context that declared both
+        // properties by hand has no reason to be partial.
+        if (properties.Count > 0 && !EnclosingDeclarations(declaration).All(IsPartial))
+        {
+            diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.ContextIsNotPartial, declaration.Identifier.GetLocation(), contextType.Name));
+
+            properties.Clear();
+        }
+
+        return CreateEmission(contextType, declaration, properties.ToImmutable(), diagnostics.ToImmutable());
     }
 
-    //public void Execute(GeneratorExecutionContext context)
-    //{
-    //    var receiver = (DummyReceiver)context.SyntaxContextReceiver!;
-
-    //    var milterContextImplementations = receiver.MilterContextImplementations;
-    //    if (milterContextImplementations == null)
-    //        return;
-
-    //    var milterCallbacks = receiver.MilterCallbacks!;
-    //    var protocolRequirementsProperty = receiver.ProtocolRequirementsProperty!;
-    //    var protocolRequirementsEnum = receiver.ProtocolRequirementsEnum!;
-
-    //    foreach (var milterContextClass in milterContextImplementations)
-    //    {
-    //        var milterContextClassSymbol = (INamedTypeSymbol)milterContextClass.SemanticModel.GetDeclaredSymbol(milterContextClass.Node)!;
-    //        var enumFullName = protocolRequirementsEnum.ToDisplayString();
-
-    //        var protocolRequirements = new StringBuilder()
-    //            .Append("default(")
-    //            .Append(enumFullName)
-    //            .Append(")");
-
-    //        foreach (var (callbackDeclaration, protocolRequirementsEnumName) in milterCallbacks)
-    //        {
-    //            var callbackImplementationCandidate = milterContextClassSymbol.FindImplementationForInterfaceMember(callbackDeclaration)!;
-
-    //            if (callbackImplementationCandidate.Equals(callbackDeclaration, SymbolEqualityComparer.Default))
-    //                continue; // because the interface default body has not been "overridden"
-
-    //            protocolRequirements.Append(" | ");
-    //            protocolRequirements.Append(enumFullName);
-    //            protocolRequirements.Append('.');
-    //            protocolRequirements.Append(protocolRequirementsEnumName);
-    //        }
-
-    //        var sourceCode =
-    //            $$"""
-    //              namespace {{milterContextClassSymbol.ContainingNamespace}}
-    //              {
-    //                  partial class {{milterContextClassSymbol.Name}}
-    //                  {
-    //                      [System.ComponentModel.EditorBrowsableAttribute(System.ComponentModel.EditorBrowsableState.Never)]
-    //                      [System.Diagnostics.DebuggerBrowsableAttribute(System.Diagnostics.DebuggerBrowsableState.Never)]
-    //                      [System.Diagnostics.DebuggerHiddenAttribute]
-    //                      [System.Diagnostics.DebuggerNonUserCodeAttribute]
-    //                      [System.Runtime.CompilerServices.CompilerGeneratedAttribute]
-    //                      public static {{protocolRequirementsEnum.ToDisplayString()}} {{protocolRequirementsProperty.Name}}
-    //                      {
-    //                          get
-    //                          {
-    //                              return {{protocolRequirements}};
-    //                          }
-    //                      }
-    //                  }
-    //              }
-    //              """;
-
-    //        context.AddSource(hintName: milterContextClassSymbol.Name + ".g.cs", sourceCode);
-    //    }
-    //}
-}
-
-file sealed class DummyReceiver : ISyntaxContextReceiver
-{
-    public INamedTypeSymbol? MilterContextInterface { get; private set; }
-
-    public IList<(IMethodSymbol Callback, string ProtocolRequirementName)>? MilterCallbacks { get; private set; }
-
-    public IList<GeneratorSyntaxContext>? MilterContextImplementations { get; private set; }
-
-    public IPropertySymbol? ProtocolRequirementsProperty { get; private set; }
-
-    public INamedTypeSymbol? ProtocolRequirementsEnum { get; private set; }
-
-    public void OnVisitSyntaxNode(GeneratorSyntaxContext context)
+    private static MilterContextEmission CreateEmission(
+        INamedTypeSymbol contextType,
+        ClassDeclarationSyntax declaration,
+        ImmutableArray<string> properties,
+        ImmutableArray<Diagnostic> diagnostics)
     {
-        if (context.Node is not ClassDeclarationSyntax classNode)
+        var containing = EnclosingDeclarations(declaration)
+            .Skip(1)
+            .Reverse()
+            .Select(RenderTypeDeclaration)
+            .ToImmutableArray();
+
+        var @namespace = contextType.ContainingNamespace.IsGlobalNamespace
+            ? null
+            : contextType.ContainingNamespace.ToDisplayString();
+
+        return new MilterContextEmission(
+            HintName: CreateHintName(contextType),
+            Namespace: @namespace,
+            ContainingTypes: containing,
+            TypeDeclaration: RenderTypeDeclaration(declaration),
+            Properties: properties,
+            Diagnostics: diagnostics);
+    }
+
+    private static void Emit(SourceProductionContext context, MilterContextEmission emission)
+    {
+        foreach (var diagnostic in emission.Diagnostics)
+            context.ReportDiagnostic(diagnostic);
+
+        if (emission.Properties.Length == 0)
             return;
 
-        var isPartial = classNode.Modifiers.Any(mod => mod.IsKind(SyntaxKind.PartialKeyword));
-        if (!isPartial)
-            return;
+        var source = new StringBuilder("// <auto-generated/>").AppendLine().AppendLine("#nullable enable").AppendLine();
+        var depth = 0;
 
-        var classSymbol = context.SemanticModel.GetDeclaredSymbol(classNode)!;
-
-        if (MilterContextInterface == null)
+        if (emission.Namespace != null)
         {
-            foreach (var iface in classSymbol.AllInterfaces)
-            {
-                var attrs = iface.GetAttributes().Select(a => a.AttributeClass);
-                var hasMarkerAttribute = attrs.Any(a => a != null && MilterContextMarkerAttribute.IsDescribedBy(a));
+            source.Append("namespace ").Append(emission.Namespace).AppendLine();
+            source.AppendLine("{");
 
-                if (!hasMarkerAttribute)
-                    continue;
-
-                MilterContextInterface = iface;
-
-                break;
-            }
-
-            if (MilterContextInterface == null)
-                return; // because the class cannot be a context implementation
-
-            foreach (var member in MilterContextInterface.GetMembers())
-            {
-                if (member is not { Kind: SymbolKind.Property, IsStatic: true })
-                    continue;
-
-                var property = (IPropertySymbol)member;
-                var protocolRequirementsEnumCandidate = property.Type;
-                var candidateAttrs = protocolRequirementsEnumCandidate.GetAttributes().Select(a => a.AttributeClass);
-
-                var hasMarkerAttribute = candidateAttrs.Any(ac => ac != null && ProtocolRequirementsMarkerAttribute.IsDescribedBy(ac));
-                if (!hasMarkerAttribute)
-                    continue;
-
-                ProtocolRequirementsProperty = property;
-                ProtocolRequirementsEnum = (INamedTypeSymbol)protocolRequirementsEnumCandidate;
-
-                break;
-            }
-
-            var milterCallbackCandidates = MilterContextInterface.AllInterfaces.SelectMany(iface => iface.GetMembers().OfType<IMethodSymbol>());
-
-            foreach (var milterCallbackCandidate in milterCallbackCandidates)
-            {
-                var markerAttributeData = milterCallbackCandidate
-                    .GetAttributes()
-                    .SingleOrDefault(ad => ad.AttributeClass != null && MilterCallbackMarkerAttribute.IsDescribedBy(ad.AttributeClass));
-
-                if (markerAttributeData == null)
-                    continue;
-
-                var reqName = MilterCallbackMarkerAttribute.GetProtocolRequirementName(markerAttributeData);
-
-                MilterCallbacks ??= new List<(IMethodSymbol Callback, string ProtocolRequirementName)>(capacity: 8);
-                MilterCallbacks.Add((milterCallbackCandidate, reqName));
-            }
-
-            MilterContextImplementations ??= new List<GeneratorSyntaxContext>();
-            MilterContextImplementations.Add(context);
-
-            return;
+            depth++;
         }
 
-        var isMilterContextImpl = classSymbol.AllInterfaces.Any(iface => iface.Equals(MilterContextInterface, SymbolEqualityComparer.Default));
+        foreach (var containing in emission.ContainingTypes)
+        {
+            source.Append(Indent(depth)).Append(containing).AppendLine();
+            source.Append(Indent(depth)).AppendLine("{");
 
-        if (!isMilterContextImpl)
-            return;
+            depth++;
+        }
 
-        MilterContextImplementations ??= new List<GeneratorSyntaxContext>();
-        MilterContextImplementations.Add(context);
+        source.Append(Indent(depth)).Append(emission.TypeDeclaration).AppendLine();
+        source.Append(Indent(depth)).AppendLine("{");
+
+        source.AppendLine(string.Join(NEW_LINE + NEW_LINE, emission.Properties.Select(property => Reindent(property, depth + 1))));
+
+        source.Append(Indent(depth)).AppendLine("}");
+
+        for (depth--; depth >= 0; depth--)
+            source.Append(Indent(depth)).AppendLine("}");
+
+        context.AddSource(emission.HintName, SourceText.From(source.ToString(), Encoding.UTF8));
+    }
+
+    private static string DeriveProtocolRequirements(INamedTypeSymbol contextType, INamedTypeSymbol contextInterface, ITypeSymbol requirementsEnum)
+    {
+        var overridden = new HashSet<string>(StringComparer.Ordinal);
+
+        var callbacks = contextInterface.AllInterfaces
+            .Append(contextInterface)
+            .SelectMany(@interface => @interface.GetMembers())
+            .OfType<IMethodSymbol>();
+
+        foreach (var callback in callbacks)
+        {
+            var marker = callback
+                .GetAttributes()
+                .FirstOrDefault(attribute => attribute.AttributeClass != null && MilterCallbackMarkerAttribute.IsDescribedBy(attribute.AttributeClass));
+
+            if (marker == null)
+                continue;
+
+            var implementation = contextType.FindImplementationForInterfaceMember(callback);
+
+            // The interface hands back its own default when nothing overrode it, and an event nobody
+            // wrote a body for is an event there is no point asking the MTA to send.
+            if (implementation == null || implementation.Equals(callback, SymbolEqualityComparer.Default))
+                continue;
+
+            overridden.Add(MilterCallbackMarkerAttribute.GetProtocolRequirementName(marker));
+        }
+
+        return Combine(requirementsEnum, overridden);
+    }
+
+    // Spells the flags out in the order the enum declares them rather than the order they were found, so
+    // the generated line reads like the enum does and does not churn when the analysis changes.
+    private static string Combine(ITypeSymbol requirementsEnum, ICollection<string> names)
+    {
+        var typeName = requirementsEnum.ToDisplayString();
+
+        var declared = requirementsEnum
+            .GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(member => member.IsConst && names.Contains(member.Name))
+            .Select(member => $"{typeName}.{member.Name}")
+            .ToImmutableArray();
+
+        if (declared.Length == 0)
+            return $"default({typeName})";
+
+        return string.Join(" | ", declared);
+    }
+
+    private static string RenderProperty(IPropertySymbol property, string expression)
+    {
+        return
+            $"""
+             {GENERATED_MEMBER_ATTRIBUTES}
+             public static {property.Type.ToDisplayString()} {property.Name} => {expression};
+             """;
+    }
+
+    private static bool NeedsGenerating(INamedTypeSymbol contextType, IPropertySymbol? property)
+    {
+        return property != null && contextType.FindImplementationForInterfaceMember(property) == null;
+    }
+
+    private static IPropertySymbol? FindRequirementProperty(INamedTypeSymbol contextInterface, Func<INamedTypeSymbol, bool> isMarker)
+    {
+        return contextInterface
+            .GetMembers()
+            .OfType<IPropertySymbol>()
+            .FirstOrDefault(property => property.IsStatic && property.Type.GetAttributes().Any(attribute => attribute.AttributeClass != null && isMarker(attribute.AttributeClass)));
+    }
+
+    private static bool HasContextMarker(INamedTypeSymbol candidate)
+    {
+        return candidate
+            .GetAttributes()
+            .Any(attribute => attribute.AttributeClass != null && MilterContextMarkerAttribute.IsDescribedBy(attribute.AttributeClass));
+    }
+
+    private static bool IsPrimaryDeclaration(INamedTypeSymbol contextType, ClassDeclarationSyntax declaration)
+    {
+        var primary = contextType.DeclaringSyntaxReferences
+            .OrderBy(reference => reference.SyntaxTree.FilePath, StringComparer.Ordinal)
+            .ThenBy(reference => reference.Span.Start)
+            .FirstOrDefault();
+
+        return primary != null
+            && primary.SyntaxTree == declaration.SyntaxTree
+            && primary.Span == declaration.Span;
+    }
+
+    private static IEnumerable<TypeDeclarationSyntax> EnclosingDeclarations(ClassDeclarationSyntax declaration)
+    {
+        for (SyntaxNode? node = declaration; node is TypeDeclarationSyntax type; node = node.Parent)
+            yield return type;
+    }
+
+    private static bool IsPartial(TypeDeclarationSyntax declaration)
+    {
+        return declaration.Modifiers.Any(modifier => modifier.IsKind(SyntaxKind.PartialKeyword));
+    }
+
+    private static string RenderTypeDeclaration(TypeDeclarationSyntax declaration)
+    {
+        var keyword = declaration is RecordDeclarationSyntax record
+            ? $"record {record.ClassOrStructKeyword.ValueText}".TrimEnd()
+            : declaration.Keyword.ValueText;
+
+        return $"partial {keyword} {declaration.Identifier.ValueText}{declaration.TypeParameterList?.ToString()}";
+    }
+
+    private static string CreateHintName(INamedTypeSymbol contextType)
+    {
+        var name = contextType
+            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat.WithGlobalNamespaceStyle(SymbolDisplayGlobalNamespaceStyle.Omitted))
+            .Replace('<', '{')
+            .Replace('>', '}');
+
+        return $"{name}.g.cs";
+    }
+
+    private static string Indent(int depth)
+    {
+        return new string(' ', depth * 4);
+    }
+
+    private static string Reindent(string block, int depth)
+    {
+        var indent = Indent(depth);
+
+        return string.Join(NEW_LINE, block.Split('\n').Select(line => indent + line.TrimEnd('\r')));
     }
 }

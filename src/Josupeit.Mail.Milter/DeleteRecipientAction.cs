@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -18,6 +19,7 @@ namespace Josupeit.Mail.Milter;
 /// instead. Requires <see cref="ActionRequirements.DeleteRecipients"/>. Reached through
 /// <see cref="ModificationActions.DeleteRecipient"/>, which is where the address is validated.
 /// </remarks>
+[MilterActionMarker(nameof(ActionRequirements.DeleteRecipients))]
 public sealed record DeleteRecipientAction : ModificationAction
 {
     internal DeleteRecipientAction(string recipient)

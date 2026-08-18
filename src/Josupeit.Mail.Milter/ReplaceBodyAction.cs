@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -21,6 +22,7 @@ namespace Josupeit.Mail.Milter;
 /// <see cref="ActionRequirements.ChangeBody"/>. Reached through
 /// <see cref="ModificationActions.ReplaceBody"/>.
 /// </remarks>
+[MilterActionMarker(nameof(ActionRequirements.ChangeBody))]
 public sealed record ReplaceBodyAction : ModificationAction
 {
     private const int CHUNK_SIZE = 65535;
