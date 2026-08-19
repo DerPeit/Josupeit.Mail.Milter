@@ -51,6 +51,16 @@ internal sealed class ConnectedState(IProtocolStateMachine stateMachine) : Proto
         return ProcessRequest(request, static ca => ca.OnHeader);
     }
 
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnMessageDataStarted);
+    }
+
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnUnknownCommand);
+    }
+
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
         return ProcessRequest(request, static ca => packet => ca.OnDefineMacro(packet));

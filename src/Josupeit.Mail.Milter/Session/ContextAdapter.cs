@@ -42,6 +42,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
                 CommandCode.Helo => ProtocolStage.ClientHello,
                 CommandCode.Sender => ProtocolStage.Sender,
                 CommandCode.Recipient => ProtocolStage.Recipient,
+                CommandCode.MessageData => ProtocolStage.MessageData,
                 CommandCode.Header => ProtocolStage.Header,
                 CommandCode.EndOfHeaders => ProtocolStage.EndOfHeaders,
                 CommandCode.BodyChunk => ProtocolStage.Body,
@@ -99,6 +100,20 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
         return Invoke(
             request,
             static (context, _, token) => context.OnEndOfHeaders(token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnMessageDataStarted(MessageDataRequestPacket request)
+    {
+        return Invoke(
+            request,
+            static (context, _, token) => context.OnMessageDataStarted(token));
+    }
+
+    public IAsyncEnumerable<ResponsePacket> OnUnknownCommand(UnknownCommandRequestPacket request)
+    {
+        return Invoke(
+            new UnknownCommandInformation(request.CommandText),
+            static (context, info, token) => context.OnUnknownCommand(info, token));
     }
 
     // The body arrives as a span, which cannot be a type argument, so this one hands the packet through

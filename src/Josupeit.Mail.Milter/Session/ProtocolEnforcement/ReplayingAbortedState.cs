@@ -46,6 +46,16 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         return ProcessRequest(request, static ca => ca.OnHeader, responseExpected: true, cancellationToken);
     }
 
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnMessageDataStarted, responseExpected: true, cancellationToken);
+    }
+
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnUnknownCommand, responseExpected: true, cancellationToken);
+    }
+
     // Unlike AbortedState, a macro definition does transition here, and that difference is deliberate:
     // replaying is what moves this state on, and it has to happen before the next message's events reach
     // the fresh context. The macro cannot be handled without it.

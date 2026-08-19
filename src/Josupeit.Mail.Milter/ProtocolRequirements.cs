@@ -64,7 +64,26 @@ public enum ProtocolRequirements
     EndOfBody = 0, // cannot be excluded
 
     /// <summary>
+    /// The SMTP <c>DATA</c> verb. Delivered to <see cref="IMilterCallbacks.OnMessageDataStarted"/>.
+    /// </summary>
+    /// <remarks>
+    /// Needs protocol version 4 or above from the MTA. Fires after the last recipient and before the
+    /// first header, which makes it the one point where the whole envelope is known and none of the
+    /// content is.
+    /// </remarks>
+    MessageData = 128,
+
+    /// <summary>
+    /// An SMTP command the MTA does not recognise. Delivered to
+    /// <see cref="IMilterCallbacks.OnUnknownCommand"/>.
+    /// </summary>
+    /// <remarks>
+    /// Needs protocol version 3 or above from the MTA.
+    /// </remarks>
+    UnknownCommand = 256,
+
+    /// <summary>
     /// Every event at once.
     /// </summary>
-    All = Connect | ClientHello | Sender | Recipient | Header | EndOfHeaders | Body | EndOfBody,
+    All = Connect | ClientHello | Sender | Recipient | MessageData | Header | EndOfHeaders | Body | UnknownCommand | EndOfBody,
 }

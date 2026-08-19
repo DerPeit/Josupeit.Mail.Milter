@@ -45,6 +45,16 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine) : Protoco
         return ProcessRequest(request, static ca => ca.OnHeader);
     }
 
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnMessageDataStarted);
+    }
+
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnUnknownCommand);
+    }
+
     // A macro definition carries no message content, so it does not start the next message and does not
     // transition. The replaying counterpart cannot follow that rule: replaying is what moves it on.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)

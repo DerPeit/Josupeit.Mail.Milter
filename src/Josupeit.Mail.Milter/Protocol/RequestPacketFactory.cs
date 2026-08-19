@@ -52,6 +52,8 @@ public class RequestPacketFactory : IRequestPacketFactory
                 CommandCode.OptionNegotiation => CreateOptionNegotiationRequestPacket(frame.Data),
                 CommandCode.Recipient => CreateRecipientRequestPacket(frame.Data),
                 CommandCode.Quit => CreateQuitRequestPacket(frame.Data),
+                CommandCode.MessageData => CreateMessageDataRequestPacket(frame.Data),
+                CommandCode.UnknownCommand => CreateUnknownCommandRequestPacket(frame.Data),
 
                 _ => throw new ArgumentOutOfRangeException(nameof(frame))
             };
@@ -197,6 +199,39 @@ public class RequestPacketFactory : IRequestPacketFactory
     protected virtual EndOfHeadersRequestPacket CreateEndOfHeadersRequestPacket(ReadOnlyMemory<byte> data)
     {
         return EndOfHeadersRequestPacket.Instance;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="MessageDataRequestPacket"/> from the frame's payload. Override to change how it is
+    /// read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    protected virtual MessageDataRequestPacket CreateMessageDataRequestPacket(ReadOnlyMemory<byte> data)
+    {
+        return MessageDataRequestPacket.Instance;
+    }
+
+    /// <summary>
+    /// Builds an <see cref="UnknownCommandRequestPacket"/> from the frame's payload. Override to change how it
+    /// is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Unknown frame.</exception>
+    protected virtual UnknownCommandRequestPacket CreateUnknownCommandRequestPacket(ReadOnlyMemory<byte> data)
+    {
+        var remaining = data.Span;
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var commandText);
+
+        EnsureHasReadEverything(hasReadEverything);
+
+        var packet = new UnknownCommandRequestPacket
+        {
+            CommandText = commandText!,
+        };
+
+        return packet;
     }
 
     /// <summary>

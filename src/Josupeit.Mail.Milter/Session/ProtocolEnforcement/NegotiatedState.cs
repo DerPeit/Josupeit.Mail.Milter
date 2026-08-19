@@ -57,6 +57,16 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine) : Prot
         return ProcessRequest(request, static ca => ca.OnHeader);
     }
 
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnMessageDataStarted);
+    }
+
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static ca => ca.OnUnknownCommand);
+    }
+
     // A macro definition carries no message content, so it neither starts the next message nor transitions.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {

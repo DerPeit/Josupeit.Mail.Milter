@@ -15,6 +15,10 @@ internal sealed record ProtocolStateMachineConfiguration(ProtocolRequirements Pr
 
     public bool IsAwaitingRecipients => ProtocolRequirements.HasFlag(ProtocolRequirements.Recipient);
 
+    public bool IsAwaitingMessageData => ProtocolRequirements.HasFlag(ProtocolRequirements.MessageData);
+
+    public bool IsAwaitingUnknownCommands => ProtocolRequirements.HasFlag(ProtocolRequirements.UnknownCommand);
+
     public bool IsAwaitingHeaders => ProtocolRequirements.HasFlag(ProtocolRequirements.Header);
 
     public bool IsAwaitingEndOfHeaders => ProtocolRequirements.HasFlag(ProtocolRequirements.EndOfHeaders);
@@ -64,6 +68,12 @@ internal sealed record ProtocolStateMachineConfiguration(ProtocolRequirements Pr
 
         if (!IsAwaitingRecipients)
             flags |= ContentBypassDiscriminator.NoRecipient;
+
+        if (!IsAwaitingMessageData)
+            flags |= ContentBypassDiscriminator.NoMessageData;
+
+        if (!IsAwaitingUnknownCommands)
+            flags |= ContentBypassDiscriminator.NoUnknownCommand;
 
         if (!IsAwaitingHeaders)
             flags |= ContentBypassDiscriminator.NoHeader;

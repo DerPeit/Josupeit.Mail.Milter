@@ -34,6 +34,11 @@ public enum ProtocolStage
     Recipient,
 
     /// <summary>
+    /// The client sent <c>DATA</c> and the message content is about to follow.
+    /// </summary>
+    MessageData,
+
+    /// <summary>
     /// A message header arrived.
     /// </summary>
     Header,
