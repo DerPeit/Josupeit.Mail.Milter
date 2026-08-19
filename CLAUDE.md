@@ -56,7 +56,9 @@ Verify a packaging change by unzipping the result, not by trusting a green `dotn
 
 `development` is the default branch and where feature branches land; `main` is the release branch. **Merge with `--no-ff` in both directions**, so a feature keeps its own commits and the merge commit stays a thing a release can be rewritten onto.
 
-`main` is not merely a convention here. `version.json` sets `publicReleaseRefSpec` to `^refs/heads/main$`, so only a build off `main` produces a clean version - anywhere else Nerdbank.GitVersioning appends the commit id (`0.1.10-g3ec122c51c`). The Pack and Push steps in `.forgejo/workflows/ci.yml` are gated on the same ref, which is why nothing publishes from `development`. **`main` does not exist yet**, so publishing is inert until it does.
+**Every merge commit carries a written message, never the default.** `Merge branch 'x' into y` on its own repeats what the graph already shows. Say what the branch was for and why it was worth doing, exactly as for any other commit - and more so for a merge into `main`, whose message is the nearest thing to a release description the history holds. Pass it with `git merge -F <file>`: `git merge` does not read a message from stdin, so `-F -` fails.
+
+`main` is not merely a convention here. `version.json` sets `publicReleaseRefSpec` to `^refs/heads/main$`, so only a build off `main` produces a clean version - anywhere else Nerdbank.GitVersioning appends the commit id (`0.1.10-g3ec122c51c`). The Pack and Push steps in `.forgejo/workflows/ci.yml` are gated on the same ref, which is why nothing publishes from `development`. **A push to `main` therefore publishes**, as far as the pipeline is concerned - the only thing standing between a merge and nuget.org is the `NUGET_API_KEY` secret existing on the repository.
 
 After merging `development` into `main`:
 
