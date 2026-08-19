@@ -19,9 +19,15 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
     <PackageReference Include="Nito.AsyncEx.Coordination" Version="[5,6)" />
-    <PackageReference Include="System.Interactive.Async" Version="[6.0.1,7)" />
+    <!--
+      Ix 7 rather than 6: 6 depends on System.Linq.Async, whose System.Linq.AsyncEnumerable type is
+      in the box from net10 on, so a net10 consumer got two definitions and an ambiguous call the
+      moment they wrote ToAsyncEnumerable themselves. Ix 7 depends on Microsoft's backport instead,
+      which resolves to nothing on net10 and to a real assembly below it. AsyncEnumerableEx.Return and
+      Finally, the only two operators here that are not plain async LINQ, still come from this package.
+    -->
+    <PackageReference Include="System.Interactive.Async" Version="[7.0.1,8)" />
     <PackageReference Include="System.IO.Pipelines" Version="[8,9)" />
-    <PackageReference Include="System.Linq.Async" Version="[6.0.1,7)" />
   </ItemGroup>
 
   <ItemGroup>

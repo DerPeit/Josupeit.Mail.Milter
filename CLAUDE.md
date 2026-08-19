@@ -50,7 +50,7 @@ The tree is split three ways, and the split decides what a project inherits. `sr
 
 **The generator is packed into the library as an analyzer, not depended on.** Its `ProjectReference` is `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, so nothing of it reaches this assembly's metadata or `deps.json`, and NuGet emits no dependency on a package that will never exist. `IncludeGeneratorAsAnalyzerInPackage` puts the assembly under `analyzers/dotnet/cs/` by hand. See the generator section at the bottom for how the library gets the marker attributes without referencing it.
 
-Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library and its `.xml` doc file **and nothing else**, `analyzers/dotnet/cs/` holding the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the four runtime packages.
+Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library and its `.xml` doc file **and nothing else**, `analyzers/dotnet/cs/` holding the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the three runtime packages.
 
 ## Branching & releasing
 
@@ -147,7 +147,8 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 - Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline. `DynamicProxyGenAssembly2` is granted the same from `test/Directory.Build.props`, which is what lets NSubstitute mock internal types.
 - NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that _can_ be mocked. Keep that shim if you touch body handling in tests.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
-- Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Linq.Async` (`IAsyncEnumerable` LINQ).
+- Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Interactive.Async` (`AsyncEnumerableEx.Return` and `Finally`, plus `ToAsyncEnumerable` through the dependency it carries).
+- **Ix is pinned to 7, not 6, and that matters.** Ix 6 depends on `System.Linq.Async`, which defines `System.Linq.AsyncEnumerable` - a type that is in the box from net10 on. A net10 consumer therefore got two definitions of it and an ambiguous call (CS0121) as soon as they wrote `ToAsyncEnumerable` in their own code. Ix 7 depends on Microsoft's `System.Linq.AsyncEnumerable` package instead, which resolves to nothing on net10. The same collision is what broke the generator tests in CI, because `GeneratorHarness` references the host runtime's assemblies alongside the output directory's.
 
 ## Source generator (`Josupeit.Mail.Milter.Generator`)
 
