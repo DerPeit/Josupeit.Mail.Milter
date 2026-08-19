@@ -50,6 +50,12 @@ internal sealed record ProtocolStateMachineConfiguration(ProtocolRequirements Pr
         if (ActionRequirements.HasFlag(ActionRequirements.QuarantineMessage))
             flags |= ActionDiscriminator.QuarantineMessage;
 
+        if (ActionRequirements.HasFlag(ActionRequirements.ChangeSender))
+            flags |= ActionDiscriminator.ChangeSender;
+
+        if (ActionRequirements.HasFlag(ActionRequirements.AddRecipientsWithParameters))
+            flags |= ActionDiscriminator.AddRecipientsWithParameters;
+
         return flags;
     }
 

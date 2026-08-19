@@ -143,6 +143,69 @@ public sealed class ResponseFrameFactoryTests
     }
 
     [Test]
+    public void Inserting_a_header_counts_from_one_on_the_wire()
+    {
+        var packet = new InsertHeaderResponsePacket { Index = 0, Name = "X-Checked-By", Value = "Sybil Sieve" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.InsertHeader));
+        Assert.That(
+            GetData(frame),
+            Is.EqualTo(new byte[] { 0, 0, 0, 1 }.Concat(Latin1("X-Checked-By\0Sybil Sieve\0")).ToArray()),
+            "Index 0 means above every header, which the wire spells as 1.");
+    }
+
+    [Test]
+    public void Changing_the_sender_without_arguments_leaves_the_second_field_off_entirely()
+    {
+        var packet = new ChangeSenderResponsePacket { Sender = "<bounces@example.com>" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ChangeSender));
+        Assert.That(
+            GetData(frame),
+            Is.EqualTo(Latin1("<bounces@example.com>\0")),
+            "A lone terminator would read as an empty argument string rather than as no arguments.");
+    }
+
+    [Test]
+    public void Changing_the_sender_with_arguments_writes_both_fields()
+    {
+        var packet = new ChangeSenderResponsePacket { Sender = "<bounces@example.com>", ESmtpArguments = "BODY=8BITMIME" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("<bounces@example.com>\0BODY=8BITMIME\0")));
+    }
+
+    [Test]
+    public void An_empty_argument_string_counts_as_no_arguments()
+    {
+        var packet = new ChangeSenderResponsePacket { Sender = "<bounces@example.com>", ESmtpArguments = "" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("<bounces@example.com>\0")));
+    }
+
+    [Test]
+    public void Adding_a_recipient_with_parameters_writes_both_fields()
+    {
+        var packet = new AddRecipientWithParametersResponsePacket
+        {
+            Recipient = "<archive@example.com>",
+            ESmtpArguments = "NOTIFY=NEVER",
+        };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.AddRecipientWithParameters));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("<archive@example.com>\0NOTIFY=NEVER\0")));
+    }
+
+    [Test]
     public void Negotiation_writes_three_big_endian_words()
     {
         var packet = new OptionNegotiationResponsePacket

@@ -30,6 +30,79 @@ public sealed class ActionValidationTests
         Assert.That(() => ModificationActions.DeleteHeader(name), Throws.ArgumentException);
     }
 
+    [TestCase("X-Test: injected")]
+    [TestCase("X Test")]
+    [TestCase("X-Test\r\n")]
+    public void A_malformed_header_name_is_rejected_when_inserting(string name)
+    {
+        Assert.That(() => ModificationActions.InsertHeader(name, "value"), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void An_inserted_header_value_carrying_a_control_character_is_rejected()
+    {
+        Assert.That(
+            () => ModificationActions.InsertHeader("X-Test", "plain\r\nX-Injected: yes"),
+            Throws.ArgumentException);
+    }
+
+    [Test]
+    public void A_negative_insertion_index_is_rejected()
+    {
+        Assert.That(
+            () => ModificationActions.InsertHeader("X-Test", "value", index: -1),
+            Throws.InstanceOf<ArgumentOutOfRangeException>());
+    }
+
+    [Test]
+    public void An_inserted_header_defaults_to_the_top_of_the_message()
+    {
+        var action = ModificationActions.InsertHeader("X-Checked-By", "Sybil Sieve");
+
+        Assert.That(action.Index, Is.Zero);
+    }
+
+    [Test]
+    public void A_sender_carrying_a_control_character_is_rejected()
+    {
+        Assert.That(
+            () => ModificationActions.ChangeSender("<eve@example.com>\r\nMAIL FROM:<mallory@example.com>"),
+            Throws.ArgumentException);
+    }
+
+    [Test]
+    public void Sender_arguments_carrying_a_control_character_are_rejected()
+    {
+        Assert.That(
+            () => ModificationActions.ChangeSender("<bounces@example.com>", "BODY=8BITMIME\r\nDATA"),
+            Throws.ArgumentException);
+    }
+
+    [Test]
+    public void A_sender_without_arguments_is_accepted()
+    {
+        var action = ModificationActions.ChangeSender("<bounces@example.com>");
+
+        Assert.That(action.ESmtpArguments, Is.Null);
+    }
+
+    [TestCase("<archive@example.com>\r\nRCPT TO:<eve@example.com>", "NOTIFY=NEVER")]
+    [TestCase("<archive@example.com>", "NOTIFY=NEVER\r\nDATA")]
+    public void A_parameterised_recipient_carrying_a_control_character_is_rejected(string recipient, string arguments)
+    {
+        Assert.That(
+            () => ModificationActions.AddRecipientWithParameters(recipient, arguments),
+            Throws.ArgumentException);
+    }
+
+    [Test]
+    public void A_parameterised_recipient_requires_its_parameters()
+    {
+        Assert.That(
+            () => ModificationActions.AddRecipientWithParameters("<archive@example.com>", string.Empty),
+            Throws.ArgumentException);
+    }
+
     [Test]
     public void A_header_value_outside_ASCII_is_accepted()
     {

@@ -124,6 +124,147 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         }
     }
 
+    protected internal override bool VisitInsertHeaderResponsePacket(InsertHeaderResponsePacket responsePacket)
+    {
+        const int INDEX_LENGTH = sizeof(uint);
+        var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
+        const int END_OF_NAME_MARK_LENGTH = 1;
+        var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
+        const int END_OF_VALUE_MARK_LENGTH = 1;
+        var blockLength = INDEX_LENGTH + nameLength + END_OF_NAME_MARK_LENGTH + valueLength + END_OF_VALUE_MARK_LENGTH;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+
+        try
+        {
+            var memoryBlock = memoryOwner.Memory[..blockLength];
+
+            const int INDEX_OFFSET = 0;
+            var nameOffset = INDEX_OFFSET + INDEX_LENGTH;
+            var endOfNameMarkOffset = nameOffset + nameLength;
+            var valueOffset = endOfNameMarkOffset + END_OF_NAME_MARK_LENGTH;
+            var endOfValueMarkOffset = valueOffset + valueLength;
+
+            var indexMemoryBlock = memoryBlock.Slice(INDEX_OFFSET, INDEX_LENGTH);
+            var nameMemoryBlock = memoryBlock.Slice(nameOffset, nameLength);
+            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, END_OF_NAME_MARK_LENGTH);
+            var valueMemoryBlock = memoryBlock.Slice(valueOffset, valueLength);
+            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, END_OF_VALUE_MARK_LENGTH);
+
+            endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
+
+            // The wire counts the headers to insert after from one, while the API counts from zero like
+            // every other index a caller meets. Same translation as a header change, and the same cost
+            // for getting it wrong: the header lands beside its intended neighbour rather than on it.
+            BinaryPrimitives.WriteUInt32BigEndian(indexMemoryBlock.Span, responsePacket.Index + 1);
+            Encoding.Latin1.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
+
+            _responseFrame = new(ResponseCode.InsertHeader, memoryOwner, ..blockLength);
+
+            return true;
+        }
+        catch
+        {
+            memoryOwner.Dispose();
+
+            throw;
+        }
+    }
+
+    protected internal override bool VisitChangeSenderResponsePacket(ChangeSenderResponsePacket responsePacket)
+    {
+        var senderLength = Encoding.Latin1.GetByteCount(responsePacket.Sender);
+        const int END_OF_SENDER_MARK_LENGTH = 1;
+
+        // The MTA reads the arguments only if bytes remain after the sender, so "none" is an absent
+        // field rather than an empty one. Writing a lone terminator instead would hand it an empty
+        // argument string, which is not the same thing.
+        var hasArguments = !string.IsNullOrEmpty(responsePacket.ESmtpArguments);
+        var argumentsLength = hasArguments ? Encoding.Latin1.GetByteCount(responsePacket.ESmtpArguments!) : 0;
+        var endOfArgumentsMarkLength = hasArguments ? 1 : 0;
+        var blockLength = senderLength + END_OF_SENDER_MARK_LENGTH + argumentsLength + endOfArgumentsMarkLength;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+
+        try
+        {
+            var memoryBlock = memoryOwner.Memory[..blockLength];
+
+            const int SENDER_OFFSET = 0;
+            var endOfSenderMarkOffset = SENDER_OFFSET + senderLength;
+            var argumentsOffset = endOfSenderMarkOffset + END_OF_SENDER_MARK_LENGTH;
+
+            var senderMemoryBlock = memoryBlock.Slice(SENDER_OFFSET, senderLength);
+            var endOfSenderMarkMemoryBlock = memoryBlock.Slice(endOfSenderMarkOffset, END_OF_SENDER_MARK_LENGTH);
+
+            endOfSenderMarkMemoryBlock.Span[0] = 0;
+
+            Encoding.Latin1.GetBytes(responsePacket.Sender, senderMemoryBlock.Span);
+
+            if (hasArguments)
+            {
+                var argumentsMemoryBlock = memoryBlock.Slice(argumentsOffset, argumentsLength);
+                var endOfArgumentsMarkMemoryBlock = memoryBlock.Slice(argumentsOffset + argumentsLength, endOfArgumentsMarkLength);
+
+                endOfArgumentsMarkMemoryBlock.Span[0] = 0;
+
+                Encoding.Latin1.GetBytes(responsePacket.ESmtpArguments!, argumentsMemoryBlock.Span);
+            }
+
+            _responseFrame = new(ResponseCode.ChangeSender, memoryOwner, ..blockLength);
+
+            return true;
+        }
+        catch
+        {
+            memoryOwner.Dispose();
+
+            throw;
+        }
+    }
+
+    protected internal override bool VisitAddRecipientWithParametersResponsePacket(AddRecipientWithParametersResponsePacket responsePacket)
+    {
+        var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
+        const int END_OF_RECIPIENT_MARK_LENGTH = 1;
+        var argumentsLength = Encoding.Latin1.GetByteCount(responsePacket.ESmtpArguments);
+        const int END_OF_ARGUMENTS_MARK_LENGTH = 1;
+        var blockLength = recipientLength + END_OF_RECIPIENT_MARK_LENGTH + argumentsLength + END_OF_ARGUMENTS_MARK_LENGTH;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+
+        try
+        {
+            var memoryBlock = memoryOwner.Memory[..blockLength];
+
+            const int RECIPIENT_OFFSET = 0;
+            var endOfRecipientMarkOffset = RECIPIENT_OFFSET + recipientLength;
+            var argumentsOffset = endOfRecipientMarkOffset + END_OF_RECIPIENT_MARK_LENGTH;
+            var endOfArgumentsMarkOffset = argumentsOffset + argumentsLength;
+
+            var recipientMemoryBlock = memoryBlock.Slice(RECIPIENT_OFFSET, recipientLength);
+            var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, END_OF_RECIPIENT_MARK_LENGTH);
+            var argumentsMemoryBlock = memoryBlock.Slice(argumentsOffset, argumentsLength);
+            var endOfArgumentsMarkMemoryBlock = memoryBlock.Slice(endOfArgumentsMarkOffset, END_OF_ARGUMENTS_MARK_LENGTH);
+
+            endOfRecipientMarkMemoryBlock.Span[0] = endOfArgumentsMarkMemoryBlock.Span[0] = 0;
+
+            Encoding.Latin1.GetBytes(responsePacket.Recipient, recipientMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.ESmtpArguments, argumentsMemoryBlock.Span);
+
+            _responseFrame = new(ResponseCode.AddRecipientWithParameters, memoryOwner, ..blockLength);
+
+            return true;
+        }
+        catch
+        {
+            memoryOwner.Dispose();
+
+            throw;
+        }
+    }
+
     protected internal override bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
     {
         const int INDEX_LENGTH = sizeof(uint);

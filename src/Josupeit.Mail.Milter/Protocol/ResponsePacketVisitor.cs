@@ -60,6 +60,26 @@ public abstract class ResponsePacketVisitor
     }
 
     /// <summary>
+    /// Called for a <see cref="AddRecipientWithParametersResponsePacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="responsePacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitAddRecipientWithParametersResponsePacket(AddRecipientWithParametersResponsePacket responsePacket)
+    {
+        return true;
+    }
+
+    /// <summary>
+    /// Called for a <see cref="ChangeSenderResponsePacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="responsePacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitChangeSenderResponsePacket(ChangeSenderResponsePacket responsePacket)
+    {
+        return true;
+    }
+
+    /// <summary>
     /// Called for a <see cref="ChangeOrDeleteHeaderResponsePacket"/>. The base implementation does nothing.
     /// </summary>
     /// <param name="responsePacket">The packet being visited.</param>
@@ -105,6 +125,16 @@ public abstract class ResponsePacketVisitor
     /// <param name="responsePacket">The packet being visited.</param>
     /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
     protected internal virtual bool VisitDiscardMessageResponsePacket(DiscardMessageResponsePacket responsePacket)
+    {
+        return true;
+    }
+
+    /// <summary>
+    /// Called for a <see cref="InsertHeaderResponsePacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="responsePacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitInsertHeaderResponsePacket(InsertHeaderResponsePacket responsePacket)
     {
         return true;
     }

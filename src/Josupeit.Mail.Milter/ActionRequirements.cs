@@ -60,7 +60,25 @@ public enum ActionRequirements
     QuarantineMessage = 64,
 
     /// <summary>
+    /// The filter may replace the envelope sender. See <see cref="ModificationActions.ChangeSender"/>.
+    /// </summary>
+    /// <remarks>
+    /// Needs an MTA speaking protocol version 6.
+    /// </remarks>
+    ChangeSender = 128,
+
+    /// <summary>
+    /// The filter may add envelope recipients carrying ESMTP arguments. See
+    /// <see cref="ModificationActions.AddRecipientWithParameters"/>.
+    /// </summary>
+    /// <remarks>
+    /// Needs an MTA speaking protocol version 6, and is a separate right from
+    /// <see cref="AddRecipients"/> rather than an extension of it.
+    /// </remarks>
+    AddRecipientsWithParameters = 256,
+
+    /// <summary>
     /// Every modification at once.
     /// </summary>
-    All = AddRecipients | DeleteRecipients | AddHeaders | ChangeHeaders | DeleteHeaders | ChangeBody | QuarantineMessage,
+    All = AddRecipients | DeleteRecipients | AddHeaders | ChangeHeaders | DeleteHeaders | ChangeBody | QuarantineMessage | ChangeSender | AddRecipientsWithParameters,
 }

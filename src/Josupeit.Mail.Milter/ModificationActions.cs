@@ -88,6 +88,93 @@ public static class ModificationActions
     }
 
     /// <summary>
+    /// Inserts a header at a chosen position in the message.
+    /// </summary>
+    /// <remarks>
+    /// Requires the same <see cref="ActionRequirements.AddHeaders"/> as
+    /// <see cref="AddHeader"/>: the protocol has one flag for both.
+    /// </remarks>
+    /// <param name="name">The name of the header to insert, without the separating colon.</param>
+    /// <param name="value">The value of the header to insert.</param>
+    /// <param name="index">
+    /// How many headers to place the new one after, counting from zero. Zero, the default, puts it above
+    /// every existing header.
+    /// </param>
+    /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="name"/> or <paramref name="value"/> is empty, <paramref name="name"/> is not a
+    /// valid header name, or <paramref name="value"/> contains a control character.
+    /// </exception>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="name"/> or <paramref name="value"/> is <see langword="null"/>.
+    /// </exception>
+    /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
+    public static InsertHeaderAction InsertHeader(string name, string value, int index = 0)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        ArgumentException.ThrowIfNullOrEmpty(value);
+        ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
+        ArgumentException.ThrowIfNotHeaderName(name);
+        ArgumentException.ThrowIfContainsControlCharacter(value);
+
+        return new InsertHeaderAction(name, value, index);
+    }
+
+    /// <summary>
+    /// Replaces the envelope sender of the message.
+    /// </summary>
+    /// <remarks>
+    /// This is the address bounces go to, not the <c>From</c> header the recipient sees. Requires
+    /// <see cref="ActionRequirements.ChangeSender"/> and an MTA speaking protocol version 6.
+    /// </remarks>
+    /// <param name="sender">The address to become the new envelope sender.</param>
+    /// <param name="eSmtpArguments">
+    /// The ESMTP arguments to send with it, or <see langword="null"/> for none. An empty string counts
+    /// as none: the field is then left off the frame entirely, which is what the MTA expects.
+    /// </param>
+    /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
+    /// <exception cref="ArgumentException">
+    /// <paramref name="sender"/> is empty, or either argument contains a control character.
+    /// </exception>
+    /// <exception cref="ArgumentNullException"><paramref name="sender"/> is
+    /// <see langword="null"/>.</exception>
+    public static ChangeSenderAction ChangeSender(string sender, string? eSmtpArguments = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(sender);
+        ArgumentException.ThrowIfContainsControlCharacter(sender);
+
+        if (!string.IsNullOrEmpty(eSmtpArguments))
+            ArgumentException.ThrowIfContainsControlCharacter(eSmtpArguments);
+
+        return new ChangeSenderAction(sender, eSmtpArguments);
+    }
+
+    /// <summary>
+    /// Adds an envelope recipient together with the ESMTP arguments that travel with it.
+    /// </summary>
+    /// <remarks>
+    /// Requires <see cref="ActionRequirements.AddRecipientsWithParameters"/> and an MTA speaking
+    /// protocol version 6. Use <see cref="AddRecipient"/> when there are no arguments to send: the two
+    /// need different rights from the MTA, and asking for the wider one buys nothing.
+    /// </remarks>
+    /// <param name="recipient">The address to add to the envelope.</param>
+    /// <param name="eSmtpArguments">The ESMTP arguments to send with it, such as <c>NOTIFY=NEVER</c>.</param>
+    /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
+    /// <exception cref="ArgumentException">
+    /// Either argument is empty or contains a control character.
+    /// </exception>
+    /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
+    public static AddRecipientWithParametersAction AddRecipientWithParameters(string recipient, string eSmtpArguments)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(recipient);
+        ArgumentException.ThrowIfNullOrEmpty(eSmtpArguments);
+        ArgumentException.ThrowIfContainsControlCharacter(recipient);
+        ArgumentException.ThrowIfContainsControlCharacter(eSmtpArguments);
+
+        return new AddRecipientWithParametersAction(recipient, eSmtpArguments);
+    }
+
+    /// <summary>
     /// Replaces the value of a header already on the message.
     /// </summary>
     /// <param name="name">The header name, without the separating colon.</param>
