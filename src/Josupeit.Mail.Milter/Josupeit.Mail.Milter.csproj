@@ -55,9 +55,11 @@
       wired up in the repository's Directory.Build.props.
     -->
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ActionRequirementsMarkerAttribute.cs" Link="Properties\ActionRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\DeliveryRequirementsMarkerAttribute.cs" Link="Properties\DeliveryRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterActionMarkerAttribute.cs" Link="Properties\MilterActionMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterCallbackMarkerAttribute.cs" Link="Properties\MilterCallbackMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterContextMarkerAttribute.cs" Link="Properties\MilterContextMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterDeliveryMarkerAttribute.cs" Link="Properties\MilterDeliveryMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolRequirementsMarkerAttribute.cs" Link="Properties\ProtocolRequirementsMarkerAttribute.cs" />
   </ItemGroup>
 

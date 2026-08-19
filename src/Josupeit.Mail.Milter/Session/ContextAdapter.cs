@@ -15,6 +15,11 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
 {
     private IMilterCallbacks? _context;
 
+    // The MTA reports a rejected recipient through the macros it sends immediately before the recipient
+    // itself, never in the RCPT frame, so the two have to be put back together here rather than by every
+    // filter that cares.
+    private IReadOnlyDictionary<string, string>? _recipientMacros;
+
     public ValueTask DisposeAsync()
     {
         switch (_context)
@@ -53,6 +58,9 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
             if (!Enum.IsDefined(protocolStage))
                 yield break;
 
+            if (protocolStage == ProtocolStage.Recipient)
+                _recipientMacros = request.Macros;
+
             var info = new MacroDefinitionInformation(protocolStage, request.Macros);
             var context = _context ??= contextFactory();
 
@@ -83,9 +91,25 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
 
     public IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request)
     {
+        var isRejected = IsRejectedByMta(_recipientMacros);
+
+        // Cleared as soon as it has been read. A second RCPT TO can arrive without macros of its own,
+        // and it would otherwise inherit the verdict passed on the first one.
+        _recipientMacros = null;
+
         return Invoke(
-            new RecipientInformation(request.Recipient, request.ESmtpArguments),
+            new RecipientInformation(request.Recipient, request.ESmtpArguments, isRejected),
             static (context, info, token) => context.OnRecipient(info, token));
+    }
+
+    // Postfix sets {rcpt_mailer} to "error" for a recipient it has already refused, and puts the status
+    // code and reason in {rcpt_host} and {rcpt_addr}. The braces are part of the macro name as it
+    // arrives on the wire, so looking it up without them silently never matches.
+    private static bool IsRejectedByMta(IReadOnlyDictionary<string, string>? macros)
+    {
+        return macros != null
+               && macros.TryGetValue("{rcpt_mailer}", out var mailer)
+               && string.Equals(mailer, "error", StringComparison.Ordinal);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request)

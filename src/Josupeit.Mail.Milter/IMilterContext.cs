@@ -40,4 +40,17 @@ public interface IMilterContext : IMilterCallbacks
     /// <see cref="IMilterCallbacks.OnEndOfBody"/> may yield.
     /// </remarks>
     static abstract ActionRequirements ActionRequirements { get; }
+
+    /// <summary>
+    /// Changes this filter wants to how the MTA delivers events.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the two properties above this one has a safe default, so it is
+    /// <see langword="virtual"/> rather than abstract: <see cref="DeliveryRequirements.None"/> is what
+    /// every version 2 filter has always negotiated, and a filter that never declares it behaves exactly
+    /// as it did. The source generator still writes it when it is left alone, deriving
+    /// <see cref="DeliveryRequirements.RejectedRecipients"/> from whether the code reads
+    /// <see cref="RecipientInformation.IsRejectedByMta"/>.
+    /// </remarks>
+    static virtual DeliveryRequirements DeliveryRequirements => DeliveryRequirements.None;
 }

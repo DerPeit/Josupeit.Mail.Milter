@@ -15,11 +15,13 @@ using Microsoft.CodeAnalysis.Text;
 
 namespace Josupeit.Mail.Milter.Generator;
 
-// Writes the two requirement properties of IMilterContext for a filter that did not write them itself.
+// Writes the requirement properties of IMilterContext for a filter that did not write them itself.
 //
 // ProtocolRequirements comes from which callbacks the class overrode: an implementation that is still
 // the interface default is an event the filter does not want delivered. ActionRequirements comes from
 // which actions its code builds - see ActionRequirementsAnalysis for how far that can be taken.
+// DeliveryRequirements comes from whether the code reads a member that only means something once the
+// matching flag has been negotiated.
 //
 // A property the class declares by hand is left alone, so the generator never argues with an author who
 // has decided otherwise.
@@ -67,8 +69,9 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 
         var protocolProperty = FindRequirementProperty(contextInterface, ProtocolRequirementsMarkerAttribute.IsDescribedBy);
         var actionProperty = FindRequirementProperty(contextInterface, ActionRequirementsMarkerAttribute.IsDescribedBy);
+        var deliveryProperty = FindRequirementProperty(contextInterface, DeliveryRequirementsMarkerAttribute.IsDescribedBy);
 
-        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 2);
+        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 3);
         var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
 
         if (NeedsGenerating(contextType, protocolProperty))
@@ -88,6 +91,13 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
                 diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedAction, analysis.UntrackedLocation, contextType.Name, analysis.UntrackedSource));
         }
 
+
+        if (NeedsGenerating(contextType, deliveryProperty))
+        {
+            var delivery = DeliveryRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
+
+            properties.Add(RenderProperty(deliveryProperty!, Combine(deliveryProperty!.Type, delivery)));
+        }
         // Only worth complaining about once there is something to write. A context that declared both
         // properties by hand has no reason to be partial.
         if (properties.Count > 0 && !EnclosingDeclarations(declaration).All(IsPartial))
@@ -226,7 +236,15 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 
     private static bool NeedsGenerating(INamedTypeSymbol contextType, IPropertySymbol? property)
     {
-        return property != null && contextType.FindImplementationForInterfaceMember(property) == null;
+        if (property == null)
+            return false;
+
+        var implementation = contextType.FindImplementationForInterfaceMember(property);
+
+        // An abstract property has no implementation until the class writes one. A virtual property
+        // always has one - the interface hands back its own default - so "nobody wrote this" is the same
+        // test the callbacks already use.
+        return implementation == null || implementation.Equals(property, SymbolEqualityComparer.Default);
     }
 
     private static IPropertySymbol? FindRequirementProperty(INamedTypeSymbol contextInterface, Func<INamedTypeSymbol, bool> isMarker)

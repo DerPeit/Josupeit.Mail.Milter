@@ -53,6 +53,81 @@ public sealed class MilterContextSourceGeneratorTests
     }
 
     [Test]
+    public void Delivery_requirements_are_derived_from_reading_the_rejection_flag()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+            {
+                return new(info.IsRejectedByMta ? CommitActions.Continue : CommitActions.Accept);
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("DeliveryRequirements => Josupeit.Mail.Milter.DeliveryRequirements.RejectedRecipients;"));
+        });
+    }
+
+    [Test]
+    public void The_rejection_flag_is_found_through_a_helper_as_well()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+            {
+                return new(Decide(info));
+            }
+
+            private static CommitAction Decide(RecipientInformation info)
+            {
+                return info.IsRejectedByMta ? CommitActions.Continue : CommitActions.Accept;
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("DeliveryRequirements => Josupeit.Mail.Milter.DeliveryRequirements.RejectedRecipients;"));
+        });
+    }
+
+    [Test]
+    public void A_filter_that_never_asks_whether_a_recipient_was_rejected_needs_no_delivery_change()
+    {
+        var run = GeneratorHarness.Run(Context(
+            "public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("DeliveryRequirements => default(Josupeit.Mail.Milter.DeliveryRequirements);"));
+            Assert.That(run.GeneratedSource, Does.Not.Contain("LeadingHeaderSpace"), "Nothing in a filter's code can ask for it, so it is never derived.");
+        });
+    }
+
+    [Test]
+    public void A_hand_written_delivery_requirement_is_left_alone()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public static DeliveryRequirements DeliveryRequirements => DeliveryRequirements.LeadingHeaderSpace;
+
+            public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+            {
+                return new(info.IsRejectedByMta ? CommitActions.Continue : CommitActions.Accept);
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Does.Not.Contain("DeliveryRequirements =>"), "The author decided; the generator does not argue.");
+        });
+    }
+
+    [Test]
     public void An_explicit_interface_implementation_counts_as_an_override()
     {
         var run = GeneratorHarness.Run(Context(

@@ -24,7 +24,7 @@ namespace Josupeit.Mail.Milter.Session;
 /// <typeparam name="TContext">The filter this session runs. One instance is built per message.</typeparam>
 public partial class Session<TContext> : ISession where TContext : IMilterContext
 {
-    private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements);
+    private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements, TContext.DeliveryRequirements);
 
     private readonly ChannelReader<RequestFrame> _requestFrameReader;
     private readonly IRequestPacketFactory _requestPacketFactory;

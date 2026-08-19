@@ -5,7 +5,10 @@ using Josupeit.Mail.Milter.Link;
 
 namespace Josupeit.Mail.Milter.Session;
 
-internal sealed record ProtocolStateMachineConfiguration(ProtocolRequirements ProtocolRequirements, ActionRequirements ActionRequirements)
+internal sealed record ProtocolStateMachineConfiguration(
+    ProtocolRequirements ProtocolRequirements,
+    ActionRequirements ActionRequirements,
+    DeliveryRequirements DeliveryRequirements = DeliveryRequirements.None)
 {
     public bool IsAwaitingConnection => ProtocolRequirements.HasFlag(ProtocolRequirements.Connect);
 
@@ -80,6 +83,14 @@ internal sealed record ProtocolStateMachineConfiguration(ProtocolRequirements Pr
 
         if (!IsAwaitingUnknownCommands)
             flags |= ContentBypassDiscriminator.NoUnknownCommand;
+
+        // Positive flags, unlike everything else in this method: they ask the MTA for different
+        // behaviour rather than for fewer events, so they are set when wanted rather than when not.
+        if (DeliveryRequirements.HasFlag(DeliveryRequirements.LeadingHeaderSpace))
+            flags |= ContentBypassDiscriminator.LeadingHeaderSpace;
+
+        if (DeliveryRequirements.HasFlag(DeliveryRequirements.RejectedRecipients))
+            flags |= ContentBypassDiscriminator.RejectedRecipients;
 
         if (!IsAwaitingHeaders)
             flags |= ContentBypassDiscriminator.NoHeader;
