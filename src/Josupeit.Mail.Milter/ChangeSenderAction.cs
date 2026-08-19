@@ -18,7 +18,7 @@ namespace Josupeit.Mail.Milter;
 /// MTA speaking protocol version 6. Reached through <see cref="ModificationActions.ChangeSender"/>,
 /// which is where the address is validated.
 /// </remarks>
-[MilterActionMarker(nameof(ActionRequirements.ChangeSender))]
+[MilterActionMarker(nameof(ActionRequirements.ChangeSender), MinimumProtocolVersion = 6)]
 public sealed record ChangeSenderAction : ModificationAction
 {
     internal ChangeSenderAction(string sender, string? eSmtpArguments)

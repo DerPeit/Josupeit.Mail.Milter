@@ -24,7 +24,7 @@ namespace Josupeit.Mail.Milter;
 /// </para>
 /// </remarks>
 [Flags]
-[DeliveryRequirementsMarker]
+[DeliveryRequirementsMarker(MinimumProtocolVersion = 6)]
 public enum DeliveryRequirements
 {
     /// <summary>

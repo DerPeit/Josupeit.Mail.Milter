@@ -63,4 +63,14 @@ public interface IMilterContext : IMilterCallbacks
     /// needed, and is a promise the library will hold the filter to.
     /// </remarks>
     static virtual NoReplyRequirements NoReplyRequirements => NoReplyRequirements.None;
+
+    /// <summary>
+    /// The lowest protocol version an MTA must speak for this filter to work.
+    /// </summary>
+    /// <remarks>
+    /// Left to the source generator, which folds it out of what the other properties turned out to need.
+    /// Negotiation fails when the MTA offers less, which turns a capability silently withheld into a
+    /// failure on the first connection.
+    /// </remarks>
+    static virtual ProtocolVersionRequirement ProtocolVersionRequirement => ProtocolVersionRequirement.Version2;
 }

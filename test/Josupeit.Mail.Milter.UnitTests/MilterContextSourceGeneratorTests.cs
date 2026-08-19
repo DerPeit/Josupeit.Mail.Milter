@@ -574,6 +574,111 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
+    [Test]
+    public void A_filter_using_nothing_newer_asks_for_no_particular_version()
+    {
+        var run = GeneratorHarness.Run(Context(
+            "public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Reject);"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version2;"));
+        });
+    }
+
+    [Test]
+    public void The_unrecognised_command_event_needs_version_3()
+    {
+        var run = GeneratorHarness.Run(Context(
+            "public ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken) => new(CommitActions.Reject);"));
+
+        Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version3;"));
+    }
+
+    [Test]
+    public void The_data_event_needs_version_4()
+    {
+        var run = GeneratorHarness.Run(Context(
+            "public ValueTask<CommitAction> OnMessageDataStarted(CancellationToken cancellationToken) => new(CommitActions.Reject);"));
+
+        Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version4;"));
+    }
+
+    [Test]
+    public void Changing_the_sender_needs_version_6()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public IAsyncEnumerable<Action> OnEndOfBody()
+            {
+                return new Action[] { ModificationActions.ChangeSender("<bounces@example.com>"), CommitActions.Continue }.ToAsyncEnumerable();
+            }
+            """));
+
+        Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
+    }
+
+    // The skip action contributes no ActionRequirements flag at all - SMFIP_SKIP is an event bit - so a
+    // version fold driven off the requirement flags alone would miss it entirely.
+    [Test]
+    public void Skipping_needs_version_6_even_though_it_asks_for_no_modification_right()
+    {
+        var run = GeneratorHarness.Run(Context(
+            "public ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken) => new(CommitActions.SkipRemainingEvents);"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
+            Assert.That(run.GeneratedSource, Contains.Substring("ActionRequirements => default(Josupeit.Mail.Milter.ActionRequirements);"));
+        });
+    }
+
+    [Test]
+    public void Reading_the_rejection_flag_needs_version_6()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+            {
+                return new(info.IsRejectedByMta ? CommitActions.Reject : CommitActions.Accept);
+            }
+            """));
+
+        Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
+    }
+
+    // The maximum wins, not the first or the last thing found.
+    [Test]
+    public void The_highest_requirement_of_several_is_the_one_asked_for()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken) => new(CommitActions.Reject);
+
+            public ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken) => new(CommitActions.SkipRemainingEvents);
+            """));
+
+        Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
+    }
+
+    [Test]
+    public void A_hand_written_version_requirement_is_left_alone()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public static ProtocolVersionRequirement ProtocolVersionRequirement => ProtocolVersionRequirement.Version2;
+
+            public ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken) => new(CommitActions.SkipRemainingEvents);
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Does.Not.Contain("ProtocolVersionRequirement =>"));
+        });
+    }
+
     private static string Context(string body)
     {
         return PREAMBLE +

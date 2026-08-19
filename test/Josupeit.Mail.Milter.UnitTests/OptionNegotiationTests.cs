@@ -118,6 +118,39 @@ public sealed class OptionNegotiationTests
         });
     }
 
+    // The requirement is derived from what the filter actually uses, so this gate only fires for a filter
+    // that would genuinely lose something - a skip masked into a Continue, header values silently
+    // trimmed. Everything else still degrades quietly.
+    [TestCase(2, ProtocolVersionRequirement.Version2)]
+    [TestCase(3, ProtocolVersionRequirement.Version3)]
+    [TestCase(4, ProtocolVersionRequirement.Version4)]
+    [TestCase(6, ProtocolVersionRequirement.Version6)]
+    public void An_mta_that_meets_the_requirement_exactly_is_accepted(int offeredVersion, ProtocolVersionRequirement requirement)
+    {
+        var response = Negotiate(offeredVersion, versionRequirement: requirement);
+
+        Assert.That(response.MilterProtocolVersion.Major, Is.EqualTo(offeredVersion));
+    }
+
+    [TestCase(2, ProtocolVersionRequirement.Version3)]
+    [TestCase(4, ProtocolVersionRequirement.Version6)]
+    [TestCase(2, ProtocolVersionRequirement.Version6)]
+    public void An_mta_below_what_the_filter_needs_fails_negotiation(int offeredVersion, ProtocolVersionRequirement requirement)
+    {
+        Assert.That(
+            () => Negotiate(offeredVersion, versionRequirement: requirement),
+            Throws.InstanceOf<NotSupportedException>());
+    }
+
+    [TestCase(2)]
+    [TestCase(3)]
+    [TestCase(4)]
+    [TestCase(6)]
+    public void A_filter_needing_nothing_newer_never_fails_over_the_version(int offeredVersion)
+    {
+        Assert.That(() => Negotiate(offeredVersion, versionRequirement: ProtocolVersionRequirement.Version2), Throws.Nothing);
+    }
+
     // The outcome is what every later runtime decision reads, so it has to record what was settled
     // rather than what was asked for. A filter's declaration honoured against an MTA that never agreed
     // to it is exactly the bug the type exists to prevent.
@@ -193,11 +226,17 @@ public sealed class OptionNegotiationTests
         ContentBypassDiscriminator? mtaContentBypass = null,
         ActionDiscriminator? mtaActions = null,
         ProtocolRequirements protocolRequirements = ProtocolRequirements.EndOfBody,
-        ActionRequirements actionRequirements = ActionRequirements.None)
+        ActionRequirements actionRequirements = ActionRequirements.None,
+        ProtocolVersionRequirement versionRequirement = ProtocolVersionRequirement.Version2)
     {
         var stateMachine = new FakeProtocolStateMachine
         {
-            Configuration = new ProtocolStateMachineConfiguration(protocolRequirements, actionRequirements),
+            Configuration = new ProtocolStateMachineConfiguration(
+                protocolRequirements,
+                actionRequirements,
+                DeliveryRequirements.None,
+                NoReplyRequirements.None,
+                versionRequirement),
         };
 
         var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);

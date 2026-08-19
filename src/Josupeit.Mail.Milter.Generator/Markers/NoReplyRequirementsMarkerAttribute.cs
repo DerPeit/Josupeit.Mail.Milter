@@ -14,4 +14,7 @@ namespace Josupeit.Mail.Milter.Generator.Markers;
 [Embedded]
 internal sealed partial class NoReplyRequirementsMarkerAttribute : Attribute
 {
+    // Every member of this enum needs the same protocol version, so it is named once here rather than
+    // on each of them.
+    public int MinimumProtocolVersion { get; set; }
 }

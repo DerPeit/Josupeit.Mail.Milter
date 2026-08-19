@@ -33,6 +33,7 @@ internal sealed class ActionRequirementsAnalysis
     private readonly HashSet<SyntaxNode> _enqueuedNodes = [];
     private readonly Queue<SyntaxNode> _pending = new();
 
+    private int _minimumProtocolVersion;
     private string? _untrackedSource;
     private Location? _untrackedLocation;
 
@@ -58,7 +59,7 @@ internal sealed class ActionRequirementsAnalysis
 
         var names = _requirementNames.OrderBy(name => name, StringComparer.Ordinal).ToImmutableArray();
 
-        return new ActionRequirementsResult(names, _untrackedSource, _untrackedLocation);
+        return new ActionRequirementsResult(names, _minimumProtocolVersion, _untrackedSource, _untrackedLocation);
     }
 
     private void Seed(INamedTypeSymbol contextType)
@@ -97,9 +98,17 @@ internal sealed class ActionRequirementsAnalysis
             if (_untrackedSource != null)
                 return;
 
-            var name = ActionTypes.RequirementNameOf(model.GetTypeInfo(expression, _cancellationToken).Type);
+            var expressionType = model.GetTypeInfo(expression, _cancellationToken).Type;
+
+            var name = ActionTypes.RequirementNameOf(expressionType);
             if (name != null)
                 _requirementNames.Add(name);
+
+            // Tracked separately from the flag, because an action can need a protocol version without
+            // needing a modification right - the skip action is exactly that.
+            var version = ActionTypes.MinimumProtocolVersionOf(expressionType);
+            if (version > _minimumProtocolVersion)
+                _minimumProtocolVersion = version;
 
             var symbol = model.GetSymbolInfo(expression, _cancellationToken).Symbol;
             if (symbol != null)

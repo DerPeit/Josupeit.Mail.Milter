@@ -71,13 +71,22 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         var actionProperty = FindRequirementProperty(contextInterface, ActionRequirementsMarkerAttribute.IsDescribedBy);
         var deliveryProperty = FindRequirementProperty(contextInterface, DeliveryRequirementsMarkerAttribute.IsDescribedBy);
         var noReplyProperty = FindRequirementProperty(contextInterface, NoReplyRequirementsMarkerAttribute.IsDescribedBy);
+        var versionProperty = FindRequirementProperty(contextInterface, ProtocolVersionRequirementMarkerAttribute.IsDescribedBy);
 
-        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 4);
+        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 5);
         var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
+
+        // The lowest protocol version this filter can work against, taken as the maximum over everything
+        // the other four properties turned out to need. No separate walk: each marker already visited
+        // carries the version its feature arrived in.
+        //
+        // Starts at the protocol floor rather than at zero: a filter that uses nothing newer still needs
+        // an MTA that speaks version 2, and zero names no member of the enum.
+        var minimumProtocolVersion = 2;
 
         if (NeedsGenerating(contextType, protocolProperty))
         {
-            var requirements = DeriveProtocolRequirements(contextType, contextInterface, protocolProperty!.Type);
+            var requirements = DeriveProtocolRequirements(contextType, contextInterface, protocolProperty!.Type, ref minimumProtocolVersion);
 
             properties.Add(RenderProperty(protocolProperty, requirements));
         }
@@ -87,7 +96,12 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             var analysis = ActionRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
 
             if (analysis.IsComplete)
+            {
                 properties.Add(RenderProperty(actionProperty!, Combine(actionProperty!.Type, analysis.RequirementNames)));
+
+                if (analysis.MinimumProtocolVersion > minimumProtocolVersion)
+                    minimumProtocolVersion = analysis.MinimumProtocolVersion;
+            }
             else
                 diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedAction, analysis.UntrackedLocation, contextType.Name, analysis.UntrackedSource));
         }
@@ -98,6 +112,9 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             var delivery = DeliveryRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
 
             properties.Add(RenderProperty(deliveryProperty!, Combine(deliveryProperty!.Type, delivery)));
+
+            if (delivery.Length > 0)
+                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(deliveryProperty!.Type, DeliveryRequirementsMarkerAttribute.IsDescribedBy, DeliveryRequirementsMarkerAttribute.GetMinimumProtocolVersion));
         }
 
         if (NeedsGenerating(contextType, noReplyProperty))
@@ -105,7 +122,15 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             var noReply = NoReplyRequirementsAnalysis.Run(contextType, contextInterface, context.SemanticModel.Compilation, cancellationToken);
 
             properties.Add(RenderProperty(noReplyProperty!, Combine(noReplyProperty!.Type, noReply)));
+
+            if (noReply.Length > 0)
+                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(noReplyProperty!.Type, NoReplyRequirementsMarkerAttribute.IsDescribedBy, NoReplyRequirementsMarkerAttribute.GetMinimumProtocolVersion));
         }
+
+        // Last, because it is a fold over what the four above turned out to need.
+        if (NeedsGenerating(contextType, versionProperty))
+            properties.Add(RenderProperty(versionProperty!, CombineByValue(versionProperty!.Type, minimumProtocolVersion)));
+
         // Only worth complaining about once there is something to write. A context that declared both
         // properties by hand has no reason to be partial.
         if (properties.Count > 0 && !EnclosingDeclarations(declaration).All(IsPartial))
@@ -183,7 +208,11 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         context.AddSource(emission.HintName, SourceText.From(source.ToString(), Encoding.UTF8));
     }
 
-    private static string DeriveProtocolRequirements(INamedTypeSymbol contextType, INamedTypeSymbol contextInterface, ITypeSymbol requirementsEnum)
+    private static string DeriveProtocolRequirements(
+        INamedTypeSymbol contextType,
+        INamedTypeSymbol contextInterface,
+        ITypeSymbol requirementsEnum,
+        ref int minimumProtocolVersion)
     {
         var overridden = new HashSet<string>(StringComparer.Ordinal);
 
@@ -209,6 +238,10 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
                 continue;
 
             overridden.Add(MilterCallbackMarkerAttribute.GetProtocolRequirementName(marker));
+
+            var version = MilterCallbackMarkerAttribute.GetMinimumProtocolVersion(marker);
+            if (version > minimumProtocolVersion)
+                minimumProtocolVersion = version;
         }
 
         return Combine(requirementsEnum, overridden);
@@ -233,6 +266,33 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         return string.Join(" | ", declared);
     }
 
+
+    // Reads the version an enum's own marker declares, for the two whose every member needs the same one.
+    private static int VersionOfRequirementsEnum(ITypeSymbol requirementsEnum, Func<INamedTypeSymbol, bool> isMarker, Func<AttributeData, int> getVersion)
+    {
+        var marker = requirementsEnum
+            .GetAttributes()
+            .FirstOrDefault(attribute => attribute.AttributeClass != null && isMarker(attribute.AttributeClass));
+
+        return marker == null ? 0 : getVersion(marker);
+    }
+
+    // The one property resolved by value rather than by name. The others match a member the markers
+    // named; this one has computed a number and has to find the member that carries it - and must not
+    // invent one, because a cast would print a version the enum does not declare.
+    private static string CombineByValue(ITypeSymbol requirementsEnum, int value)
+    {
+        var typeName = requirementsEnum.ToDisplayString();
+
+        var declared = requirementsEnum
+            .GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(member => member.IsConst && member.ConstantValue is int declaredValue && declaredValue == value)
+            .Select(member => $"{typeName}.{member.Name}")
+            .FirstOrDefault();
+
+        return declared ?? $"default({typeName})";
+    }
     private static string RenderProperty(IPropertySymbol property, string expression)
     {
         return

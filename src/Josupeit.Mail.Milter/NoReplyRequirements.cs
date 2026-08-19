@@ -28,7 +28,7 @@ namespace Josupeit.Mail.Milter;
 /// </para>
 /// </remarks>
 [Flags]
-[NoReplyRequirementsMarker]
+[NoReplyRequirementsMarker(MinimumProtocolVersion = 6)]
 public enum NoReplyRequirements
 {
     /// <summary>

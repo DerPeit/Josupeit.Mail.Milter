@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -27,6 +28,9 @@ namespace Josupeit.Mail.Milter;
 /// Answering it from an event that does not repeat is a programming error and throws.
 /// </para>
 /// </remarks>
+// The skip action contributes no ActionRequirements flag - SMFIP_SKIP is an event bit, not an
+// SMFIF_ action - but it still cannot be sent to an MTA below version 6.
+[MilterActionMarker(MinimumProtocolVersion = 6)]
 public sealed record SkipRemainingEventsAction : CommitAction
 {
     internal static readonly SkipRemainingEventsAction Instance = new();

@@ -125,7 +125,7 @@ public interface IMilterCallbacks
     /// </remarks>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.MessageData), nameof(NoReplyRequirements.MessageData))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.MessageData), nameof(NoReplyRequirements.MessageData), MinimumProtocolVersion = 4)]
     ValueTask<CommitAction> OnMessageDataStarted(CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -143,7 +143,7 @@ public interface IMilterCallbacks
     /// <param name="info">The command line the MTA could not parse.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand), nameof(NoReplyRequirements.UnknownCommand))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand), nameof(NoReplyRequirements.UnknownCommand), MinimumProtocolVersion = 3)]
     ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);

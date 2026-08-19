@@ -19,7 +19,7 @@ namespace Josupeit.Mail.Milter;
 /// guessing. Requires <see cref="ActionRequirements.AddRecipientsWithParameters"/> and an MTA speaking
 /// protocol version 6. Reached through <see cref="ModificationActions.AddRecipientWithParameters"/>.
 /// </remarks>
-[MilterActionMarker(nameof(ActionRequirements.AddRecipientsWithParameters))]
+[MilterActionMarker(nameof(ActionRequirements.AddRecipientsWithParameters), MinimumProtocolVersion = 6)]
 public sealed record AddRecipientWithParametersAction : ModificationAction
 {
     internal AddRecipientWithParametersAction(string recipient, string eSmtpArguments)

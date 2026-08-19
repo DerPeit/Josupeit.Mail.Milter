@@ -9,7 +9,8 @@ internal sealed record ProtocolStateMachineConfiguration(
     ProtocolRequirements ProtocolRequirements,
     ActionRequirements ActionRequirements,
     DeliveryRequirements DeliveryRequirements = DeliveryRequirements.None,
-    NoReplyRequirements NoReplyRequirements = NoReplyRequirements.None)
+    NoReplyRequirements NoReplyRequirements = NoReplyRequirements.None,
+    ProtocolVersionRequirement ProtocolVersionRequirement = ProtocolVersionRequirement.Version2)
 {
     public bool IsAwaitingConnection => ProtocolRequirements.HasFlag(ProtocolRequirements.Connect);
 

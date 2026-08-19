@@ -20,6 +20,8 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
 
         var negotiatedVersion = ProtocolVersionCapabilities.Clamp(request.MtaProtocolVersion);
 
+        ThrowIfBelowFilterRequirement(negotiatedVersion, config.ProtocolVersionRequirement);
+
         var actionRequirements = config.ToActionDiscriminator() & ProtocolVersionCapabilities.ActionsFor(negotiatedVersion);
         var contentBypass = config.ToContentBypassDiscriminator() & ProtocolVersionCapabilities.ContentBypassFor(negotiatedVersion);
 
@@ -42,6 +44,21 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
         stateMachine.CompleteNegotiation(new ProtocolNegotiationOutcome(negotiatedVersion, actionRequirements, contentBypass));
 
         return new(AsyncEnumerableEx.Return<ResponsePacket>(response).Finally(TransitionToNextState));
+    }
+
+    // Everything below this point degrades quietly against an older MTA, which is right for a filter that
+    // loses nothing by it. A filter that genuinely uses version 6 loses something real - a skip masked
+    // into a Continue, header values silently trimmed - and would carry on looking like it worked. The
+    // requirement is derived from what the filter actually uses, so this only fires for one that means it.
+    private static void ThrowIfBelowFilterRequirement(Version negotiatedVersion, ProtocolVersionRequirement requirement)
+    {
+        if (negotiatedVersion.Major >= (int)requirement)
+            return;
+
+        throw new NotSupportedException(
+            $"The negotiated Milter protocol version is {negotiatedVersion.Major}, but this filter uses "
+            + $"features that need version {(int)requirement}. Upgrade the MTA, or configure it to speak a "
+            + "higher milter_protocol.");
     }
 
     private static void ThrowIfUnsupportedActionRequirements(ActionDiscriminator supportedFlags, ActionDiscriminator requiredFlags)

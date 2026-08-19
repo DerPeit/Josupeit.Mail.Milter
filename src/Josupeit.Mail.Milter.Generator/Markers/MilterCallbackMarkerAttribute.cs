@@ -19,4 +19,8 @@ internal sealed partial class MilterCallbackMarkerAttribute(string protocolRequi
     public string ProtocolRequirementName { get; } = protocolRequirementName;
 
     public string? NoReplyRequirementName { get; } = noReplyRequirementName;
+
+    // The lowest protocol version an MTA must speak before this event can be delivered. Zero means the
+    // event has always existed.
+    public int MinimumProtocolVersion { get; set; }
 }

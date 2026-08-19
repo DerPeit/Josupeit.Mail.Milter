@@ -17,4 +17,8 @@ namespace Josupeit.Mail.Milter.Generator.Markers;
 internal sealed partial class MilterActionMarkerAttribute(string? actionRequirementName = null) : Attribute
 {
     public string? ActionRequirementName { get; } = actionRequirementName;
+
+    // The lowest protocol version an MTA must speak before this action can be sent. Zero means the
+    // action has always existed.
+    public int MinimumProtocolVersion { get; set; }
 }
