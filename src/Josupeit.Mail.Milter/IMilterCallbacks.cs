@@ -60,7 +60,7 @@ public interface IMilterCallbacks
     /// <param name="info">The hostname and endpoint the MTA has for the client.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the connection.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Connect))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Connect), nameof(NoReplyRequirements.Connect))]
     ValueTask<CommitAction> OnConnectionEstablished(ConnectionInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -76,7 +76,7 @@ public interface IMilterCallbacks
     /// <param name="info">The name the client announced itself as.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.ClientHello))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.ClientHello), nameof(NoReplyRequirements.ClientHello))]
     ValueTask<CommitAction> OnClientHello(ClientHelloInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -92,7 +92,7 @@ public interface IMilterCallbacks
     /// <param name="info">The envelope address and any ESMTP parameters that followed it.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Sender))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Sender), nameof(NoReplyRequirements.Sender))]
     ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -108,7 +108,7 @@ public interface IMilterCallbacks
     /// <param name="info">The envelope address and any ESMTP parameters that followed it.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with this recipient.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Recipient))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Recipient), nameof(NoReplyRequirements.Recipient))]
     ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -125,7 +125,7 @@ public interface IMilterCallbacks
     /// </remarks>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.MessageData))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.MessageData), nameof(NoReplyRequirements.MessageData))]
     ValueTask<CommitAction> OnMessageDataStarted(CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -143,7 +143,7 @@ public interface IMilterCallbacks
     /// <param name="info">The command line the MTA could not parse.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand), nameof(NoReplyRequirements.UnknownCommand))]
     ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -160,7 +160,7 @@ public interface IMilterCallbacks
     /// <param name="info">The name and value of the header.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Header))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Header), nameof(NoReplyRequirements.Header))]
     ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
     {
         return new (CommitActions.Continue);
@@ -176,7 +176,7 @@ public interface IMilterCallbacks
     /// </remarks>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.EndOfHeaders))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.EndOfHeaders), nameof(NoReplyRequirements.EndOfHeaders))]
     ValueTask<CommitAction> OnEndOfHeaders(CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -194,7 +194,7 @@ public interface IMilterCallbacks
     /// <param name="chunk">The bytes of this part of the body.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Body))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Body), nameof(NoReplyRequirements.Body))]
     ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);

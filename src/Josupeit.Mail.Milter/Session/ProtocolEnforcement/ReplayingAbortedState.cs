@@ -23,37 +23,39 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnBodyChunk, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnBodyChunk, stateMachine.Negotiation.IsAnsweringBody, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnClientHello, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnClientHello, stateMachine.Negotiation.IsAnsweringClientHello, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
+        // End-of-body is the one event with no no-reply flag in the protocol: it carries the verdict,
+        // so the MTA always waits for it.
         return ProcessRequest(request, static ca => ca.OnEndOfBody, responseExpected: true, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfHeaders, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnEndOfHeaders, stateMachine.Negotiation.IsAnsweringEndOfHeaders, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnHeader, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnHeader, stateMachine.Negotiation.IsAnsweringHeaders, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnMessageDataStarted, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnMessageDataStarted, stateMachine.Negotiation.IsAnsweringMessageData, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnUnknownCommand, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnUnknownCommand, stateMachine.Negotiation.IsAnsweringUnknownCommands, cancellationToken);
     }
 
     // Unlike AbortedState, a macro definition does transition here, and that difference is deliberate:
@@ -98,12 +100,12 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnRecipient, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnRecipient, stateMachine.Negotiation.IsAnsweringRecipients, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnSender, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static ca => ca.OnSender, stateMachine.Negotiation.IsAnsweringSender, cancellationToken);
     }
 
     private async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, CancellationToken cancellationToken)

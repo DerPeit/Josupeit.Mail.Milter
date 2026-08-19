@@ -53,4 +53,14 @@ public interface IMilterContext : IMilterCallbacks
     /// <see cref="RecipientInformation.IsRejectedByMta"/>.
     /// </remarks>
     static virtual DeliveryRequirements DeliveryRequirements => DeliveryRequirements.None;
+
+    /// <summary>
+    /// The events this filter promises not to answer.
+    /// </summary>
+    /// <remarks>
+    /// Left to the source generator, which sets an event here only once it has proved the callback can
+    /// answer nothing but <see cref="CommitActions.Continue"/> - so declaring it by hand is rarely
+    /// needed, and is a promise the library will hold the filter to.
+    /// </remarks>
+    static virtual NoReplyRequirements NoReplyRequirements => NoReplyRequirements.None;
 }

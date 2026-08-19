@@ -60,6 +60,8 @@
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterCallbackMarkerAttribute.cs" Link="Properties\MilterCallbackMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterContextMarkerAttribute.cs" Link="Properties\MilterContextMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterDeliveryMarkerAttribute.cs" Link="Properties\MilterDeliveryMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterUnobservableActionMarkerAttribute.cs" Link="Properties\MilterUnobservableActionMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\NoReplyRequirementsMarkerAttribute.cs" Link="Properties\NoReplyRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolRequirementsMarkerAttribute.cs" Link="Properties\ProtocolRequirementsMarkerAttribute.cs" />
   </ItemGroup>
 

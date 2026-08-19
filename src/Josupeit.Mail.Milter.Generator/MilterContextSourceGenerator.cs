@@ -70,8 +70,9 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         var protocolProperty = FindRequirementProperty(contextInterface, ProtocolRequirementsMarkerAttribute.IsDescribedBy);
         var actionProperty = FindRequirementProperty(contextInterface, ActionRequirementsMarkerAttribute.IsDescribedBy);
         var deliveryProperty = FindRequirementProperty(contextInterface, DeliveryRequirementsMarkerAttribute.IsDescribedBy);
+        var noReplyProperty = FindRequirementProperty(contextInterface, NoReplyRequirementsMarkerAttribute.IsDescribedBy);
 
-        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 3);
+        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 4);
         var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
 
         if (NeedsGenerating(contextType, protocolProperty))
@@ -97,6 +98,13 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             var delivery = DeliveryRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
 
             properties.Add(RenderProperty(deliveryProperty!, Combine(deliveryProperty!.Type, delivery)));
+        }
+
+        if (NeedsGenerating(contextType, noReplyProperty))
+        {
+            var noReply = NoReplyRequirementsAnalysis.Run(contextType, contextInterface, context.SemanticModel.Compilation, cancellationToken);
+
+            properties.Add(RenderProperty(noReplyProperty!, Combine(noReplyProperty!.Type, noReply)));
         }
         // Only worth complaining about once there is something to write. A context that declared both
         // properties by hand has no reason to be partial.

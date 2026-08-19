@@ -24,7 +24,7 @@ namespace Josupeit.Mail.Milter.Session;
 /// <typeparam name="TContext">The filter this session runs. One instance is built per message.</typeparam>
 public partial class Session<TContext> : ISession where TContext : IMilterContext
 {
-    private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements, TContext.DeliveryRequirements);
+    private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements, TContext.DeliveryRequirements, TContext.NoReplyRequirements);
 
     // Replaced once the OPTNEG reply has been written. Until then it reads as a version 2 session, so
     // nothing has to cope with a null and no state before AwaitingNegotiationState can be misled.
@@ -143,7 +143,7 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
 
     internal ContextAdapter EnsureContextAdapter()
     {
-        return _contextAdapter ??= new(() => _contextFactory());
+        return _contextAdapter ??= new(() => _contextFactory(), _negotiation);
     }
 
     internal ValueTask DisposeContextAdapter()

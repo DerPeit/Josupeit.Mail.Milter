@@ -405,6 +405,175 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
+    // The no-reply analysis is the one place a generator bug reaches the wire, so its failure direction
+    // is pinned from both sides: proved means the flag is set, anything else means it is not.
+    [Test]
+    public void A_callback_that_can_only_continue_need_not_be_answered()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private int _headers;
+
+            public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
+            {
+                _headers++;
+
+                return new(CommitActions.Continue);
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => Josupeit.Mail.Milter.NoReplyRequirements.Header;"));
+        });
+    }
+
+    [Test]
+    public void An_awaited_callback_that_can_only_continue_need_not_be_answered()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public async ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
+            {
+                await Task.Yield();
+
+                return CommitActions.Continue;
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => Josupeit.Mail.Milter.NoReplyRequirements.Header;"));
+        });
+    }
+
+    [Test]
+    public void A_callback_that_can_decide_keeps_its_reply()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
+            {
+                return new(info.Name == "X-Spam" ? CommitActions.Reject : CommitActions.Continue);
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => default(Josupeit.Mail.Milter.NoReplyRequirements);"));
+        });
+    }
+
+    // Every way of losing track has to land on the safe side, because the unsafe side desynchronises the
+    // connection rather than merely costing a round trip.
+    [Test]
+    public void A_callback_that_delegates_its_answer_keeps_its_reply()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private readonly Func<CommitAction> _policy = () => CommitActions.Continue;
+
+            public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
+            {
+                return new(_policy());
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => default(Josupeit.Mail.Milter.NoReplyRequirements);"));
+        });
+    }
+
+    [Test]
+    public void A_callback_nobody_overrode_contributes_no_no_reply_flag()
+    {
+        var run = GeneratorHarness.Run(Context(string.Empty));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => default(Josupeit.Mail.Milter.NoReplyRequirements);"));
+        });
+    }
+
+    [Test]
+    public void End_of_body_is_always_answered_however_quiet_the_rest_of_the_filter_is()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+
+            public IAsyncEnumerable<Action> OnEndOfBody() => new Action[] { CommitActions.Continue }.ToAsyncEnumerable();
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => Josupeit.Mail.Milter.NoReplyRequirements.Header;"));
+            Assert.That(run.GeneratedSource, Does.Not.Contain("NoReplyRequirements.EndOfBody"));
+        });
+    }
+
+    [Test]
+    public void A_hand_written_no_reply_requirement_is_left_alone()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public static NoReplyRequirements NoReplyRequirements => NoReplyRequirements.Body;
+
+            public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Does.Not.Contain("NoReplyRequirements =>"));
+        });
+    }
+
+    // A body only proves anything if it is the body that will run. This is not a hypothetical: a partial
+    // mock overrides exactly these methods, and so does any filter written as a base class with hooks.
+    [Test]
+    public void An_overridable_callback_on_an_unsealed_context_proves_nothing()
+    {
+        var run = GeneratorHarness.Run(PREAMBLE +
+            """
+            internal partial class BarnacleFilter : IMilterContext
+            {
+                public virtual ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => default(Josupeit.Mail.Milter.NoReplyRequirements);"));
+        });
+    }
+
+    [Test]
+    public void A_sealed_context_can_still_be_proved_quiet()
+    {
+        var run = GeneratorHarness.Run(PREAMBLE +
+            """
+            internal sealed partial class BarnacleFilter : IMilterContext
+            {
+                public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => Josupeit.Mail.Milter.NoReplyRequirements.Header;"));
+        });
+    }
+
     private static string Context(string body)
     {
         return PREAMBLE +

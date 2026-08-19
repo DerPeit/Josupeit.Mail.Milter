@@ -1,8 +1,7 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
-using System.Linq;
 using Microsoft.CodeAnalysis;
 
 namespace Josupeit.Mail.Milter.Generator.Markers;
@@ -18,8 +17,14 @@ internal sealed partial class MilterCallbackMarkerAttribute
 
     internal static string GetProtocolRequirementName(AttributeData attribute)
     {
-        var value = attribute.ConstructorArguments.Single();
+        return (string)attribute.ConstructorArguments[0].Value!;
+    }
 
-        return (string)value.Value!;
+    internal static string? GetNoReplyRequirementName(AttributeData attribute)
+    {
+        if (attribute.ConstructorArguments.Length < 2)
+            return null;
+
+        return attribute.ConstructorArguments[1].Value as string;
     }
 }

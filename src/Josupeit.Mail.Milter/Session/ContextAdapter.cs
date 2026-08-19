@@ -11,7 +11,7 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter.Session;
 
-internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IAsyncDisposable
+internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, ProtocolNegotiationOutcome negotiation) : IAsyncDisposable
 {
     private IMilterCallbacks? _context;
 
@@ -72,21 +72,24 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
     {
         return Invoke(
             new ConnectionInformation(request.HostName, request.EndPoint),
-            static (context, info, token) => context.OnConnectionEstablished(info, token));
+            static (context, info, token) => context.OnConnectionEstablished(info, token),
+            negotiation.IsAnsweringConnection);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnClientHello(HeloRequestPacket request)
     {
         return Invoke(
             new ClientHelloInformation(request.HeloString),
-            static (context, info, token) => context.OnClientHello(info, token));
+            static (context, info, token) => context.OnClientHello(info, token),
+            negotiation.IsAnsweringClientHello);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnSender(SenderRequestPacket request)
     {
         return Invoke(
             new SenderInformation(request.Sender, request.ESmtpArguments),
-            static (context, info, token) => context.OnSender(info, token));
+            static (context, info, token) => context.OnSender(info, token),
+            negotiation.IsAnsweringSender);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request)
@@ -99,7 +102,8 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
 
         return Invoke(
             new RecipientInformation(request.Recipient, request.ESmtpArguments, isRejected),
-            static (context, info, token) => context.OnRecipient(info, token));
+            static (context, info, token) => context.OnRecipient(info, token),
+            negotiation.IsAnsweringRecipients);
     }
 
     // Postfix sets {rcpt_mailer} to "error" for a recipient it has already refused, and puts the status
@@ -116,28 +120,32 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
     {
         return Invoke(
             new HeaderInformation(request.Name, request.Value),
-            static (context, info, token) => context.OnHeader(info, token));
+            static (context, info, token) => context.OnHeader(info, token),
+            negotiation.IsAnsweringHeaders);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnEndOfHeaders(EndOfHeadersRequestPacket request)
     {
         return Invoke(
             request,
-            static (context, _, token) => context.OnEndOfHeaders(token));
+            static (context, _, token) => context.OnEndOfHeaders(token),
+            negotiation.IsAnsweringEndOfHeaders);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnMessageDataStarted(MessageDataRequestPacket request)
     {
         return Invoke(
             request,
-            static (context, _, token) => context.OnMessageDataStarted(token));
+            static (context, _, token) => context.OnMessageDataStarted(token),
+            negotiation.IsAnsweringMessageData);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnUnknownCommand(UnknownCommandRequestPacket request)
     {
         return Invoke(
             new UnknownCommandInformation(request.CommandText),
-            static (context, info, token) => context.OnUnknownCommand(info, token));
+            static (context, info, token) => context.OnUnknownCommand(info, token),
+            negotiation.IsAnsweringUnknownCommands);
     }
 
     // The body arrives as a span, which cannot be a type argument, so this one hands the packet through
@@ -146,7 +154,8 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
     {
         return Invoke(
             request,
-            static (context, packet, token) => context.OnBodyChunk(packet.DataSpan, token));
+            static (context, packet, token) => context.OnBodyChunk(packet.DataSpan, token),
+            negotiation.IsAnsweringBody);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _)
@@ -184,13 +193,32 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
     private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
         TInfo info,
         Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
+        bool isAnswered,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var context = _context ??= contextFactory();
 
         var commitAction = await callback(context, info, cancellationToken).ConfigureAwait(false);
 
-        await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
-            yield return response;
+        if (isAnswered)
+        {
+            await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
+                yield return response;
+
+            yield break;
+        }
+
+        // The MTA is not reading a reply to this event, so there is nowhere to put a decision. Writing
+        // one anyway would be read as the answer to the next command and leave every request and
+        // response after it out of step for the rest of the connection; dropping it silently would
+        // deliver mail the filter rejected. Both are worse than ending the session.
+        //
+        // Unreachable when the flag was derived, because the analysis only sets it once it has proved
+        // the callback cannot answer anything else - which makes this a check on the analysis as much as
+        // on a hand-written declaration.
+        if (commitAction is not ContinueAction)
+            throw new InvalidOperationException(
+                "A callback listed in NoReplyRequirements answered with something other than Continue. "
+                + "The MTA is not waiting for a reply to that event, so the decision cannot be delivered.");
     }
 }

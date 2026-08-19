@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -15,6 +16,7 @@ namespace Josupeit.Mail.Milter;
 /// The answer every callback gives by default, and the only one that leaves the message's fate open.
 /// Reached through <see cref="CommitActions.Continue"/>.
 /// </remarks>
+[MilterUnobservableActionMarker]
 public sealed record ContinueAction : CommitAction
 {
     /// <summary>

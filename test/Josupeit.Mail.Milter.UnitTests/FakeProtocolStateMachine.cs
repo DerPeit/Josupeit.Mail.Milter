@@ -40,7 +40,7 @@ internal sealed class FakeProtocolStateMachine : IProtocolStateMachine
 
     public ContextAdapter EnsureContextAdapter()
     {
-        return _contextAdapter ??= new ContextAdapter(_contextFactory);
+        return _contextAdapter ??= new ContextAdapter(_contextFactory, Negotiation);
     }
 
     public ValueTask DisposeContextAdapter()
