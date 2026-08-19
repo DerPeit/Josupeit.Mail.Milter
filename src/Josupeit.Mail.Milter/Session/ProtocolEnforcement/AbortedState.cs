@@ -81,6 +81,24 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine) : Protoco
         }
     }
 
+    // The SMTP connection is over but the milter connection is not: a different client follows on this
+    // socket. The context goes, because the message it was serving is over, and the machine returns to
+    // the state that precedes a connection rather than the one that follows it - ConnectedState does not
+    // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
+    {
+        if (request == null)
+            throw new ArgumentNullException(nameof(request));
+
+        return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
+
+        async Task ToNegotiatedState()
+        {
+            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+            await stateMachine.TransitionTo(NegotiatedStateFactory.Create(stateMachine, stateMachine.Configuration)).ConfigureAwait(false);
+        }
+    }
+
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
         return ProcessRequest(request, static ca => ca.OnRecipient);

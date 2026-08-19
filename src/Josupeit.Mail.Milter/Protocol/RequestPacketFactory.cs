@@ -54,6 +54,7 @@ public class RequestPacketFactory : IRequestPacketFactory
                 CommandCode.Quit => CreateQuitRequestPacket(frame.Data),
                 CommandCode.MessageData => CreateMessageDataRequestPacket(frame.Data),
                 CommandCode.UnknownCommand => CreateUnknownCommandRequestPacket(frame.Data),
+                CommandCode.QuitForNewConnection => CreateQuitForNewConnectionRequestPacket(frame.Data),
 
                 _ => throw new ArgumentOutOfRangeException(nameof(frame))
             };
@@ -323,6 +324,17 @@ public class RequestPacketFactory : IRequestPacketFactory
     protected virtual QuitRequestPacket CreateQuitRequestPacket(ReadOnlyMemory<byte> data)
     {
         return QuitRequestPacket.Instance;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="QuitForNewConnectionRequestPacket"/> from the frame's payload. Override to change
+    /// how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    protected virtual QuitForNewConnectionRequestPacket CreateQuitForNewConnectionRequestPacket(ReadOnlyMemory<byte> data)
+    {
+        return QuitForNewConnectionRequestPacket.Instance;
     }
 
     /// <summary>

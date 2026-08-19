@@ -109,6 +109,13 @@ internal sealed class SessionController(ISessionControlee controlee) : RequestPa
         return true;
     }
 
+    protected internal override bool VisitQuitForNewConnectionRequestPacket(QuitForNewConnectionRequestPacket requestPacket)
+    {
+        _responses = controlee.ProtocolStateMachine.State.ProcessQuittingForNewConnection(requestPacket, _cancellationToken);
+
+        return true;
+    }
+
     protected internal override bool VisitRcptToRequestPacket(RecipientRequestPacket requestPacket)
     {
         _responses = controlee.ProtocolStateMachine.State.ProcessRecipient(requestPacket, _cancellationToken);

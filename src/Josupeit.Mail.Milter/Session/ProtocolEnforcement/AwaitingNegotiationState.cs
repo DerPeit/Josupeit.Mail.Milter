@@ -55,10 +55,6 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
 
     private async Task TransitionToNextState()
     {
-        ProtocolState nextState = config.IsAwaitingConnection
-            ? new ReplayRecordingNegotiatedState(stateMachine)
-            : new NegotiatedState(stateMachine);
-
-        await stateMachine.TransitionTo(nextState).ConfigureAwait(false);
+        await stateMachine.TransitionTo(NegotiatedStateFactory.Create(stateMachine, config)).ConfigureAwait(false);
     }
 }

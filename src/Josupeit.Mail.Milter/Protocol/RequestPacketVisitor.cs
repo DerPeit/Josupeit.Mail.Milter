@@ -152,6 +152,16 @@ public abstract class RequestPacketVisitor
     }
 
     /// <summary>
+    /// Called for a <see cref="QuitForNewConnectionRequestPacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="requestPacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitQuitForNewConnectionRequestPacket(QuitForNewConnectionRequestPacket requestPacket)
+    {
+        return true;
+    }
+
+    /// <summary>
     /// Called for a <see cref="RecipientRequestPacket"/>. The base implementation does nothing.
     /// </summary>
     /// <param name="requestPacket">The packet being visited.</param>
