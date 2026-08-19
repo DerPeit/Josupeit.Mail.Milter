@@ -38,9 +38,17 @@ jobs:
       - name: Unit tests
         run: dotnet test test/Josupeit.Mail.Milter.UnitTests --configuration Release --no-build
 
+      # The project, not the solution: a solution-wide pack sweeps up everything packable, and
+      # "packages/*.nupkg" in the next step would then push it - the sample and the generator
+      # included, neither of which is a package anyone should be able to install.
+      #
+      # And no --no-build. Packing the library resolves its analyzer ProjectReference to the generator,
+      # which invokes that project's Build target, which is precisely what --no-build forbids (NETSDK1085).
+      # The build is deterministic and the inputs are unchanged, so repeating it costs seconds and buys
+      # a pack that matches the one CONTRIBUTING and CLAUDE.md tell you to run by hand.
       - name: Pack
         if: github.ref == 'refs/heads/main'
-        run: dotnet pack --configuration Release --no-build --output packages
+        run: dotnet pack src/Josupeit.Mail.Milter --configuration Release --output packages
 
       - name: Push to NuGet
         if: github.ref == 'refs/heads/main'

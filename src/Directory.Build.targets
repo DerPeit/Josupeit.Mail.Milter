@@ -1,6 +1,17 @@
 <Project>
 
   <!--
+    GenerateSBOM belongs here rather than in Directory.Build.props, and the difference is not cosmetic.
+    Props are evaluated before the project body, where IsPackable is still the true this directory sets -
+    so the generator, which opts out two lines into its own csproj, was switching the SBOM on anyway and
+    then failing to find a nupkg to attach it to. A targets file is read after the body, so the condition
+    sees the value the project actually settled on.
+  -->
+  <PropertyGroup>
+    <GenerateSBOM Condition="'$(IsPackable)' == 'true'">true</GenerateSBOM>
+  </PropertyGroup>
+
+  <!--
     Generates PackageReleaseNotes from the commit subjects that touched this project since the previous
     release tag, so the changelog is the git history rather than a file that drifts away from it. This is
     why commit subjects follow Conventional Commits (see CONTRIBUTING.md) - they are read by consumers.

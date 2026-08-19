@@ -1,0 +1,15 @@
+<Project>
+
+  <!-- See the note in src/Directory.Build.props: the repository-wide props file has to be imported by hand. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <PropertyGroup>
+    <!--
+      A sample is here to be read and run, never installed. Without this it is packable by default, and
+      a solution-wide `dotnet pack` produces an Example.1.0.0.nupkg sitting in the same output directory
+      the release step pushes from - which is exactly how it nearly went to nuget.org.
+    -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+</Project>

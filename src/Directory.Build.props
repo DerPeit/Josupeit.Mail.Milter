@@ -65,7 +65,6 @@
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <IncludeSource>true</IncludeSource>
-    <GenerateSBOM Condition="'$(IsPackable)' == 'true'">true</GenerateSBOM>
     <NoWarn>$(NoWarn);NETSDK1138;NETSDK1215</NoWarn>
   </PropertyGroup>
 

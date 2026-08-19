@@ -28,7 +28,9 @@ dotnet tool restore                                        # once per clone; nbg
 
 ## Projects
 
-The tree is split three ways, and the split decides what a project inherits. `src/Directory.Build.props` carries everything to do with shipping a package, so anything under `src/` is packable unless it opts out; `test/Directory.Build.props` carries the test-runner packages and the reference to the library, so the test projects are nearly empty files; `samples/` inherits neither, which is why the example lives there rather than under `src/`.
+The tree is split three ways, and the split decides what a project inherits. `src/Directory.Build.props` carries everything to do with shipping a package, so anything under `src/` is packable unless it opts out; `test/Directory.Build.props` carries the test-runner packages and the reference to the library, so the test projects are nearly empty files; `samples/Directory.Build.props` carries nothing but `IsPackable=false`, which is the whole reason the example lives there rather than under `src/`. That one line is load-bearing: without it a sample is packable by default, and a solution-wide `dotnet pack` drops an `Example.1.0.0.nupkg` into the directory the release step pushes from.
+
+All three import the repository-wide `Directory.Build.props` by hand, because MSBuild reads only the nearest one.
 
 | Project                                      | TFM            | Role                                                                      |
 | -------------------------------------------- | -------------- | ------------------------------------------------------------------------- |
