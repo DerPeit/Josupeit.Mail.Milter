@@ -1,0 +1,37 @@
+# Git decides line endings per clone, from whatever core.autocrlf the developer happens to have set.
+# That is a guess, and for three kinds of file in this repository it is a guess that breaks something
+# quietly. This file makes the answer the same in every clone.
+#
+# Keep it saying what .editorconfig says: the two are read by different tools for the same reason, and a
+# rule stated in both places must state the same thing.
+
+* text=auto
+
+# The authoring surface. CRLF in the working tree, LF in the repository - the split CONTRIBUTING.md
+# describes.
+*.cs         text eol=crlf
+*.csproj     text eol=crlf
+*.props      text eol=crlf
+*.targets    text eol=crlf
+*.slnx       text eol=crlf
+*.md         text eol=crlf
+*.json       text eol=crlf
+*.editorconfig text eol=crlf
+
+# Read by Postfix and Docker inside the Linux container, where a stray CR is taken as part of the value
+# rather than as encoding: "milter_protocol = 6" would be read as the version "6\r".
+*.cf         text eol=lf
+Dockerfile*  text eol=lf
+
+# Run by a POSIX shell. A CR after the shebang turns the interpreter into a command that does not exist,
+# and the CI runner is Linux.
+.githooks/** text eol=lf
+*.sh         text eol=lf
+*.yml        text eol=lf
+
+# A byte-exact fixture: MilterTests compares the delivered body against these bytes, so the line endings
+# are part of the test rather than a formatting choice. Pinned rather than left to text=auto so that the
+# bytes are the same on every machine.
+MultiChunkBody.txt text eol=crlf
+
+*.png binary
