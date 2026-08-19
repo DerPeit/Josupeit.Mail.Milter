@@ -73,4 +73,16 @@ public interface IMilterContext : IMilterCallbacks
     /// failure on the first connection.
     /// </remarks>
     static virtual ProtocolVersionRequirement ProtocolVersionRequirement => ProtocolVersionRequirement.Version2;
+
+    /// <summary>
+    /// The macros this filter wants, per point in the conversation.
+    /// </summary>
+    /// <remarks>
+    /// Left to the source generator, which reads which names the macro callback looks up and under which
+    /// stage. A read it cannot pin down is reported rather than guessed, because a list that leaves a
+    /// macro out fails nowhere near where it was caused - the filter simply finds the key missing at
+    /// runtime. <see cref="MacroRequirements.None"/> asks for no list at all, which is the behaviour
+    /// that predates this.
+    /// </remarks>
+    static virtual MacroRequirements MacroRequirements => MacroRequirements.None;
 }

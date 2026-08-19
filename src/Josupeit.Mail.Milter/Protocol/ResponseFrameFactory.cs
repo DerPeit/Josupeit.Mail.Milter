@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
 
@@ -372,13 +374,24 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         const int VERSION_LENGTH = sizeof(uint);
         const int ACTIONS_LENGTH = sizeof(uint);
         const int UNDESIRED_CONTENT_LENGTH = sizeof(uint);
-        const int BLOCK_LENGTH = VERSION_LENGTH + ACTIONS_LENGTH + UNDESIRED_CONTENT_LENGTH;
+        const int HEADER_LENGTH = VERSION_LENGTH + ACTIONS_LENGTH + UNDESIRED_CONTENT_LENGTH;
+        const int STAGE_CODE_LENGTH = sizeof(uint);
+        const int END_OF_NAMES_MARK_LENGTH = 1;
 
-        var memoryOwner = MemoryPool<byte>.Shared.Rent(BLOCK_LENGTH);
+        // Materialised once and in ascending stage order. A dictionary has no defined enumeration order,
+        // and this frame is asserted on byte for byte.
+        var macroLists = ToMacroLists(responsePacket.MilterRequestedMacros);
+
+        var blockLength = HEADER_LENGTH;
+
+        foreach (var (_, macroNames) in macroLists)
+            blockLength += STAGE_CODE_LENGTH + Encoding.Latin1.GetByteCount(macroNames) + END_OF_NAMES_MARK_LENGTH;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
         try
         {
-            var memoryBlock = memoryOwner.Memory[..BLOCK_LENGTH];
+            var memoryBlock = memoryOwner.Memory[..blockLength];
 
             const int VERSION_OFFSET = 0;
             const int ACTIONS_OFFSET = VERSION_OFFSET + VERSION_LENGTH;
@@ -392,7 +405,27 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             BinaryPrimitives.WriteUInt32BigEndian(requestedActionsMemoryBlock.Span, (uint)responsePacket.MilterRequiredActions);
             BinaryPrimitives.WriteUInt32BigEndian(undesiredProtocolContentMemoryBlock.Span, (uint)responsePacket.MilterUndesiredProtocolContent);
 
-            _responseFrame = new(ResponseCode.OptionNegotiation, memoryOwner, ..BLOCK_LENGTH);
+            // With no lists to append this loop does not run, and the frame is the same twelve bytes it
+            // has always been - which is what keeps every version 2 negotiation byte-identical.
+            var offset = HEADER_LENGTH;
+
+            foreach (var (stageCode, macroNames) in macroLists)
+            {
+                var namesLength = Encoding.Latin1.GetByteCount(macroNames);
+
+                var stageCodeMemoryBlock = memoryBlock.Slice(offset, STAGE_CODE_LENGTH);
+                var macroNamesMemoryBlock = memoryBlock.Slice(offset + STAGE_CODE_LENGTH, namesLength);
+                var endOfNamesMarkMemoryBlock = memoryBlock.Slice(offset + STAGE_CODE_LENGTH + namesLength, END_OF_NAMES_MARK_LENGTH);
+
+                endOfNamesMarkMemoryBlock.Span[0] = 0;
+
+                BinaryPrimitives.WriteUInt32BigEndian(stageCodeMemoryBlock.Span, stageCode);
+                Encoding.Latin1.GetBytes(macroNames, macroNamesMemoryBlock.Span);
+
+                offset += STAGE_CODE_LENGTH + namesLength + END_OF_NAMES_MARK_LENGTH;
+            }
+
+            _responseFrame = new(ResponseCode.OptionNegotiation, memoryOwner, ..blockLength);
 
             return true;
         }
@@ -402,6 +435,20 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
             throw;
         }
+    }
+
+    // One entry per stage, ascending by the code the wire uses, with the names already joined. The
+    // joining and the list allocate, and this runs once per connection - not worth a pooled rewrite, but
+    // worth saying so rather than leaving the reader to wonder.
+    private static IReadOnlyList<(uint StageCode, string MacroNames)> ToMacroLists(MacroRequirements? macroRequirements)
+    {
+        if (macroRequirements is null or { IsEmpty: true })
+            return [];
+
+        return macroRequirements.ByStage
+            .Select(entry => (StageCode: MacroRequirements.GetMacroStageCode(entry.Key), MacroNames: string.Join(" ", entry.Value)))
+            .OrderBy(entry => entry.StageCode)
+            .ToArray();
     }
 
     protected internal override bool VisitProgressResponsePacket(ProgressResponsePacket responsePacket)

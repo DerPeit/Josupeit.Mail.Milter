@@ -71,9 +71,10 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         var actionProperty = FindRequirementProperty(contextInterface, ActionRequirementsMarkerAttribute.IsDescribedBy);
         var deliveryProperty = FindRequirementProperty(contextInterface, DeliveryRequirementsMarkerAttribute.IsDescribedBy);
         var noReplyProperty = FindRequirementProperty(contextInterface, NoReplyRequirementsMarkerAttribute.IsDescribedBy);
+        var macroProperty = FindRequirementProperty(contextInterface, MacroRequirementsMarkerAttribute.IsDescribedBy);
         var versionProperty = FindRequirementProperty(contextInterface, ProtocolVersionRequirementMarkerAttribute.IsDescribedBy);
 
-        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 5);
+        var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 6);
         var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
 
         // The lowest protocol version this filter can work against, taken as the maximum over everything
@@ -125,6 +126,21 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 
             if (noReply.Length > 0)
                 minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(noReplyProperty!.Type, NoReplyRequirementsMarkerAttribute.IsDescribedBy, NoReplyRequirementsMarkerAttribute.GetMinimumProtocolVersion));
+        }
+
+        if (NeedsGenerating(contextType, macroProperty))
+        {
+            var macros = MacroRequirementsAnalysis.Run(contextType, contextInterface, context.SemanticModel.Compilation, cancellationToken);
+
+            if (!macros.IsComplete)
+                diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedMacro, macros.UntrackedLocation, contextType.Name, macros.UntrackedSource));
+            else if (RenderMacroRequirements(macroProperty!.Type, macros.ByStage) is { } expression)
+                properties.Add(RenderProperty(macroProperty, expression));
+            else
+                diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedMacro, contextType.Locations.FirstOrDefault(), contextType.Name, "a macro read at a stage the protocol gives no macro class"));
+
+            if (macros.ByStage.Count > 0)
+                minimumProtocolVersion = Math.Max(minimumProtocolVersion, 6);
         }
 
         // Last, because it is a fold over what the four above turned out to need.
@@ -267,6 +283,55 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
     }
 
 
+
+    // Renders the chained factory call the macro requirements are built with. Null when a stage has no
+    // macro class in the protocol - Header and Body - because emitting a call that throws at runtime
+    // would be worse than refusing to emit at all.
+    private static string? RenderMacroRequirements(ITypeSymbol requirementsType, IReadOnlyDictionary<string, IReadOnlyList<string>> byStage)
+    {
+        var typeName = requirementsType.ToDisplayString();
+
+        if (byStage.Count == 0)
+            return $"{typeName}.None";
+
+        var stageEnum = requirementsType
+            .GetMembers("GetMacroStageCode")
+            .OfType<IMethodSymbol>()
+            .FirstOrDefault()
+            ?.Parameters[0]
+            .Type;
+
+        if (stageEnum == null)
+            return null;
+
+        // Only the stages the protocol gives a macro class to. A read at one of the others cannot be
+        // asked for, and emitting it would produce a call that throws when the filter is first used.
+        var declared = stageEnum
+            .GetMembers()
+            .OfType<IFieldSymbol>()
+            .Where(member => member.IsConst && MilterMacroStageMarkerAttribute.Describes(member))
+            .ToImmutableArray();
+        var rendered = new List<string>(byStage.Count);
+
+        // Emitted in the stage's own declaration order, so the generated line does not churn when the
+        // analysis happens to visit the reads in a different order.
+        foreach (var member in declared)
+        {
+            if (!byStage.TryGetValue(member.Name, out var names))
+                continue;
+
+            var arguments = string.Join(", ", names.Select(name => $"\"{name}\""));
+
+            rendered.Add($"{stageEnum.ToDisplayString()}.{member.Name}, {arguments}");
+        }
+
+        if (rendered.Count != byStage.Count)
+            return null;
+
+        var head = $"{typeName}.For({rendered[0]})";
+
+        return rendered.Skip(1).Aggregate(head, (accumulated, arguments) => $"{accumulated}.And({arguments})");
+    }
     // Reads the version an enum's own marker declares, for the two whose every member needs the same one.
     private static int VersionOfRequirementsEnum(ITypeSymbol requirementsEnum, Func<INamedTypeSymbol, bool> isMarker, Func<AttributeData, int> getVersion)
     {

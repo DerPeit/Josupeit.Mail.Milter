@@ -10,7 +10,8 @@ internal sealed record ProtocolStateMachineConfiguration(
     ActionRequirements ActionRequirements,
     DeliveryRequirements DeliveryRequirements = DeliveryRequirements.None,
     NoReplyRequirements NoReplyRequirements = NoReplyRequirements.None,
-    ProtocolVersionRequirement ProtocolVersionRequirement = ProtocolVersionRequirement.Version2)
+    ProtocolVersionRequirement ProtocolVersionRequirement = ProtocolVersionRequirement.Version2,
+    MacroRequirements? MacroRequirements = null)
 {
     public bool IsAwaitingConnection => ProtocolRequirements.HasFlag(ProtocolRequirements.Connect);
 
@@ -60,6 +61,11 @@ internal sealed record ProtocolStateMachineConfiguration(
 
         if (ActionRequirements.HasFlag(ActionRequirements.AddRecipientsWithParameters))
             flags |= ActionDiscriminator.AddRecipientsWithParameters;
+
+        // Naming the macros is itself an action the MTA has to grant, and the filter cannot forget to
+        // ask for it: the flag follows from having named any.
+        if (MacroRequirements is { IsEmpty: false })
+            flags |= ActionDiscriminator.SetMacroList;
 
         return flags;
     }

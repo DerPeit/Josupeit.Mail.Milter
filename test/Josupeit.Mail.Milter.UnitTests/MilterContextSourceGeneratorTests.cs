@@ -679,6 +679,171 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
+    [Test]
+    public void A_filter_that_never_reads_a_macro_asks_for_no_list()
+    {
+        var run = GeneratorHarness.Run(Context(string.Empty));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratorErrorIds, Does.Not.Contain("MILT003"), "Reading no macros is the commonest case, not a failure.");
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements => Josupeit.Mail.Milter.MacroRequirements.None;"));
+        });
+    }
+
+    [Test]
+    public void Stage_guarded_macro_reads_are_derived_per_stage()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _sender;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (info.ProtocolStage == ProtocolStage.Sender)
+                    _sender = info.Macros["{mail_addr}"];
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.Sender, \"{mail_addr}\")"));
+        });
+    }
+
+    [Test]
+    public void A_switch_over_the_stage_is_understood_as_well()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                switch (info.ProtocolStage)
+                {
+                    case ProtocolStage.EndOfBody:
+                        _queueId = info.Macros["i"];
+                        break;
+                }
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\")"));
+        });
+    }
+
+    // The common stash. It genuinely cannot be analysed, and a list that leaves a macro out fails at
+    // runtime rather than at negotiation - so it is refused rather than guessed.
+    [Test]
+    public void Keeping_the_whole_dictionary_cannot_be_analysed_and_is_reported()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private IReadOnlyDictionary<string, string>? _macros;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                _macros = info.Macros;
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
+            Assert.That(run.GeneratedSource, Does.Not.Contain("MacroRequirements =>"));
+        });
+    }
+
+    [Test]
+    public void A_macro_name_that_is_not_a_constant_is_reported()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (info.ProtocolStage == ProtocolStage.Sender)
+                {
+                    var key = "{mail" + "_addr}";
+
+                    _ = info.Macros[key];
+                }
+
+                return new();
+            }
+            """));
+
+        Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
+    }
+
+    [Test]
+    public void A_macro_read_no_stage_guards_is_reported()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                _ = info.Macros["j"];
+
+                return new();
+            }
+            """));
+
+        Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
+    }
+
+    // Header and body carry no macros of their own, so no list can name either stage. Emitting the call
+    // anyway would compile and then throw the first time the filter was used.
+    [Test]
+    public void A_macro_read_at_a_stage_with_no_macro_class_is_reported()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (info.ProtocolStage == ProtocolStage.Header)
+                    _ = info.Macros["j"];
+
+                return new();
+            }
+            """));
+
+        Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
+    }
+
+    [Test]
+    public void A_hand_written_macro_requirement_is_left_alone()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public static MacroRequirements MacroRequirements => MacroRequirements.None;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                _ = info.Macros["j"];
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Does.Not.Contain("MILT003"), "The escape hatch has to work, or the diagnostic is a dead end.");
+            Assert.That(run.GeneratedSource, Does.Not.Contain("MacroRequirements =>"));
+        });
+    }
+
     private static string Context(string body)
     {
         return PREAMBLE +

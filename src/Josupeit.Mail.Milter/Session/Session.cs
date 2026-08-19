@@ -29,7 +29,8 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         TContext.ActionRequirements,
         TContext.DeliveryRequirements,
         TContext.NoReplyRequirements,
-        TContext.ProtocolVersionRequirement);
+        TContext.ProtocolVersionRequirement,
+        TContext.MacroRequirements);
 
     // Replaced once the OPTNEG reply has been written. Until then it reads as a version 2 session, so
     // nothing has to cope with a null and no state before AwaitingNegotiationState can be misled.

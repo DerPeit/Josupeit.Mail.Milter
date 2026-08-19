@@ -39,6 +39,7 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
             MilterProtocolVersion = negotiatedVersion,
             MilterRequiredActions = actionRequirements,
             MilterUndesiredProtocolContent = contentBypass,
+            MilterRequestedMacros = negotiatedVersion >= ProtocolVersionCapabilities.Highest ? config.MacroRequirements : null,
         };
 
         stateMachine.CompleteNegotiation(new ProtocolNegotiationOutcome(negotiatedVersion, actionRequirements, contentBypass));

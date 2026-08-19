@@ -32,6 +32,11 @@ public sealed class OptionNegotiationResponsePacket : ResponsePacket
     /// </summary>
     public required ContentBypassDiscriminator MilterUndesiredProtocolContent { get; init; }
 
+    /// <summary>
+    /// The macros the filter wants, per stage, or <see langword="null"/> to leave the MTA sending its own set.
+    /// </summary>
+    public MacroRequirements? MilterRequestedMacros { get; init; }
+
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
