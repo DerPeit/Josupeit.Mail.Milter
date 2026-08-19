@@ -10,7 +10,7 @@ An MTA connects to a milter over a socket and streams the SMTP conversation to i
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`Josupeit.Mail.Milter`](src/Josupeit.Mail.Milter/README.md) | The library. Implement `IMilterContext`, hand it to `Milter<TContext>`, and the wire protocol, framing and protocol-state enforcement are taken care of. |
 
-Targets `net8.0` and speaks **wire version 2** of the protocol, which every current Postfix and Sendmail accepts.
+Targets `net8.0` and speaks **wire version 6** of the protocol, negotiating down to whatever the MTA offers - so a Postfix pinned to `milter_protocol = 2` still works, it simply gets less.
 
 A runnable filter lives in [`samples/Example`](samples/Example) - roughly thirty lines, including the socket setup and a graceful shutdown.
 

@@ -10,7 +10,7 @@ This package lets you write that filter in C#. You implement the callbacks for t
 dotnet add package Josupeit.Mail.Milter
 ```
 
-Targets `net8.0`. Speaks **wire version 2** of the protocol, which every current Postfix and Sendmail accepts.
+Targets `net8.0`. Speaks **wire version 6** of the protocol and negotiates down to whatever the MTA offers, so an older Postfix or Sendmail still works and simply gets less.
 
 ## Writing a filter
 

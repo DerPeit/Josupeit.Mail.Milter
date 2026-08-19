@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <Description>An implementation of the Milter protocol (wire version 2), the mail filter protocol spoken by Postfix and Sendmail. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
+    <Description>An implementation of the Milter protocol, the mail filter protocol spoken by Postfix and Sendmail. Speaks wire version 6 and negotiates down to whatever the MTA offers, with a floor of version 2. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
     <PackageTags>milter postfix sendmail smtp mail-filter mta email antispam</PackageTags>
     <PackageVersionTagPrefix>v</PackageVersionTagPrefix>
     <NoWarn>$(NoWarn),CS9107</NoWarn>
