@@ -32,6 +32,10 @@ internal sealed class FakeProtocolStateMachine : IProtocolStateMachine
     public ProtocolStateMachineConfiguration Configuration { get; init; }
         = new(ProtocolRequirements.All, ActionRequirements.None);
 
+    public ProtocolNegotiationOutcome Negotiation { get; set; } = ProtocolNegotiationOutcome.NotNegotiated;
+
+    public void CompleteNegotiation(ProtocolNegotiationOutcome outcome) => Negotiation = outcome;
+
     IProtocolState IStateMachine<IProtocolState>.State => State!;
 
     public ContextAdapter EnsureContextAdapter()

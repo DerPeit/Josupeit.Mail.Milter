@@ -26,6 +26,10 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
 {
     private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements, TContext.DeliveryRequirements);
 
+    // Replaced once the OPTNEG reply has been written. Until then it reads as a version 2 session, so
+    // nothing has to cope with a null and no state before AwaitingNegotiationState can be misled.
+    private ProtocolNegotiationOutcome _negotiation = ProtocolNegotiationOutcome.NotNegotiated;
+
     private readonly ChannelReader<RequestFrame> _requestFrameReader;
     private readonly IRequestPacketFactory _requestPacketFactory;
     private readonly IResponseFrameFactory _responseFrameFactory;
@@ -158,6 +162,10 @@ partial class Session<TContext> : IProtocolStateMachine
     IProtocolState IStateMachine<IProtocolState>.State => _protocolState!;
 
     ProtocolStateMachineConfiguration IProtocolStateMachine.Configuration => _protocolStateMachineConfiguration;
+
+    ProtocolNegotiationOutcome IProtocolStateMachine.Negotiation => _negotiation;
+
+    void IProtocolStateMachine.CompleteNegotiation(ProtocolNegotiationOutcome outcome) => _negotiation = outcome;
 
     ValueTask IProtocolStateMachine.DisposeContextAdapter() => DisposeContextAdapter();
 

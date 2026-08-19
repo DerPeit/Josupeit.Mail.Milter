@@ -39,6 +39,8 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
             MilterUndesiredProtocolContent = contentBypass,
         };
 
+        stateMachine.CompleteNegotiation(new ProtocolNegotiationOutcome(negotiatedVersion, actionRequirements, contentBypass));
+
         return new(AsyncEnumerableEx.Return<ResponsePacket>(response).Finally(TransitionToNextState));
     }
 

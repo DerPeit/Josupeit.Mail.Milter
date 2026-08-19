@@ -118,6 +118,76 @@ public sealed class OptionNegotiationTests
         });
     }
 
+    // The outcome is what every later runtime decision reads, so it has to record what was settled
+    // rather than what was asked for. A filter's declaration honoured against an MTA that never agreed
+    // to it is exactly the bug the type exists to prevent.
+    [Test]
+    public void The_outcome_records_what_was_settled_rather_than_what_was_wanted()
+    {
+        var stateMachine = new FakeProtocolStateMachine
+        {
+            Configuration = new ProtocolStateMachineConfiguration(
+                ProtocolRequirements.EndOfBody,
+                ActionRequirements.None,
+                DeliveryRequirements.LeadingHeaderSpace),
+        };
+
+        var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);
+
+        var request = new OptionNegotiationRequestPacket
+        {
+            MtaProtocolVersion = new Version(2, 0),
+            MtaSupportedActions = ActionDiscriminator.All,
+            MtaSupportedContentBypass = (ContentBypassDiscriminator)uint.MaxValue,
+        };
+
+        Drain(state.ProcessOptionNegotiationAttempt(request, CancellationToken.None));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(stateMachine.Negotiation.ProtocolVersion, Is.EqualTo(new Version(2, 0)));
+            Assert.That(
+                stateMachine.Negotiation.KeepsLeadingHeaderSpace,
+                Is.False,
+                "The filter asked for it; a version 2 MTA does not define it.");
+        });
+    }
+
+    [Test]
+    public void Every_event_is_answered_until_a_no_reply_flag_is_negotiated()
+    {
+        var stateMachine = new FakeProtocolStateMachine();
+        var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);
+
+        var request = new OptionNegotiationRequestPacket
+        {
+            MtaProtocolVersion = new Version(6, 0),
+            MtaSupportedActions = ActionDiscriminator.All,
+            MtaSupportedContentBypass = (ContentBypassDiscriminator)uint.MaxValue,
+        };
+
+        Drain(state.ProcessOptionNegotiationAttempt(request, CancellationToken.None));
+
+        var outcome = stateMachine.Negotiation;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.IsAnsweringConnection, Is.True);
+            Assert.That(outcome.IsAnsweringClientHello, Is.True);
+            Assert.That(outcome.IsAnsweringSender, Is.True);
+            Assert.That(outcome.IsAnsweringRecipients, Is.True);
+            Assert.That(outcome.IsAnsweringHeaders, Is.True);
+            Assert.That(outcome.IsAnsweringEndOfHeaders, Is.True);
+            Assert.That(outcome.IsAnsweringBody, Is.True);
+            Assert.That(outcome.IsSkipGranted, Is.False);
+        });
+    }
+
+    private static void Drain(ValueTask<IAsyncEnumerable<ResponsePacket>> responses)
+    {
+        responses.AsTask().GetAwaiter().GetResult().ToArrayAsync().AsTask().GetAwaiter().GetResult();
+    }
+
     private static OptionNegotiationResponsePacket Negotiate(
         int offeredVersion,
         ContentBypassDiscriminator? mtaContentBypass = null,
