@@ -13,47 +13,33 @@ namespace Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
 internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachine, ProtocolStateMachineConfiguration config) : ProtocolState
 {
-    private static readonly Version _implementedProtocolVersion = new(2, 0);
-
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        ThrowIfUnsupportedVersion(request.MtaProtocolVersion);
+        var negotiatedVersion = ProtocolVersionCapabilities.Clamp(request.MtaProtocolVersion);
 
-        var actionRequirements = config.ToActionDiscriminator();
-        var contentBypass = config.ToContentBypassDiscriminator();
+        var actionRequirements = config.ToActionDiscriminator() & ProtocolVersionCapabilities.ActionsFor(negotiatedVersion);
+        var contentBypass = config.ToContentBypassDiscriminator() & ProtocolVersionCapabilities.ContentBypassFor(negotiatedVersion);
 
-        ThrowIfUnsupportedProtocolRequirements(request.MtaSupportedContentBypass, contentBypass);
         ThrowIfUnsupportedActionRequirements(request.MtaSupportedActions, actionRequirements);
+
+        // Actions fail the session; events quietly degrade. A modification the MTA will not grant is
+        // dropped on arrival with nothing anywhere in this library to notice, so the message goes out
+        // unmodified and the operator hears about it from a user - worth failing the first connection
+        // over. An event the MTA will not skip merely arrives anyway, and the callback that was never
+        // overridden answers Continue, which is what happened before any of this was negotiated.
+        contentBypass &= request.MtaSupportedContentBypass;
 
         var response = new OptionNegotiationResponsePacket
         {
-            MilterProtocolVersion = _implementedProtocolVersion,
+            MilterProtocolVersion = negotiatedVersion,
             MilterRequiredActions = actionRequirements,
             MilterUndesiredProtocolContent = contentBypass,
         };
 
         return new(AsyncEnumerableEx.Return<ResponsePacket>(response).Finally(TransitionToNextState));
-    }
-
-    private static void ThrowIfUnsupportedVersion(Version supportedVersion)
-    {
-        if (supportedVersion < _implementedProtocolVersion)
-            throw new NotSupportedException(
-                $"The MTA implements Milter protocol version {supportedVersion}. However, this Milter implements " +
-                $"protocol version {_implementedProtocolVersion}, which is unsupported. Upgrade the MTA and retry.");
-    }
-
-    private static void ThrowIfUnsupportedProtocolRequirements(ContentBypassDiscriminator supportedFlags, ContentBypassDiscriminator requiredFlags)
-    {
-        if (supportedFlags.HasFlag(requiredFlags))
-            return;
-
-        throw new NotSupportedException(
-            $"The MTA only supports the Milter protocol events {supportedFlags:F}. However, this Milter requires " +
-            $"events {requiredFlags:F}, which is unsupported. Upgrade the MTA and retry.");
     }
 
     private static void ThrowIfUnsupportedActionRequirements(ActionDiscriminator supportedFlags, ActionDiscriminator requiredFlags)
@@ -63,7 +49,8 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
 
         throw new NotSupportedException(
             $"The MTA only supports the Milter actions {supportedFlags:F}. However, this Milter requires " +
-            $"actions {requiredFlags:F}, which is unsupported. Upgrade the MTA and retry.");
+            $"actions {requiredFlags:F}, which is unsupported. The requirement is derived from every action " +
+            "the filter's code mentions, so declaring ActionRequirements by hand narrows it.");
     }
 
     private async Task TransitionToNextState()
