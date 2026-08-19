@@ -27,7 +27,7 @@ public sealed class MilterContextSourceGeneratorTests
     {
         var run = GeneratorHarness.Run(Context(
             """
-            public ValueTask<CommitAction> OnSender(SenderRecipientInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+            public ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
 
             public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
             """));
@@ -317,7 +317,7 @@ public sealed class MilterContextSourceGeneratorTests
             {
                 internal partial class TugFilter : IMilterContext
                 {
-                    public ValueTask<CommitAction> OnRecipient(SenderRecipientInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+                    public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
                 }
             }
             """);

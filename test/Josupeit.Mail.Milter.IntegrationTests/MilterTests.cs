@@ -283,9 +283,9 @@ public class MilterTests : MilterFixture
         MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Sender;
         MilterContextAdapter.ActionRequirements = ActionRequirements.None;
 
-        SenderRecipientInformation? observedInfo = null;
+        SenderInformation? observedInfo = null;
 
-        _ = ContextAdapter.OnSender(Arg.Do<SenderRecipientInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+        _ = ContextAdapter.OnSender(Arg.Do<SenderInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
 
         await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
         await ReceiveMail();
@@ -300,9 +300,9 @@ public class MilterTests : MilterFixture
         MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Recipient;
         MilterContextAdapter.ActionRequirements = ActionRequirements.None;
 
-        SenderRecipientInformation? observedInfo = null;
+        RecipientInformation? observedInfo = null;
 
-        _ = ContextAdapter.OnRecipient(Arg.Do<SenderRecipientInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+        _ = ContextAdapter.OnRecipient(Arg.Do<RecipientInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
 
         await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
         await ReceiveMail();

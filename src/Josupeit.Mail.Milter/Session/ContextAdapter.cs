@@ -77,14 +77,14 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory) : IA
     public IAsyncEnumerable<ResponsePacket> OnSender(SenderRequestPacket request)
     {
         return Invoke(
-            new SenderRecipientInformation(request.Sender, request.ESmtpArguments),
+            new SenderInformation(request.Sender, request.ESmtpArguments),
             static (context, info, token) => context.OnSender(info, token));
     }
 
     public IAsyncEnumerable<ResponsePacket> OnRecipient(RecipientRequestPacket request)
     {
         return Invoke(
-            new SenderRecipientInformation(request.Recipient, request.ESmtpArguments),
+            new RecipientInformation(request.Recipient, request.ESmtpArguments),
             static (context, info, token) => context.OnRecipient(info, token));
     }
 

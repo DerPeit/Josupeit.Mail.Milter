@@ -93,7 +93,7 @@ public interface IMilterCallbacks
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
     [MilterCallbackMarker(nameof(ProtocolRequirements.Sender))]
-    ValueTask<CommitAction> OnSender(SenderRecipientInformation info, CancellationToken cancellationToken)
+    ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
     }
@@ -109,7 +109,7 @@ public interface IMilterCallbacks
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with this recipient.</returns>
     [MilterCallbackMarker(nameof(ProtocolRequirements.Recipient))]
-    ValueTask<CommitAction> OnRecipient(SenderRecipientInformation info, CancellationToken cancellationToken)
+    ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
     }
