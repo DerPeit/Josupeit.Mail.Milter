@@ -96,6 +96,7 @@ public sealed class ResponseFrameFactoryTests
             (DeferMessageResponsePacket.Instance, ResponseCode.DeferMessage),
             (DiscardMessageResponsePacket.Instance, ResponseCode.DiscardMessage),
             (RejectMessageResponsePacket.Instance, ResponseCode.RejectMessage),
+            (SkipRemainingEventsResponsePacket.Instance, ResponseCode.Skip),
         ];
 
         var factory = new ResponseFrameFactory();

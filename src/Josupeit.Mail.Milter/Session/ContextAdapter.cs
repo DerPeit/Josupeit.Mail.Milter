@@ -20,6 +20,13 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
     // filter that cares.
     private IReadOnlyDictionary<string, string>? _recipientMacros;
 
+    // Set once the filter has answered SkipRemainingEvents to one of the three repeatable events. A
+    // conforming MTA stops sending them, but the unit tests exist for what a correct MTA can never
+    // produce, and a stray one must not reach a callback that asked to be left alone.
+    private bool _isSkippingRecipients;
+    private bool _isSkippingHeaders;
+    private bool _isSkippingBody;
+
     public ValueTask DisposeAsync()
     {
         switch (_context)
@@ -100,10 +107,12 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
         // and it would otherwise inherit the verdict passed on the first one.
         _recipientMacros = null;
 
-        return Invoke(
+        return InvokeRepeatable(
             new RecipientInformation(request.Recipient, request.ESmtpArguments, isRejected),
             static (context, info, token) => context.OnRecipient(info, token),
-            negotiation.IsAnsweringRecipients);
+            negotiation.IsAnsweringRecipients,
+            _isSkippingRecipients,
+            static adapter => adapter._isSkippingRecipients = true);
     }
 
     // Postfix sets {rcpt_mailer} to "error" for a recipient it has already refused, and puts the status
@@ -118,10 +127,12 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
 
     public IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request)
     {
-        return Invoke(
+        return InvokeRepeatable(
             new HeaderInformation(request.Name, request.Value),
             static (context, info, token) => context.OnHeader(info, token),
-            negotiation.IsAnsweringHeaders);
+            negotiation.IsAnsweringHeaders,
+            _isSkippingHeaders,
+            static adapter => adapter._isSkippingHeaders = true);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnEndOfHeaders(EndOfHeadersRequestPacket request)
@@ -152,10 +163,12 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
     // and reads the span inside the callback instead.
     public IAsyncEnumerable<ResponsePacket> OnBodyChunk(BodyChunkRequestPacket request)
     {
-        return Invoke(
+        return InvokeRepeatable(
             request,
             static (context, packet, token) => context.OnBodyChunk(packet.DataSpan, token),
-            negotiation.IsAnsweringBody);
+            negotiation.IsAnsweringBody,
+            _isSkippingBody,
+            static adapter => adapter._isSkippingBody = true);
     }
 
     public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _)
@@ -168,7 +181,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
         // reads that stream as modifications first and exactly one verdict last. Letting a wrong sequence
         // through would leave the MTA waiting for a verdict that never comes, or acting on a modification
         // it has already been told to ignore - both far harder to place than a throw here.
-        static async IAsyncEnumerable<ResponsePacket> EnumerateResponses(
+        async IAsyncEnumerable<ResponsePacket> EnumerateResponses(
             IAsyncEnumerable<Action> actions,
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -179,6 +192,12 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
                 if (isCommitted)
                     throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} yielded an action after the commit action.");
 
+                // End-of-body happens once per message, so there is nothing left to stop sending.
+                if (action is SkipRemainingEventsAction)
+                    throw new InvalidOperationException(
+                        $"{nameof(IMilterCallbacks.OnEndOfBody)} yielded SkipRemainingEvents, which only "
+                        + "answers an event that repeats.");
+
                 isCommitted = action is CommitAction;
 
                 await foreach (var response in action.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -187,9 +206,64 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
 
             if (!isCommitted)
                 throw new InvalidOperationException($"{nameof(IMilterCallbacks.OnEndOfBody)} must yield exactly one commit action.");
+
+            // The message is over. The adapter is not: it is disposed on ABORT and QUIT only, so an MTA
+            // that starts the next message without either would otherwise carry this message's skips
+            // into it and silently starve the filter of events.
+            _isSkippingRecipients = false;
+            _isSkippingHeaders = false;
+            _isSkippingBody = false;
         }
     }
 
+
+    // The three events that repeat, and the only ones a skip means anything for.
+    //
+    // Two rules that differ on purpose. Skipping is an optimisation, so a skip the MTA never granted
+    // becomes a Continue and the message is unaffected; throwing over a saving the peer declined would
+    // drop mail for nothing. Answering a skip from an event that happens once is a different matter -
+    // there is nothing to skip, so the filter meant something the protocol cannot express, and that is a
+    // programming error rather than a peer's shortfall.
+    private async IAsyncEnumerable<ResponsePacket> InvokeRepeatable<TInfo>(
+        TInfo info,
+        Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
+        bool isAnswered,
+        bool isSkipping,
+        System.Action<ContextAdapter> markSkipping,
+        [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        // The filter asked not to hear about these again. Invoking the callback anyway would break the
+        // promise the skip just made, so the event is answered without it.
+        if (isSkipping)
+        {
+            if (isAnswered)
+                yield return ContinueProcessingResponsePacket.Instance;
+
+            yield break;
+        }
+
+        var context = _context ??= contextFactory();
+
+        var commitAction = await callback(context, info, cancellationToken).ConfigureAwait(false);
+
+        if (commitAction is SkipRemainingEventsAction)
+        {
+            if (!negotiation.IsSkipGranted)
+                commitAction = CommitActions.Continue;
+            else
+                markSkipping(this);
+        }
+
+        if (!isAnswered)
+        {
+            ThrowIfDecisionCannotBeDelivered(commitAction);
+
+            yield break;
+        }
+
+        await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
+            yield return response;
+    }
     private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
         TInfo info,
         Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
@@ -200,6 +274,8 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
 
         var commitAction = await callback(context, info, cancellationToken).ConfigureAwait(false);
 
+        ThrowIfNotRepeatable(commitAction);
+
         if (isAnswered)
         {
             await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
@@ -208,14 +284,30 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
             yield break;
         }
 
-        // The MTA is not reading a reply to this event, so there is nowhere to put a decision. Writing
-        // one anyway would be read as the answer to the next command and leave every request and
-        // response after it out of step for the rest of the connection; dropping it silently would
-        // deliver mail the filter rejected. Both are worse than ending the session.
-        //
-        // Unreachable when the flag was derived, because the analysis only sets it once it has proved
-        // the callback cannot answer anything else - which makes this a check on the analysis as much as
-        // on a hand-written declaration.
+        ThrowIfDecisionCannotBeDelivered(commitAction);
+    }
+
+    // The MTA is not reading a reply to this event, so there is nowhere to put a decision. Writing one
+    // anyway would be read as the answer to the next command and leave every request and response after
+    // it out of step for the rest of the connection; dropping it silently would deliver mail the filter
+    // rejected. Both are worse than ending the session.
+    //
+    // Unreachable when the flag was derived, because the analysis only sets it once it has proved the
+    // callback cannot answer anything else - which makes this a check on the analysis as much as on a
+    // hand-written declaration.
+    // There is nothing to stop sending when the event happens once, so the filter meant something the
+    // protocol cannot express. Unlike a skip the MTA declined, this is the filter's own mistake and is
+    // worth saying out loud.
+    private static void ThrowIfNotRepeatable(CommitAction commitAction)
+    {
+        if (commitAction is SkipRemainingEventsAction)
+            throw new InvalidOperationException(
+                "SkipRemainingEvents was answered from an event that happens once. Only headers, "
+                + "recipients and body chunks repeat, so only they can be skipped.");
+    }
+
+    private static void ThrowIfDecisionCannotBeDelivered(CommitAction commitAction)
+    {
         if (commitAction is not ContinueAction)
             throw new InvalidOperationException(
                 "A callback listed in NoReplyRequirements answered with something other than Continue. "

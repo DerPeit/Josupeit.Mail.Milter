@@ -27,6 +27,17 @@ public static class CommitActions
     public static ContinueAction Continue => ContinueAction.Instance;
 
     /// <summary>
+    /// Stops the MTA sending any more of the event just answered.
+    /// </summary>
+    /// <remarks>
+    /// Only for an event that repeats - a body chunk, a header, a recipient - and only useful once the
+    /// filter has seen enough of them. Decides nothing: the message carries on and
+    /// <see cref="IMilterCallbacks.OnEndOfBody"/> still runs. Quietly becomes <see cref="Continue"/>
+    /// when the MTA did not grant it, and throws when answered from an event that happens once.
+    /// </remarks>
+    public static SkipRemainingEventsAction SkipRemainingEvents => SkipRemainingEventsAction.Instance;
+
+    /// <summary>
     /// Accepts the message on the wire and then silently drops it.
     /// </summary>
     public static DiscardAction Discard => DiscardAction.Instance;

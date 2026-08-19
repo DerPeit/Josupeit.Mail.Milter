@@ -411,6 +411,13 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         return true;
     }
 
+    protected internal override bool VisitSkipRemainingEventsResponsePacket(SkipRemainingEventsResponsePacket responsePacket)
+    {
+        _responseFrame = new(ResponseCode.Skip);
+
+        return true;
+    }
+
     protected internal override bool VisitQuarantineMessageResponsePacket(QuarantineMessageResponsePacket responsePacket)
     {
         var reasonLength = Encoding.Latin1.GetByteCount(responsePacket.Reason);
