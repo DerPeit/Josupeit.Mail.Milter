@@ -96,6 +96,7 @@ public sealed class ResponseFrameFactoryTests
             (DeferMessageResponsePacket.Instance, ResponseCode.DeferMessage),
             (DiscardMessageResponsePacket.Instance, ResponseCode.DiscardMessage),
             (RejectMessageResponsePacket.Instance, ResponseCode.RejectMessage),
+            (SkipRemainingEventsResponsePacket.Instance, ResponseCode.Skip),
         ];
 
         var factory = new ResponseFrameFactory();
@@ -140,6 +141,81 @@ public sealed class ResponseFrameFactoryTests
 
         Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.DeleteRecipient));
         Assert.That(GetData(frame), Is.EqualTo(Latin1("eve@example.com\0")));
+    }
+
+    [Test]
+    // Insertion counts from zero on the wire, a header change counts occurrences from one. Writing the
+    // change's translation here - which is how this was first written - puts the header one place too
+    // low, and Postfix says so at the point it reads the field: "With Sendmail 8, index 0 means the
+    // top-most header", after which it adds the one itself.
+    [TestCase(0u, "above every existing header")]
+    [TestCase(2u, "after the second existing header")]
+    public void Inserting_a_header_puts_the_index_on_the_wire_unaltered(uint index, string meaning)
+    {
+        var packet = new InsertHeaderResponsePacket { Index = index, Name = "X-Checked-By", Value = "Sybil Sieve" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.InsertHeader));
+            Assert.That(
+                GetData(frame),
+                Is.EqualTo(new byte[] { 0, 0, 0, (byte)index }.Concat(Latin1("X-Checked-By\0Sybil Sieve\0")).ToArray()),
+                $"Index {index} means {meaning}, and the wire spells it the same way.");
+        });
+    }
+
+    [Test]
+    public void Changing_the_sender_without_arguments_leaves_the_second_field_off_entirely()
+    {
+        var packet = new ChangeSenderResponsePacket { Sender = "<bounces@example.com>" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.ChangeSender));
+        Assert.That(
+            GetData(frame),
+            Is.EqualTo(Latin1("<bounces@example.com>\0")),
+            "A lone terminator would read as an empty argument string rather than as no arguments.");
+    }
+
+    [Test]
+    public void Changing_the_sender_with_arguments_writes_both_fields()
+    {
+        var packet = new ChangeSenderResponsePacket { Sender = "<bounces@example.com>", ESmtpArguments = "BODY=8BITMIME" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("<bounces@example.com>\0BODY=8BITMIME\0")));
+    }
+
+    [Test]
+    public void An_empty_argument_string_counts_as_no_arguments()
+    {
+        var packet = new ChangeSenderResponsePacket { Sender = "<bounces@example.com>", ESmtpArguments = "" };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("<bounces@example.com>\0")));
+    }
+
+    // The same packet type as Adding_a_recipient_terminates_the_address, and the arguments are the only
+    // thing that picks SMFIR_ADDRCPT_PAR over SMFIR_ADDRCPT. Getting that backwards has the MTA refuse
+    // the recipient of any filter that only negotiated AddRecipients.
+    [Test]
+    public void Adding_a_recipient_with_parameters_writes_both_fields()
+    {
+        var packet = new AddRecipientResponsePacket
+        {
+            Recipient = "<archive@example.com>",
+            ESmtpArguments = "NOTIFY=NEVER",
+        };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.AddRecipientWithParameters));
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("<archive@example.com>\0NOTIFY=NEVER\0")));
     }
 
     [Test]

@@ -30,6 +30,19 @@ internal static class ActionTypes
         return null;
     }
 
+    // The lowest protocol version a value of this type needs from the MTA. Read off the nearest marker,
+    // so an action that contributes no requirement flag - the skip action - still contributes a version.
+    public static int MinimumProtocolVersionOf(ITypeSymbol? type)
+    {
+        foreach (var candidate in SelfAndBaseTypes(type))
+        {
+            if (MarkerOn(candidate) is { } marker)
+                return MilterActionMarkerAttribute.GetMinimumProtocolVersion(marker);
+        }
+
+        return 0;
+    }
+
     // True for an abstract type a modification can arrive disguised as - Action and ModificationAction.
     // CommitAction is abstract and marked through its base as well, but no type needing a flag derives
     // from it, so a value typed as one is never something the analysis has lost.

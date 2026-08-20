@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <Description>An implementation of the Milter protocol (wire version 2), the mail filter protocol spoken by Postfix and Sendmail. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
+    <Description>An implementation of the Milter protocol, the mail filter protocol spoken by Postfix and Sendmail. Speaks wire version 6 and negotiates down to whatever the MTA offers, with a floor of version 2. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
     <PackageTags>milter postfix sendmail smtp mail-filter mta email antispam</PackageTags>
     <PackageVersionTagPrefix>v</PackageVersionTagPrefix>
     <NoWarn>$(NoWarn),CS9107</NoWarn>
@@ -55,10 +55,18 @@
       wired up in the repository's Directory.Build.props.
     -->
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ActionRequirementsMarkerAttribute.cs" Link="Properties\ActionRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\DeliveryRequirementsMarkerAttribute.cs" Link="Properties\DeliveryRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MacroRequirementsMarkerAttribute.cs" Link="Properties\MacroRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterActionMarkerAttribute.cs" Link="Properties\MilterActionMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterCallbackMarkerAttribute.cs" Link="Properties\MilterCallbackMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterContextMarkerAttribute.cs" Link="Properties\MilterContextMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterDeliveryMarkerAttribute.cs" Link="Properties\MilterDeliveryMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterMacroSourceMarkerAttribute.cs" Link="Properties\MilterMacroSourceMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterMacroStageMarkerAttribute.cs" Link="Properties\MilterMacroStageMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterUnobservableActionMarkerAttribute.cs" Link="Properties\MilterUnobservableActionMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\NoReplyRequirementsMarkerAttribute.cs" Link="Properties\NoReplyRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolRequirementsMarkerAttribute.cs" Link="Properties\ProtocolRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolVersionRequirementMarkerAttribute.cs" Link="Properties\ProtocolVersionRequirementMarkerAttribute.cs" />
   </ItemGroup>
 
   <!--

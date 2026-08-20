@@ -19,7 +19,7 @@ public sealed class ReplayingAbortedStateTests
     public async Task A_replayed_continue_produces_no_reply_to_a_macro()
     {
         var stateMachine = new FakeProtocolStateMachine();
-        var state = new ReplayingAbortedState(stateMachine, CreateReplayHistory());
+        var state = new ReplayingAbortedState(stateMachine, TestNegotiation.Nothing, CreateReplayHistory());
 
         var responses = await Drain(state.ProcessMacroDefinition(CreateMacroPacket(), CancellationToken.None));
 
@@ -30,7 +30,7 @@ public sealed class ReplayingAbortedStateTests
     public void A_replayed_decision_is_refused_rather_than_written_in_reply_to_a_macro()
     {
         var stateMachine = new FakeProtocolStateMachine(static () => new RejectingContext());
-        var state = new ReplayingAbortedState(stateMachine, CreateReplayHistory());
+        var state = new ReplayingAbortedState(stateMachine, TestNegotiation.Nothing, CreateReplayHistory());
 
         Assert.That(
             async () => await Drain(state.ProcessMacroDefinition(CreateMacroPacket(), CancellationToken.None)),
@@ -42,7 +42,7 @@ public sealed class ReplayingAbortedStateTests
     public async Task A_replayed_decision_is_written_in_reply_to_a_packet_that_expects_one()
     {
         var stateMachine = new FakeProtocolStateMachine(static () => new RejectingContext());
-        var state = new ReplayingAbortedState(stateMachine, CreateReplayHistory());
+        var state = new ReplayingAbortedState(stateMachine, TestNegotiation.Nothing, CreateReplayHistory());
 
         var request = new HeloRequestPacket { HeloString = "mail.example.com" };
 

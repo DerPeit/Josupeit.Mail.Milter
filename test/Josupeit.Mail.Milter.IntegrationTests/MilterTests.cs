@@ -283,9 +283,9 @@ public class MilterTests : MilterFixture
         MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Sender;
         MilterContextAdapter.ActionRequirements = ActionRequirements.None;
 
-        SenderRecipientInformation? observedInfo = null;
+        SenderInformation? observedInfo = null;
 
-        _ = ContextAdapter.OnSender(Arg.Do<SenderRecipientInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+        _ = ContextAdapter.OnSender(Arg.Do<SenderInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
 
         await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
         await ReceiveMail();
@@ -300,9 +300,9 @@ public class MilterTests : MilterFixture
         MilterContextAdapter.ProtocolRequirements = ProtocolRequirements.Recipient;
         MilterContextAdapter.ActionRequirements = ActionRequirements.None;
 
-        SenderRecipientInformation? observedInfo = null;
+        RecipientInformation? observedInfo = null;
 
-        _ = ContextAdapter.OnRecipient(Arg.Do<SenderRecipientInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
+        _ = ContextAdapter.OnRecipient(Arg.Do<RecipientInformation>(ci => observedInfo = ci), Arg.Any<CancellationToken>());
 
         await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
         await ReceiveMail();
@@ -561,6 +561,39 @@ public class MilterTests : MilterFixture
         await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
 
         Assert.That(await ReceiveMail(), Does.Contain("X-Filtered-By: Josupeit.Mail.Milter"));
+    }
+
+    // Where an inserted header lands is the one thing about insertion the unit tests cannot see: they
+    // assert the bytes that go out, and only a real MTA says what those bytes mean. Insertion counts from
+    // zero on the wire while a header change counts occurrences from one, and writing the change's
+    // translation here - which is how this was first written - put every inserted header one place too
+    // low. Nothing caught it, because nothing had ever asked an MTA where the header ended up.
+    [Test]
+    public async Task Inserting_a_header_at_zero_puts_it_above_the_headers_the_sender_wrote()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.AddHeaders,
+            ModificationActions.InsertHeader(index: 0, "X-Checked-By", "Sybil Sieve"));
+
+        await SendMail(new("random@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        var delivered = await ReceiveMail();
+
+        // Return-Path and Delivered-To are prepended by the local delivery transport long after the
+        // filter has finished, so they sit above anything it inserted and say nothing either way.
+        // Received is the first header that already existed when the filter ran, which makes it the one
+        // header that tells the two cases apart: inserted at the top the new header comes before it,
+        // inserted one place too low it comes after. Comparing against From or Subject cannot see the
+        // difference, because both cases land above those.
+        var insertedAt = delivered.IndexOf("X-Checked-By:", StringComparison.Ordinal);
+        var receivedAt = delivered.IndexOf("Received:", StringComparison.Ordinal);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(insertedAt, Is.GreaterThanOrEqualTo(0), "The inserted header never arrived.");
+            Assert.That(receivedAt, Is.GreaterThanOrEqualTo(0), "The MTA's own Received header is the yardstick and it is missing.");
+            Assert.That(insertedAt, Is.LessThan(receivedAt), "Index zero means above every header the message already had.");
+        });
     }
 
     [Test]

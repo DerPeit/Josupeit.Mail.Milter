@@ -19,14 +19,14 @@ namespace Josupeit.Mail.Milter;
 /// </remarks>
 public sealed record RejectAction : CommitAction
 {
+    private RejectAction()
+    {
+    }
+
     /// <summary>
     /// The single shared instance. This action carries no state, so there is never a reason for another.
     /// </summary>
     public static RejectAction Instance { get; } = new();
-
-    private RejectAction()
-    {
-    }
 
     /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)

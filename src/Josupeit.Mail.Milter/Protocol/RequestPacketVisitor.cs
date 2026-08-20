@@ -122,6 +122,16 @@ public abstract class RequestPacketVisitor
     }
 
     /// <summary>
+    /// Called for a <see cref="MessageDataRequestPacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="requestPacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitMessageDataRequestPacket(MessageDataRequestPacket requestPacket)
+    {
+        return true;
+    }
+
+    /// <summary>
     /// Called for a <see cref="OptionNegotiationRequestPacket"/>. The base implementation does nothing.
     /// </summary>
     /// <param name="requestPacket">The packet being visited.</param>
@@ -142,11 +152,31 @@ public abstract class RequestPacketVisitor
     }
 
     /// <summary>
+    /// Called for a <see cref="QuitForNewConnectionRequestPacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="requestPacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitQuitForNewConnectionRequestPacket(QuitForNewConnectionRequestPacket requestPacket)
+    {
+        return true;
+    }
+
+    /// <summary>
     /// Called for a <see cref="RecipientRequestPacket"/>. The base implementation does nothing.
     /// </summary>
     /// <param name="requestPacket">The packet being visited.</param>
     /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
     protected internal virtual bool VisitRcptToRequestPacket(RecipientRequestPacket requestPacket)
+    {
+        return true;
+    }
+
+    /// <summary>
+    /// Called for a <see cref="UnknownCommandRequestPacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="requestPacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitUnknownCommandRequestPacket(UnknownCommandRequestPacket requestPacket)
     {
         return true;
     }

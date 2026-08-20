@@ -12,7 +12,7 @@ namespace Josupeit.Mail.Milter.Generator;
 internal sealed record MilterContextEmission(
     string HintName,
     string? Namespace,
-    ImmutableArray<string> ContainingTypes,
+    EquatableArray<string> ContainingTypes,
     string TypeDeclaration,
-    ImmutableArray<string> Properties,
-    ImmutableArray<Diagnostic> Diagnostics);
+    EquatableArray<string> Properties,
+    EquatableArray<Diagnostic> Diagnostics);

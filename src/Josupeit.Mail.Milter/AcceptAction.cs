@@ -18,14 +18,14 @@ namespace Josupeit.Mail.Milter;
 /// </remarks>
 public sealed record AcceptAction : CommitAction
 {
+    private AcceptAction()
+    {
+    }
+
     /// <summary>
     /// The single shared instance. This action carries no state, so there is never a reason for another.
     /// </summary>
     public static AcceptAction Instance { get; } = new();
-
-    private AcceptAction()
-    {
-    }
 
     /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)

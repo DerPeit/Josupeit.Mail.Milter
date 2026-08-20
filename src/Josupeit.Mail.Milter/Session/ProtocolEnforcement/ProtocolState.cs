@@ -56,6 +56,11 @@ internal abstract class ProtocolState : IProtocolState
         return RejectUnexpected(request);
     }
 
+    public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return RejectUnexpected(request);
+    }
+
     public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
     {
         return RejectUnexpected(request);
@@ -66,12 +71,22 @@ internal abstract class ProtocolState : IProtocolState
         return RejectUnexpected(request);
     }
 
+    public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
+    {
+        return RejectUnexpected(request);
+    }
+
     public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
         return RejectUnexpected(request);
     }
 
     public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
+    {
+        return RejectUnexpected(request);
+    }
+
+    public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
     {
         return RejectUnexpected(request);
     }

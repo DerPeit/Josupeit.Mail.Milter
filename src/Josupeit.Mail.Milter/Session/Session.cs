@@ -24,7 +24,13 @@ namespace Josupeit.Mail.Milter.Session;
 /// <typeparam name="TContext">The filter this session runs. One instance is built per message.</typeparam>
 public partial class Session<TContext> : ISession where TContext : IMilterContext
 {
-    private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(TContext.ProtocolRequirements, TContext.ActionRequirements);
+    private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(
+        TContext.ProtocolRequirements,
+        TContext.ActionRequirements,
+        TContext.DeliveryRequirements,
+        TContext.NoReplyRequirements,
+        TContext.ProtocolVersionRequirement,
+        TContext.MacroRequirements);
 
     private readonly ChannelReader<RequestFrame> _requestFrameReader;
     private readonly IRequestPacketFactory _requestPacketFactory;
@@ -137,9 +143,11 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         }
     }
 
-    internal ContextAdapter EnsureContextAdapter()
+    // The adapter is per message and the outcome is per connection, so the state that asks for one
+    // carries the outcome in and the session only owns the lifetime.
+    internal ContextAdapter EnsureContextAdapter(ProtocolNegotiationOutcome negotiation)
     {
-        return _contextAdapter ??= new(() => _contextFactory());
+        return _contextAdapter ??= new(() => _contextFactory(), negotiation);
     }
 
     internal ValueTask DisposeContextAdapter()
@@ -161,7 +169,7 @@ partial class Session<TContext> : IProtocolStateMachine
 
     ValueTask IProtocolStateMachine.DisposeContextAdapter() => DisposeContextAdapter();
 
-    ContextAdapter IProtocolStateMachine.EnsureContextAdapter() => EnsureContextAdapter();
+    ContextAdapter IProtocolStateMachine.EnsureContextAdapter(ProtocolNegotiationOutcome negotiation) => EnsureContextAdapter(negotiation);
 
     ValueTask IStateMachine<IProtocolState>.TransitionTo(IProtocolState state)
     {

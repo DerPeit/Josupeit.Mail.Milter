@@ -60,7 +60,7 @@ public interface IMilterCallbacks
     /// <param name="info">The hostname and endpoint the MTA has for the client.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the connection.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Connect))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Connect), nameof(NoReplyRequirements.Connect))]
     ValueTask<CommitAction> OnConnectionEstablished(ConnectionInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -76,7 +76,7 @@ public interface IMilterCallbacks
     /// <param name="info">The name the client announced itself as.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.ClientHello))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.ClientHello), nameof(NoReplyRequirements.ClientHello))]
     ValueTask<CommitAction> OnClientHello(ClientHelloInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -92,8 +92,8 @@ public interface IMilterCallbacks
     /// <param name="info">The envelope address and any ESMTP parameters that followed it.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Sender))]
-    ValueTask<CommitAction> OnSender(SenderRecipientInformation info, CancellationToken cancellationToken)
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Sender), nameof(NoReplyRequirements.Sender))]
+    ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
     }
@@ -108,8 +108,25 @@ public interface IMilterCallbacks
     /// <param name="info">The envelope address and any ESMTP parameters that followed it.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with this recipient.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Recipient))]
-    ValueTask<CommitAction> OnRecipient(SenderRecipientInformation info, CancellationToken cancellationToken)
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Recipient), nameof(NoReplyRequirements.Recipient))]
+    ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+    {
+        return new(CommitActions.Continue);
+    }
+
+    /// <summary>
+    /// Called when the client has sent <c>DATA</c> and the message content is about to follow.
+    /// </summary>
+    /// <remarks>
+    /// Requires <see cref="ProtocolRequirements.MessageData"/>, and an MTA speaking protocol version 4
+    /// or above. This is the one point at which the entire envelope has been seen and none of the
+    /// content has, so a decision that turns only on who is writing to whom can be made here without
+    /// the message ever being transferred.
+    /// </remarks>
+    /// <param name="cancellationToken">A token that cancels the callback.</param>
+    /// <returns>What the MTA should do with the message.</returns>
+    [MilterCallbackMarker(nameof(ProtocolRequirements.MessageData), nameof(NoReplyRequirements.MessageData), MinimumProtocolVersion = 4)]
+    ValueTask<CommitAction> OnMessageDataStarted(CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
     }
@@ -125,7 +142,7 @@ public interface IMilterCallbacks
     /// <param name="info">The name and value of the header.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Header))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Header), nameof(NoReplyRequirements.Header))]
     ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
     {
         return new (CommitActions.Continue);
@@ -141,7 +158,7 @@ public interface IMilterCallbacks
     /// </remarks>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.EndOfHeaders))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.EndOfHeaders), nameof(NoReplyRequirements.EndOfHeaders))]
     ValueTask<CommitAction> OnEndOfHeaders(CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -159,7 +176,7 @@ public interface IMilterCallbacks
     /// <param name="chunk">The bytes of this part of the body.</param>
     /// <param name="cancellationToken">A token that cancels the callback.</param>
     /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.Body))]
+    [MilterCallbackMarker(nameof(ProtocolRequirements.Body), nameof(NoReplyRequirements.Body))]
     ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
@@ -191,5 +208,24 @@ public interface IMilterCallbacks
     IAsyncEnumerable<Action> OnEndOfBody()
     {
         return new Action[] { CommitActions.Continue }.ToAsyncEnumerable();
+    }
+
+    /// <summary>
+    /// Called when the client has sent an SMTP command the MTA does not recognise.
+    /// </summary>
+    /// <remarks>
+    /// Requires <see cref="ProtocolRequirements.UnknownCommand"/>, and an MTA speaking protocol version
+    /// 3 or above. Unlike the other events this one has no fixed place in the conversation - an
+    /// unrecognised verb can arrive wherever the client chooses to send it, including before
+    /// <c>HELO</c> and after the body - which is why it sits at the end here rather than somewhere in
+    /// the flow above.
+    /// </remarks>
+    /// <param name="info">The command line the MTA could not parse.</param>
+    /// <param name="cancellationToken">A token that cancels the callback.</param>
+    /// <returns>What the MTA should do with the message.</returns>
+    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand), nameof(NoReplyRequirements.UnknownCommand), MinimumProtocolVersion = 3)]
+    ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken)
+    {
+        return new(CommitActions.Continue);
     }
 }

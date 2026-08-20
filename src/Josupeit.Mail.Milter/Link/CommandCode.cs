@@ -88,4 +88,33 @@ public enum CommandCode : byte
     /// next message arrives on it without the connection being described again.
     /// </remarks>
     Abort = (byte)'A',
+
+    /// <summary>
+    /// The SMTP <c>DATA</c> verb (<c>SMFIC_DATA</c>). Answered with an accept/reject action.
+    /// </summary>
+    /// <remarks>
+    /// Protocol version 4 and above. The last point before the message content begins, and the first at
+    /// which every envelope recipient has been seen.
+    /// </remarks>
+    MessageData = (byte)'T',
+
+    /// <summary>
+    /// An SMTP command the MTA does not recognise (<c>SMFIC_UNKNOWN</c>). Answered with an
+    /// accept/reject action.
+    /// </summary>
+    /// <remarks>
+    /// Protocol version 3 and above. Carries the command line as the client sent it, which is what makes
+    /// it useful for spotting a client probing for verbs the MTA does not implement.
+    /// </remarks>
+    UnknownCommand = (byte)'U',
+
+    /// <summary>
+    /// Ends the SMTP connection but keeps the milter connection (<c>SMFIC_QUIT_NC</c>). Answered with
+    /// nothing at all.
+    /// </summary>
+    /// <remarks>
+    /// Protocol version 6 and above. A new client follows on the same milter connection, so everything
+    /// the filter was told about the old one - its address above all - stops being true.
+    /// </remarks>
+    QuitForNewConnection = (byte)'K',
 }

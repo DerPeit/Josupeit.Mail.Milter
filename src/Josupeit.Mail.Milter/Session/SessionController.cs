@@ -88,6 +88,13 @@ internal sealed class SessionController(ISessionControlee controlee) : RequestPa
         return true;
     }
 
+    protected internal override bool VisitMessageDataRequestPacket(MessageDataRequestPacket requestPacket)
+    {
+        _responses = controlee.ProtocolStateMachine.State.ProcessMessageDataStart(requestPacket, _cancellationToken);
+
+        return true;
+    }
+
     protected internal override bool VisitOptionsNegotiationRequestPacket(OptionNegotiationRequestPacket requestPacket)
     {
         _responses = controlee.ProtocolStateMachine.State.ProcessOptionNegotiationAttempt(requestPacket, _cancellationToken);
@@ -102,9 +109,23 @@ internal sealed class SessionController(ISessionControlee controlee) : RequestPa
         return true;
     }
 
+    protected internal override bool VisitQuitForNewConnectionRequestPacket(QuitForNewConnectionRequestPacket requestPacket)
+    {
+        _responses = controlee.ProtocolStateMachine.State.ProcessQuittingForNewConnection(requestPacket, _cancellationToken);
+
+        return true;
+    }
+
     protected internal override bool VisitRcptToRequestPacket(RecipientRequestPacket requestPacket)
     {
         _responses = controlee.ProtocolStateMachine.State.ProcessRecipient(requestPacket, _cancellationToken);
+
+        return true;
+    }
+
+    protected internal override bool VisitUnknownCommandRequestPacket(UnknownCommandRequestPacket requestPacket)
+    {
+        _responses = controlee.ProtocolStateMachine.State.ProcessUnknownCommand(requestPacket, _cancellationToken);
 
         return true;
     }

@@ -4,6 +4,8 @@
 using System;
 using System.Buffers;
 using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
 
@@ -94,7 +96,15 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
     {
         var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
         const int END_OF_RECIPIENT_MARK_LENGTH = 1;
-        var blockLength = recipientLength + END_OF_RECIPIENT_MARK_LENGTH;
+
+        // Two response codes out of one packet. Arguments make it SMFIR_ADDRCPT_PAR, which the MTA
+        // grants as a right of its own, so a recipient carrying none has to go out as a plain
+        // SMFIR_ADDRCPT: sending an ADDRCPT_PAR with an empty field instead would have the MTA refuse
+        // the recipient of any filter that only asked for AddRecipients.
+        var hasArguments = !string.IsNullOrEmpty(responsePacket.ESmtpArguments);
+        var argumentsLength = hasArguments ? Encoding.Latin1.GetByteCount(responsePacket.ESmtpArguments!) : 0;
+        var endOfArgumentsMarkLength = hasArguments ? 1 : 0;
+        var blockLength = recipientLength + END_OF_RECIPIENT_MARK_LENGTH + argumentsLength + endOfArgumentsMarkLength;
 
         var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
@@ -104,6 +114,7 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
             const int RECIPIENT_OFFSET = 0;
             var endOfRecipientMarkOffset = RECIPIENT_OFFSET + recipientLength;
+            var argumentsOffset = endOfRecipientMarkOffset + END_OF_RECIPIENT_MARK_LENGTH;
 
             var recipientMemoryBlock = memoryBlock.Slice(RECIPIENT_OFFSET, recipientLength);
             var endOfRecipientMarkMemoryBlock = memoryBlock.Slice(endOfRecipientMarkOffset, END_OF_RECIPIENT_MARK_LENGTH);
@@ -112,7 +123,19 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
 
             Encoding.Latin1.GetBytes(responsePacket.Recipient, recipientMemoryBlock.Span);
 
-            _responseFrame = new(ResponseCode.AddRecipient, memoryOwner, ..blockLength);
+            if (hasArguments)
+            {
+                var argumentsMemoryBlock = memoryBlock.Slice(argumentsOffset, argumentsLength);
+                var endOfArgumentsMarkMemoryBlock = memoryBlock.Slice(argumentsOffset + argumentsLength, endOfArgumentsMarkLength);
+
+                endOfArgumentsMarkMemoryBlock.Span[0] = 0;
+
+                Encoding.Latin1.GetBytes(responsePacket.ESmtpArguments!, argumentsMemoryBlock.Span);
+            }
+
+            var responseCode = hasArguments ? ResponseCode.AddRecipientWithParameters : ResponseCode.AddRecipient;
+
+            _responseFrame = new(responseCode, memoryOwner, ..blockLength);
 
             return true;
         }
@@ -160,6 +183,58 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             Encoding.Latin1.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
 
             _responseFrame = new(ResponseCode.ChangeOrDeleteHeader, memoryOwner, ..blockLength);
+
+            return true;
+        }
+        catch
+        {
+            memoryOwner.Dispose();
+
+            throw;
+        }
+    }
+
+    protected internal override bool VisitChangeSenderResponsePacket(ChangeSenderResponsePacket responsePacket)
+    {
+        var senderLength = Encoding.Latin1.GetByteCount(responsePacket.Sender);
+        const int END_OF_SENDER_MARK_LENGTH = 1;
+
+        // The MTA reads the arguments only if bytes remain after the sender, so "none" is an absent
+        // field rather than an empty one. Writing a lone terminator instead would hand it an empty
+        // argument string, which is not the same thing.
+        var hasArguments = !string.IsNullOrEmpty(responsePacket.ESmtpArguments);
+        var argumentsLength = hasArguments ? Encoding.Latin1.GetByteCount(responsePacket.ESmtpArguments!) : 0;
+        var endOfArgumentsMarkLength = hasArguments ? 1 : 0;
+        var blockLength = senderLength + END_OF_SENDER_MARK_LENGTH + argumentsLength + endOfArgumentsMarkLength;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+
+        try
+        {
+            var memoryBlock = memoryOwner.Memory[..blockLength];
+
+            const int SENDER_OFFSET = 0;
+            var endOfSenderMarkOffset = SENDER_OFFSET + senderLength;
+            var argumentsOffset = endOfSenderMarkOffset + END_OF_SENDER_MARK_LENGTH;
+
+            var senderMemoryBlock = memoryBlock.Slice(SENDER_OFFSET, senderLength);
+            var endOfSenderMarkMemoryBlock = memoryBlock.Slice(endOfSenderMarkOffset, END_OF_SENDER_MARK_LENGTH);
+
+            endOfSenderMarkMemoryBlock.Span[0] = 0;
+
+            Encoding.Latin1.GetBytes(responsePacket.Sender, senderMemoryBlock.Span);
+
+            if (hasArguments)
+            {
+                var argumentsMemoryBlock = memoryBlock.Slice(argumentsOffset, argumentsLength);
+                var endOfArgumentsMarkMemoryBlock = memoryBlock.Slice(argumentsOffset + argumentsLength, endOfArgumentsMarkLength);
+
+                endOfArgumentsMarkMemoryBlock.Span[0] = 0;
+
+                Encoding.Latin1.GetBytes(responsePacket.ESmtpArguments!, argumentsMemoryBlock.Span);
+            }
+
+            _responseFrame = new(ResponseCode.ChangeSender, memoryOwner, ..blockLength);
 
             return true;
         }
@@ -226,18 +301,79 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         return true;
     }
 
+    protected internal override bool VisitInsertHeaderResponsePacket(InsertHeaderResponsePacket responsePacket)
+    {
+        const int INDEX_LENGTH = sizeof(uint);
+        var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
+        const int END_OF_NAME_MARK_LENGTH = 1;
+        var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
+        const int END_OF_VALUE_MARK_LENGTH = 1;
+        var blockLength = INDEX_LENGTH + nameLength + END_OF_NAME_MARK_LENGTH + valueLength + END_OF_VALUE_MARK_LENGTH;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
+
+        try
+        {
+            var memoryBlock = memoryOwner.Memory[..blockLength];
+
+            const int INDEX_OFFSET = 0;
+            var nameOffset = INDEX_OFFSET + INDEX_LENGTH;
+            var endOfNameMarkOffset = nameOffset + nameLength;
+            var valueOffset = endOfNameMarkOffset + END_OF_NAME_MARK_LENGTH;
+            var endOfValueMarkOffset = valueOffset + valueLength;
+
+            var indexMemoryBlock = memoryBlock.Slice(INDEX_OFFSET, INDEX_LENGTH);
+            var nameMemoryBlock = memoryBlock.Slice(nameOffset, nameLength);
+            var endOfNameMarkMemoryBlock = memoryBlock.Slice(endOfNameMarkOffset, END_OF_NAME_MARK_LENGTH);
+            var valueMemoryBlock = memoryBlock.Slice(valueOffset, valueLength);
+            var endOfValueMarkMemoryBlock = memoryBlock.Slice(endOfValueMarkOffset, END_OF_VALUE_MARK_LENGTH);
+
+            endOfNameMarkMemoryBlock.Span[0] = endOfValueMarkMemoryBlock.Span[0] = 0;
+
+            // Written through, unlike a header change. Insertion counts from zero on the wire as well as
+            // in the API - Postfix says so where it reads the field, "With Sendmail 8, index 0 means the
+            // top-most header", and adds the one itself before handing the position on. A change counts
+            // occurrences from one and does need the translation, which is what this used to copy, and
+            // the cost of the copy was a header landing under its intended neighbour rather than over it.
+            BinaryPrimitives.WriteUInt32BigEndian(indexMemoryBlock.Span, responsePacket.Index);
+            Encoding.Latin1.GetBytes(responsePacket.Name, nameMemoryBlock.Span);
+            Encoding.Latin1.GetBytes(responsePacket.Value, valueMemoryBlock.Span);
+
+            _responseFrame = new(ResponseCode.InsertHeader, memoryOwner, ..blockLength);
+
+            return true;
+        }
+        catch
+        {
+            memoryOwner.Dispose();
+
+            throw;
+        }
+    }
+
     protected internal override bool VisitOptionNegotiationResponsePacket(OptionNegotiationResponsePacket responsePacket)
     {
         const int VERSION_LENGTH = sizeof(uint);
         const int ACTIONS_LENGTH = sizeof(uint);
         const int UNDESIRED_CONTENT_LENGTH = sizeof(uint);
-        const int BLOCK_LENGTH = VERSION_LENGTH + ACTIONS_LENGTH + UNDESIRED_CONTENT_LENGTH;
+        const int HEADER_LENGTH = VERSION_LENGTH + ACTIONS_LENGTH + UNDESIRED_CONTENT_LENGTH;
+        const int STAGE_CODE_LENGTH = sizeof(uint);
+        const int END_OF_NAMES_MARK_LENGTH = 1;
 
-        var memoryOwner = MemoryPool<byte>.Shared.Rent(BLOCK_LENGTH);
+        // Materialised once and in ascending stage order. A dictionary has no defined enumeration order,
+        // and this frame is asserted on byte for byte.
+        var macroLists = ToMacroLists(responsePacket.MilterRequestedMacros);
+
+        var blockLength = HEADER_LENGTH;
+
+        foreach (var (_, macroNames) in macroLists)
+            blockLength += STAGE_CODE_LENGTH + Encoding.Latin1.GetByteCount(macroNames) + END_OF_NAMES_MARK_LENGTH;
+
+        var memoryOwner = MemoryPool<byte>.Shared.Rent(blockLength);
 
         try
         {
-            var memoryBlock = memoryOwner.Memory[..BLOCK_LENGTH];
+            var memoryBlock = memoryOwner.Memory[..blockLength];
 
             const int VERSION_OFFSET = 0;
             const int ACTIONS_OFFSET = VERSION_OFFSET + VERSION_LENGTH;
@@ -251,7 +387,27 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             BinaryPrimitives.WriteUInt32BigEndian(requestedActionsMemoryBlock.Span, (uint)responsePacket.MilterRequiredActions);
             BinaryPrimitives.WriteUInt32BigEndian(undesiredProtocolContentMemoryBlock.Span, (uint)responsePacket.MilterUndesiredProtocolContent);
 
-            _responseFrame = new(ResponseCode.OptionNegotiation, memoryOwner, ..BLOCK_LENGTH);
+            // With no lists to append this loop does not run, and the frame is the same twelve bytes it
+            // has always been - which is what keeps every version 2 negotiation byte-identical.
+            var offset = HEADER_LENGTH;
+
+            foreach (var (stageCode, macroNames) in macroLists)
+            {
+                var namesLength = Encoding.Latin1.GetByteCount(macroNames);
+
+                var stageCodeMemoryBlock = memoryBlock.Slice(offset, STAGE_CODE_LENGTH);
+                var macroNamesMemoryBlock = memoryBlock.Slice(offset + STAGE_CODE_LENGTH, namesLength);
+                var endOfNamesMarkMemoryBlock = memoryBlock.Slice(offset + STAGE_CODE_LENGTH + namesLength, END_OF_NAMES_MARK_LENGTH);
+
+                endOfNamesMarkMemoryBlock.Span[0] = 0;
+
+                BinaryPrimitives.WriteUInt32BigEndian(stageCodeMemoryBlock.Span, stageCode);
+                Encoding.Latin1.GetBytes(macroNames, macroNamesMemoryBlock.Span);
+
+                offset += STAGE_CODE_LENGTH + namesLength + END_OF_NAMES_MARK_LENGTH;
+            }
+
+            _responseFrame = new(ResponseCode.OptionNegotiation, memoryOwner, ..blockLength);
 
             return true;
         }
@@ -360,6 +516,13 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
         }
     }
 
+    protected internal override bool VisitSkipRemainingEventsResponsePacket(SkipRemainingEventsResponsePacket responsePacket)
+    {
+        _responseFrame = new(ResponseCode.Skip);
+
+        return true;
+    }
+
     // Postfix runs the reply text through a printf-style formatter and un-doubles percent signs on the
     // way (milter8.c), so a literal one has to reach it doubled or it swallows the character along with
     // whatever follows it.
@@ -389,5 +552,38 @@ file sealed class ResponseFrameCreatingVisitor : ResponsePacketVisitor
             destination = destination[(writtenLength + 1)..];
             remaining = remaining[(percentIndex + 1)..];
         }
+    }
+
+    // One entry per stage, ascending by the code the wire uses, with the names already joined. The
+    // joining and the list allocate, and this runs once per connection - not worth a pooled rewrite, but
+    // worth saying so rather than leaving the reader to wonder.
+    private static IReadOnlyList<(uint StageCode, string MacroNames)> ToMacroLists(MacroRequirements? macroRequirements)
+    {
+        if (macroRequirements is null or { IsEmpty: true })
+            return [];
+
+        return macroRequirements.ByStage
+            .Select(entry => (StageCode: GetMacroStageCode(entry.Key), MacroNames: string.Join(" ", entry.Value)))
+            .OrderBy(entry => entry.StageCode)
+            .ToArray();
+    }
+
+    // The protocol's macro class for a stage (SMFIM_), which is deliberately not ProtocolStage's own
+    // number: conversation order runs Header before EndOfHeaders, the macro classes run the other way
+    // round. Header and Body have no class at all - MacroRequirements refuses to name either, so a stage
+    // arriving here without one is a bug in that guard rather than something a caller did.
+    private static uint GetMacroStageCode(ProtocolStage stage)
+    {
+        return stage switch
+        {
+            ProtocolStage.Connect => 0,
+            ProtocolStage.ClientHello => 1,
+            ProtocolStage.Sender => 2,
+            ProtocolStage.Recipient => 3,
+            ProtocolStage.MessageData => 4,
+            ProtocolStage.EndOfBody => 5,
+            ProtocolStage.EndOfHeaders => 6,
+            _ => throw new ArgumentException($"The protocol defines no macro class for {stage}.", nameof(stage)),
+        };
     }
 }

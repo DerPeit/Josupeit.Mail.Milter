@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System.Collections.Generic;
+using Josupeit.Mail.Milter.Generator.Markers;
 
 namespace Josupeit.Mail.Milter;
 
@@ -15,4 +16,6 @@ namespace Josupeit.Mail.Milter;
 /// </remarks>
 /// <param name="ProtocolStage">The event these values were sent for.</param>
 /// <param name="Macros">The values, keyed by macro name.</param>
-public readonly record struct MacroDefinitionInformation(ProtocolStage ProtocolStage, IReadOnlyDictionary<string, string> Macros);
+public readonly record struct MacroDefinitionInformation(
+    [property: MilterMacroSourceMarker(isStage: true)] ProtocolStage ProtocolStage,
+    [property: MilterMacroSourceMarker] IReadOnlyDictionary<string, string> Macros);

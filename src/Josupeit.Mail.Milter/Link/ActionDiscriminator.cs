@@ -56,7 +56,34 @@ public enum ActionDiscriminator : uint
     QuarantineMessage = 0x20,
 
     /// <summary>
+    /// The filter may replace the envelope sender (<c>SMFIF_CHGFROM</c>).
+    /// </summary>
+    ChangeSender = 0x40,
+
+    /// <summary>
+    /// The filter may add envelope recipients carrying ESMTP arguments (<c>SMFIF_ADDRCPT_PAR</c>).
+    /// </summary>
+    /// <remarks>
+    /// Separate from <see cref="AddRecipients"/>, and an MTA may grant one without the other, so a
+    /// filter that attaches parameters to a recipient needs both.
+    /// </remarks>
+    AddRecipientsWithParameters = 0x80,
+
+    /// <summary>
+    /// The filter may name the macros it wants (<c>SMFIF_SETSYMLIST</c>).
+    /// </summary>
+    /// <remarks>
+    /// Deliberately absent from <see cref="All"/>: it changes nothing about the message, so a composite
+    /// documented as every modification has no business claiming it.
+    /// </remarks>
+    SetMacroList = 0x100,
+
+    /// <summary>
     /// Every modification at once.
     /// </summary>
-    All = AddHeaders | ChangeBodyChunks | AddRecipients | DeleteRecipients | ChangeOrDeleteHeaders | QuarantineMessage,
+    /// <remarks>
+    /// Modifications only, so <see cref="SetMacroList"/> is not part of it - that flag asks for macros
+    /// rather than changing the message.
+    /// </remarks>
+    All = AddHeaders | ChangeBodyChunks | AddRecipients | DeleteRecipients | ChangeOrDeleteHeaders | QuarantineMessage | ChangeSender | AddRecipientsWithParameters,
 }

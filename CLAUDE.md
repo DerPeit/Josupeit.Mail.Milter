@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-A .NET library that implements the **Milter protocol** (the Sendmail/Postfix mail filter protocol, wire version 2). An MTA (Postfix/Sendmail) connects to a milter over TCP and streams SMTP events; the milter inspects them and replies with accept/reject/modify decisions. This library lets you write that filter in C#: implement `IMilterContext`, hand it to `Milter<TContext>`, and the library handles the wire protocol, framing, and protocol-state enforcement.
+A .NET library that implements the **Milter protocol** (the Sendmail/Postfix mail filter protocol, wire version 6, negotiated down to what the MTA offers with a floor of 2). An MTA (Postfix/Sendmail) connects to a milter over TCP and streams SMTP events; the milter inspects them and replies with accept/reject/modify decisions. This library lets you write that filter in C#: implement `IMilterContext`, hand it to `Milter<TContext>`, and the library handles the wire protocol, framing, and protocol-state enforcement.
 
 ## Build & test
 
@@ -97,13 +97,19 @@ The tag does more than name the version. `GeneratePackageReleaseNotes` finds the
 ## How a filter is written (the user-facing model)
 
 1. Implement `IMilterContext` (which extends `IMilterCallbacks`) as a **`partial class`**.
-2. Override only the `On*` callbacks you care about (`OnConnectionEstablished`, `OnClientHello`, `OnSender`, `OnRecipient`, `OnHeader`, `OnEndOfHeaders`, `OnBodyChunk`, `OnEndOfBody`, `OnDefineMacro`). All have default implementations returning `CommitActions.Continue`.
-3. Leave the two static requirement properties to the source generator, or declare either by hand to override it:
-   - `static ProtocolRequirements ProtocolRequirements` - which SMTP events you want delivered. Derived from the callbacks you actually overrode (Milter negotiation lets the filter tell the MTA which events to skip, so declaring fewer events means the MTA sends fewer).
-   - `static ActionRequirements ActionRequirements` - which message modifications you intend to perform. Derived from the actions your code builds.
+2. Override only the `On*` callbacks you care about (`OnConnectionEstablished`, `OnClientHello`, `OnSender`, `OnRecipient`, `OnMessageDataStarted`, `OnUnknownCommand`, `OnHeader`, `OnEndOfHeaders`, `OnBodyChunk`, `OnEndOfBody`, `OnDefineMacro`). All have default implementations returning `CommitActions.Continue`.
+3. Leave the six static requirement properties to the source generator, or declare any of them by hand to override it:
+   - `static abstract ProtocolRequirements ProtocolRequirements` - which SMTP events you want delivered. Derived from the callbacks you actually overrode (Milter negotiation lets the filter tell the MTA which events to skip, so declaring fewer events means the MTA sends fewer).
+   - `static abstract ActionRequirements ActionRequirements` - which message modifications you intend to perform. Derived from the actions your code builds.
+   - `static virtual NoReplyRequirements NoReplyRequirements` - which events the MTA need not wait for an answer to. Derived by **proving** a callback can only ever answer `Continue`.
+   - `static virtual DeliveryRequirements DeliveryRequirements` - `RejectedRecipients` is derived from whether the code reads `RecipientInformation.IsRejectedByMta`; `LeadingHeaderSpace` is never derived and needs a hand-written declaration.
+   - `static virtual MacroRequirements MacroRequirements` - which macros you want per stage. Derived from the stage-guarded constant lookups in `OnDefineMacro`, or **MILT003** when they cannot be followed.
+   - `static virtual ProtocolVersionRequirement ProtocolVersionRequirement` - the lowest protocol version the MTA must speak. A fold over what the events, the actions and the delivery flags turned out to need. The macro list and the no-reply family contribute nothing on purpose: an older MTA simply sends its own macro set and waits for every answer, so demanding version 6 for either would refuse an MTA the filter works perfectly well against.
 4. `new Milter<TContext>(socket).Start();` - or `new Milter<TContext>(socket, () => new TContext(logger))` when the context needs dependencies. Without a factory the context comes from `Activator.CreateInstance`, which requires a public parameterless constructor.
 
-`samples/Example` declares neither property and relies on the generator. `MilterContextAdapter` in the integration tests declares both, as mutable statics, because the tests rewrite the negotiation per case.
+**The split between `static abstract` and `static virtual` is deliberate.** The first two have no safe default - "want nothing" disables the filter and "modify nothing" breaks its modifications - so CS0535 is the net under both. The other four default to "behave exactly as version 2 did", which makes the generator an optimiser for them rather than a load-bearing part: a consumer who loses the analyzer gets a filter that still works.
+
+`samples/Example` declares none of them and relies on the generator. `MilterContextAdapter` in the integration tests declares the first two, as mutable statics, because the tests rewrite the negotiation per case - and its callbacks are `virtual`, which is why no-reply is never derived for it (see the analysis note below).
 
 Callbacks return `ValueTask<CommitAction>` except `OnEndOfBody`, which returns `IAsyncEnumerable<Action>`: zero or more `ModificationAction`s and `ProgressAction`s, then **exactly one** terminal `CommitAction`. That sequence is enforced - yielding nothing, omitting the commit action, or yielding anything after it throws `InvalidOperationException`. Build actions via the `CommitActions` and `ModificationActions` static factories. `OnBodyChunk` takes `ReadOnlySpan<byte>`.
 
@@ -132,17 +138,17 @@ Three layers, each in its own folder:
 
 State pattern enforcing legal event ordering. The base `ProtocolState` throws "protocol violation" for _every_ event; each concrete state overrides only the events it accepts. `SessionController` dispatches each request packet to the current state, which yields response packets and transitions the machine.
 
-Flow: `AwaitingNegotiationState` -> (after OPTNEG, validating version/action/content-bypass support) -> either `NegotiatedState` or `ReplayRecordingNegotiatedState`.
+Flow: `AwaitingNegotiationState` -> (after OPTNEG, clamping the version and masking every flag to what it defines) -> either `NegotiatedState` or `ReplayRecordingNegotiatedState`, chosen by `NegotiatedStateFactory`. `SMFIC_QUIT_NC` returns to that same pair from anywhere `SMFIC_QUIT` is accepted, with a **fresh** replay history: a different client follows, so the recorded connect packets stop being true - unlike after an abort, which keeps them.
 
 The **Replay** states handle Postfix keeping a connection alive across multiple messages: connection/macro info is sent once, but per-message states need it again. When `Connect` is required, `ReplayRecordingNegotiatedState` records the connect/macro packets so `ReplayingConnectedState` can replay them for subsequent messages. `ConnectedState`/`ReplayingConnectedState` handle per-message events, `*AbortedState` handle ABORT, `DisconnectedState` is the final (terminal) state ending the `Session.Run` loop.
 
 ### `ContextAdapter`
 
-Bridges protocol packets and the user's context. Lazily creates **one context instance per message**, not per session: the states dispose the adapter at every message boundary (ABORT, QUIT, and the end of a message), so the next message on the same connection gets a fresh context from the supplied factory or `Activator.CreateInstance`. A context may therefore hold per-message state, and must not be relied on to see two messages. The adapter converts request packets into the friendly `*Information` structs, invokes the callback, and turns the returned `CommitAction`/`Action` into `ResponsePacket`s. It disposes the context if it implements `IDisposable`/`IAsyncDisposable`.
+Bridges protocol packets and the user's context. Lazily creates **one context instance per message**, not per session: the states dispose the adapter on ABORT, QUIT and QUIT_NC, so the next message on the same connection normally gets a fresh context from the supplied factory or `Activator.CreateInstance`. A context may therefore hold per-message state, and must not be relied on to see two messages. Nothing disposes it after end-of-body, though, so an MTA that starts a second message without an intervening ABORT or QUIT_NC reuses the adapter - which is why the skip flags are cleared when end-of-body finishes rather than on disposal. The adapter converts request packets into the friendly `*Information` structs, invokes the callback, and turns the returned `CommitAction`/`Action` into `ResponsePacket`s. It disposes the context if it implements `IDisposable`/`IAsyncDisposable`.
 
 ### Actions
 
-`Action` (abstract record) has three branches: `CommitAction` (Continue/Accept/Reject/Discard/Defer/Reply) decides the message's fate, `ModificationAction` (AddHeader/ChangeHeader/DeleteHeader/AddRecipient/DeleteRecipient/ReplaceBody/**Quarantine**) changes it, and `ProgressAction` sits directly under `Action` because it does neither - it only tells the MTA to restart its reply timeout. Each knows how to produce its `ResponsePacket`(s) via `CreateResponsePackets`.
+`Action` (abstract record) has three branches: `CommitAction` (Continue/Accept/Reject/Discard/Defer/Reply) decides the message's fate - plus **SkipRemainingEvents**, which decides nothing at all and shares the branch only because it is an answer to an event, `ModificationAction` (AddHeader/**InsertHeader**/ChangeHeader/DeleteHeader/AddRecipient_V2/**AddRecipient_V6**/DeleteRecipient/ReplaceBody/**ChangeSender**/**Quarantine**) changes it, and `ProgressAction` sits directly under `Action` because it does neither - it only tells the MTA to restart its reply timeout. Each knows how to produce its `ResponsePacket`(s) via `CreateResponsePackets`.
 
 `CommitActions`/`ModificationActions` are the public factories and the **only** way to build an action: the records have internal constructors and get-only properties, so neither `new` nor a `with` expression can bypass the validation the factories perform (control characters are rejected in every outbound string; header names must be RFC 5322 ftext). The simple commit actions are cached singletons, as are `ProgressAction.Instance` - progress belongs to neither factory, so it is reached through that property.
 
@@ -150,28 +156,55 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 
 - Internals are exposed to both test projects through `<InternalsVisibleTo />` entries in `src/Josupeit.Mail.Milter/Josupeit.Mail.Milter.csproj` (the SDK emits the attribute) - the tests reach straight into the internal pipeline. `DynamicProxyGenAssembly2` is granted the same from `test/Directory.Build.props`, which is what lets NSubstitute mock internal types.
 - NSubstitute cannot mock `ReadOnlySpan<byte>`, so the test `MilterContextAdapter` implements `IMilterCallbacks.OnBodyChunk` explicitly and forwards to a `byte[]` overload that _can_ be mocked. Keep that shim if you touch body handling in tests.
+- **`ProtocolRequirements` and `ActionRequirements` members append, never insert.** The generator emits flags in enum declaration order and the tests assert on whole expression strings, so a member added in the middle flips them. `ProtocolStage` is exempt - nothing serialises its ordinals, and `ResponseFrameFactory` maps it to the `SMFIM_` codes explicitly on the way out.
+- **The `All` composites stay narrow.** `ContentBypassDiscriminator.All` means "every skippable event" and `ActionDiscriminator.All` means "every modification"; the no-reply family, skip, the delivery flags and `SetMacroList` are all deliberately outside them, because both composites are used as a stand-in for a permissive MTA. `NegotiationFlagTests` pins the membership.
+- **`main.cf` pins `milter_protocol = 6`.** The downshift to 2 is covered by the unit tests rather than by the container; run the integration suite against both by hand when touching negotiation.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
 - Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Interactive.Async` (`AsyncEnumerableEx.Return` and `Finally`, plus `ToAsyncEnumerable` through the dependency it carries).
 - **Ix is pinned to 7, not 6, and that matters.** Ix 6 depends on `System.Linq.Async`, which defines `System.Linq.AsyncEnumerable` - a type that is in the box from net10 on. A net10 consumer therefore got two definitions of it and an ambiguous call (CS0121) as soon as they wrote `ToAsyncEnumerable` in their own code. Ix 7 depends on Microsoft's `System.Linq.AsyncEnumerable` package instead, which resolves to nothing on net10. The same collision is what broke the generator tests in CI, because `GeneratorHarness` references the host runtime's assemblies alongside the output directory's.
 
 ## Source generator (`Josupeit.Mail.Milter.Generator`)
 
-It writes the two `IMilterContext` requirement properties, and **nothing else**. Both are `static abstract` interface members, which is the safety net the whole design leans on: refusing to emit one fails the build with CS0535 rather than negotiating something wrong. A property the author declared by hand is always left alone.
+It writes the six `IMilterContext` requirement properties, and **nothing else**. A property the author declared by hand is always left alone.
+
+The first two are `static abstract`, which is the safety net they lean on: refusing to emit one fails the build with CS0535 rather than negotiating something wrong. The other four are `static virtual` with a safe default, so the generator optimises rather than enables them - and MILT002 and MILT003 must therefore stay errors, because for the virtual ones the diagnostic is the only gate.
 
 ### `ProtocolRequirements` - from the callbacks
 
-- Each callback on `IMilterCallbacks` is tagged `[MilterCallbackMarker(nameof(ProtocolRequirements.X))]`. `OnDefineMacro` and `OnEndOfBody` carry none: neither has a flag to clear.
+- Each callback on `IMilterCallbacks` is tagged `[MilterCallbackMarker(nameof(ProtocolRequirements.X), nameof(NoReplyRequirements.X), MinimumProtocolVersion = N)]`. `OnDefineMacro` and `OnEndOfBody` carry none: neither has a flag to clear.
 - `FindImplementationForInterfaceMember` per callback. An implementation that **equals the interface default** means nobody overrode it, so the flag is dropped; otherwise `ProtocolRequirements.X` is OR'd in. An explicit interface implementation counts as an override.
 
 ### `ActionRequirements` - from the actions the code builds
 
 Decidable only as an over-approximation, and that is exactly what the negotiation wants: over-declaring is harmless on the wire, under-declaring makes the MTA refuse the modification with **no runtime check anywhere in this library** to catch it. So `ActionRequirementsAnalysis` is a may-analysis - it unions every action the code mentions and never asks whether a branch is reachable. **Control flow therefore costs nothing**: an action behind an `if`, in a loop, in a `catch`, in a lambda counts like one on the straight path.
 
-- Each concrete `ModificationAction` record is tagged `[MilterActionMarker(nameof(ActionRequirements.X))]`; `Action` and `ModificationAction` carry a bare `[MilterActionMarker]` marking them as the abstract types a modification can hide behind. `CommitAction` and `ProgressAction` deliberately carry none. The generator never names an action type itself - `ActionTypes` reads it all off the attributes.
+- Each concrete `ModificationAction` record is tagged `[MilterActionMarker(nameof(ActionRequirements.X), MinimumProtocolVersion = N)]`; `Action` and `ModificationAction` carry a bare `[MilterActionMarker]` marking them as the abstract types a modification can hide behind. `CommitAction` and `ProgressAction` deliberately carry none - except `SkipRemainingEventsAction`, which carries a nameless marker purely to declare its protocol version, because `SMFIP_SKIP` is an event bit and needs no modification right. The generator never names an action type itself - `ActionTypes` reads it all off the attributes.
 - The walk seeds on the context type, its partials and its base types, then follows every invoked member that has a body **in this compilation**, with a visited set for cycles. Any expression whose type resolves to a marked concrete action contributes its flag.
 - When an action arrives from something with no body here - an interface, an abstract member, another assembly - it reports **MILT002** and emits nothing, so CS0535 forces a hand-written declaration.
 - One deliberate soundness hole, `PassesActionsThrough`: a member whose parameters, receiver or type arguments mention an action is assumed to be moving actions rather than building them, so `ToAsyncEnumerable`, `Select` and `Concat` do not trip MILT002. A generic _factory_ that builds an action from a type argument alone reads the same way and is not caught. Without this the analysis fires on ordinary LINQ and is unusable.
 - The other known gap: a public field of action type written from outside the analysed code.
+
+### `NoReplyRequirements` - a must-analysis, and the inverse of the one above
+
+`SMFIP_NR_*` tells the MTA not to wait for an answer. `NoReplyRequirementsAnalysis` sets a flag only after **proving** a callback can answer nothing but `Continue`, which makes it a must-analysis where `ActionRequirements` is a may-analysis - and that inversion is the whole safety argument. A callback it cannot prove keeps its reply, which is what the library did before any of this existed, so every way of losing track lands on the safe side and there is no diagnostic.
+
+- `ContinueAction` carries `[MilterUnobservableActionMarker]`, which says _why_ rather than _which_: answering it and not answering are the same thing to the MTA. The generator never learns the type's name.
+- The commit action base is read off the callback's own return type, so the hierarchy is still never named.
+- Two conditions, and the second is easy to forget: every commit action the body mentions must be unobservable, **and** it must mention at least one. A body mentioning none has not been proved, merely read.
+- **Only the body is walked.** A declaration also carries `ValueTask<CommitAction>`, whose `CommitAction` is not unobservable - walking the whole declaration proves every callback capable of deciding and derives nothing at all, silently.
+- **An overridable callback on an unsealed context proves nothing**, because the body that runs may belong to a derived type. Not hypothetical: the integration suite's own adapter is a partial mock whose `virtual` callbacks return `Continue` and whose substitute returns `Reject`.
+
+### `DeliveryRequirements` and `MacroRequirements`
+
+- `DeliveryRequirements.RejectedRecipients` is a may-analysis over reads of the member carrying `[MilterDeliveryMarker]` - reading `IsRejectedByMta` is the whole evidence. `LeadingHeaderSpace` can never be derived, so a filter wanting it declares the property by hand and names both members itself.
+- `MacroRequirements` reads stage-guarded constant lookups of the member carrying `[MilterMacroSourceMarker]`, correlating each with the stage guard around it (`if`, `switch`, or a switch expression). Anything it cannot pin down reports **MILT003**. Strict like MILT002, and for the same reason: a list that leaves a macro out fails at runtime rather than at negotiation.
+- The `SMFIM_` stage codes are **not** `ProtocolStage`'s own numbers, and two stages have none at all, so the mappable ones carry `[MilterMacroStageMarker]` and the generator refuses to emit a call it would only compile to throw.
+
+### `ProtocolVersionRequirement` - a fold, not a walk
+
+The maximum of the `MinimumProtocolVersion` on the markers the event, action and delivery derivations already visited. No separate analysis. Resolved by **constant value** rather than by member name - the fold computes a number and must find the member carrying it, because a cast would print a version the enum does not declare - and it starts at the floor rather than at zero for the same reason.
+
+**It only covers what the generator derived.** A property declared by hand contributes nothing to the fold, which is why the negotiation does not rely on it alone. `AwaitingNegotiationState` fails the session in two further cases, both of them silent otherwise: a modification the MTA will not grant - checked against what the filter asked for, before the version mask, since masking first is what made a version 6 action against an older MTA disappear without trace - and `LeadingHeaderSpace` being withheld, which is the one event flag whose loss changes bytes rather than merely costing a round trip. Naming macros is exempt from the first check: `SMFIF_SETSYMLIST` changes nothing about the message, so an MTA that declines it just sends its own set.
 
 ### Notes when touching it
 
