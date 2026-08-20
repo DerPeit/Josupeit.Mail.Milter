@@ -27,9 +27,6 @@ internal static class ProtocolVersionCapabilities
     // teaching the arms below what the new version adds.
     internal static readonly Version Highest = new(6, 0);
 
-    private static readonly Version _version3 = new(3, 0);
-    private static readonly Version _version4 = new(4, 0);
-
     private const ContentBypassDiscriminator VERSION_2_CONTENT_BYPASS =
         ContentBypassDiscriminator.NoConnect
         | ContentBypassDiscriminator.NoHelo
@@ -78,6 +75,9 @@ internal static class ProtocolVersionCapabilities
         | ActionDiscriminator.AddRecipientsWithParameters
         | ActionDiscriminator.SetMacroList;
 
+    private static readonly Version _version3 = new(3, 0);
+    private static readonly Version _version4 = new(4, 0);
+
     // The version to answer with: the highest this library implements that the MTA also offers.
     //
     // Never higher than the offer, because Postfix rejects a filter announcing a version above its own.
@@ -86,9 +86,6 @@ internal static class ProtocolVersionCapabilities
     // with 4.
     public static Version Clamp(Version offeredVersion)
     {
-        if (offeredVersion == null)
-            throw new ArgumentNullException(nameof(offeredVersion));
-
         if (offeredVersion < Lowest)
             throw new NotSupportedException(
                 $"The MTA offers Milter protocol version {offeredVersion}. This Milter implements versions " +
@@ -109,9 +106,6 @@ internal static class ProtocolVersionCapabilities
     // The events a filter may name at this version. Anything outside it must be dropped rather than sent.
     public static ContentBypassDiscriminator ContentBypassFor(Version negotiatedVersion)
     {
-        if (negotiatedVersion == null)
-            throw new ArgumentNullException(nameof(negotiatedVersion));
-
         if (negotiatedVersion >= Highest)
             return VERSION_6_CONTENT_BYPASS;
 
@@ -127,9 +121,6 @@ internal static class ProtocolVersionCapabilities
     // The modifications a filter may claim at this version.
     public static ActionDiscriminator ActionsFor(Version negotiatedVersion)
     {
-        if (negotiatedVersion == null)
-            throw new ArgumentNullException(nameof(negotiatedVersion));
-
         return negotiatedVersion >= Highest ? VERSION_6_ACTIONS : VERSION_2_ACTIONS;
     }
 }

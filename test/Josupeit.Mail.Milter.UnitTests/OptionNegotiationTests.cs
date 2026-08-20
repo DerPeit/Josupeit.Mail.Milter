@@ -157,51 +157,58 @@ public sealed class OptionNegotiationTests
     [Test]
     public void The_outcome_records_what_was_settled_rather_than_what_was_wanted()
     {
-        var stateMachine = new FakeProtocolStateMachine
-        {
-            Configuration = new ProtocolStateMachineConfiguration(
-                ProtocolRequirements.EndOfBody,
-                ActionRequirements.None,
-                DeliveryRequirements.LeadingHeaderSpace),
-        };
+        var response = Negotiate(offeredVersion: 2, deliveryRequirements: DeliveryRequirements.RejectedRecipients);
 
-        var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);
-
-        var request = new OptionNegotiationRequestPacket
-        {
-            MtaProtocolVersion = new Version(2, 0),
-            MtaSupportedActions = ActionDiscriminator.All,
-            MtaSupportedContentBypass = (ContentBypassDiscriminator)uint.MaxValue,
-        };
-
-        Drain(state.ProcessOptionNegotiationAttempt(request, CancellationToken.None));
+        var outcome = OutcomeOf(response);
 
         Assert.Multiple(() =>
         {
-            Assert.That(stateMachine.Negotiation.ProtocolVersion, Is.EqualTo(new Version(2, 0)));
+            Assert.That(outcome.ProtocolVersion, Is.EqualTo(new Version(2, 0)));
             Assert.That(
-                stateMachine.Negotiation.KeepsLeadingHeaderSpace,
+                outcome.ProtocolContentOptions.HasFlag(ContentBypassDiscriminator.RejectedRecipients),
                 Is.False,
                 "The filter asked for it; a version 2 MTA does not define it.");
         });
     }
 
+    // The one declaration whose loss is refused rather than absorbed. Every other flag degrades into
+    // behaviour the filter already copes with; without SMFIP_HDR_LEADSPC the filter reads and writes
+    // different header bytes than it was written against, on every message, and nothing else says so.
+    [Test]
+    public void A_filter_needing_the_leading_header_space_refuses_an_mta_below_version_6()
+    {
+        Assert.That(
+            () => Negotiate(offeredVersion: 2, deliveryRequirements: DeliveryRequirements.LeadingHeaderSpace),
+            Throws.InstanceOf<NotSupportedException>());
+    }
+
+    // The residual case the derived version requirement cannot cover: the MTA speaks version 6 and still
+    // withholds this one bit. Postfix does not, but the failure would be silently altered header bytes.
+    [Test]
+    public void A_filter_needing_the_leading_header_space_refuses_a_version_6_mta_that_withholds_it()
+    {
+        Assert.That(
+            () => Negotiate(
+                offeredVersion: 6,
+                mtaContentBypass: (ContentBypassDiscriminator)uint.MaxValue & ~ContentBypassDiscriminator.LeadingHeaderSpace,
+                deliveryRequirements: DeliveryRequirements.LeadingHeaderSpace),
+            Throws.InstanceOf<NotSupportedException>());
+    }
+
+    [Test]
+    public void The_leading_header_space_is_kept_when_the_mta_grants_it()
+    {
+        var response = Negotiate(offeredVersion: 6, deliveryRequirements: DeliveryRequirements.LeadingHeaderSpace);
+
+        Assert.That(OutcomeOf(response).KeepsLeadingHeaderSpace, Is.True);
+    }
+
     [Test]
     public void Every_event_is_answered_until_a_no_reply_flag_is_negotiated()
     {
-        var stateMachine = new FakeProtocolStateMachine();
-        var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);
+        var response = Negotiate(offeredVersion: 6, protocolRequirements: ProtocolRequirements.All);
 
-        var request = new OptionNegotiationRequestPacket
-        {
-            MtaProtocolVersion = new Version(6, 0),
-            MtaSupportedActions = ActionDiscriminator.All,
-            MtaSupportedContentBypass = (ContentBypassDiscriminator)uint.MaxValue,
-        };
-
-        Drain(state.ProcessOptionNegotiationAttempt(request, CancellationToken.None));
-
-        var outcome = stateMachine.Negotiation;
+        var outcome = OutcomeOf(response);
 
         Assert.Multiple(() =>
         {
@@ -212,13 +219,82 @@ public sealed class OptionNegotiationTests
             Assert.That(outcome.IsAnsweringHeaders, Is.True);
             Assert.That(outcome.IsAnsweringEndOfHeaders, Is.True);
             Assert.That(outcome.IsAnsweringBody, Is.True);
-            Assert.That(outcome.IsSkipGranted, Is.False);
         });
     }
 
-    private static void Drain(ValueTask<IAsyncEnumerable<ResponsePacket>> responses)
+    // SMFIP_SKIP announces a capability rather than asking for fewer events, so it is asked for on every
+    // connection and the answer is whatever the MTA and the version allow. Nothing set it at all until
+    // this was found: IsSkipGranted was false on every real connection, so every skip a filter answered
+    // was quietly turned back into Continue and the whole feature was inert.
+    [TestCase(6, true)]
+    [TestCase(4, false)]
+    [TestCase(2, false)]
+    public void Skip_is_granted_only_by_an_mta_speaking_version_6(int offeredVersion, bool expected)
     {
-        responses.AsTask().GetAwaiter().GetResult().ToArrayAsync().AsTask().GetAwaiter().GetResult();
+        var response = Negotiate(offeredVersion, mtaContentBypass: (ContentBypassDiscriminator)uint.MaxValue);
+
+        Assert.That(OutcomeOf(response).IsSkipGranted, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Skip_is_not_granted_by_a_version_6_mta_that_withholds_it()
+    {
+        var response = Negotiate(
+            offeredVersion: 6,
+            mtaContentBypass: (ContentBypassDiscriminator)uint.MaxValue & ~ContentBypassDiscriminator.SkipRemainingEvents);
+
+        Assert.That(OutcomeOf(response).IsSkipGranted, Is.False);
+    }
+
+    // Naming macros needs a right of its own, and only real negotiation decides whether it was granted -
+    // building the response packet by hand, which is all the frame tests can do, never sees that step.
+    [Test]
+    public void A_macro_list_travels_when_the_mta_grants_the_right_to_name_them()
+    {
+        var response = Negotiate(offeredVersion: 6, macroRequirements: MacroRequirements.For(ProtocolStage.EndOfBody, "i"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.MilterRequiredActions.HasFlag(ActionDiscriminator.SetMacroList), Is.True);
+            Assert.That(response.MilterRequestedMacros, Is.Not.Null);
+        });
+    }
+
+    // Degrades rather than failing, unlike every other action right: the MTA simply carries on sending
+    // its own configured macro set, which is larger than the one that was asked for.
+    [TestCase(2, TestName = "An_mta_below_the_version_that_defines_it")]
+    public void A_macro_list_the_negotiation_cannot_place_is_dropped_without_failing(int offeredVersion)
+    {
+        var response = Negotiate(offeredVersion, macroRequirements: MacroRequirements.For(ProtocolStage.EndOfBody, "i"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(response.MilterRequiredActions.HasFlag(ActionDiscriminator.SetMacroList), Is.False);
+            Assert.That(response.MilterRequestedMacros, Is.Null);
+        });
+    }
+
+    [Test]
+    public void A_macro_list_is_dropped_by_a_version_6_mta_that_will_not_grant_the_right()
+    {
+        var response = Negotiate(
+            offeredVersion: 6,
+            mtaActions: ActionDiscriminator.All,
+            macroRequirements: MacroRequirements.For(ProtocolStage.EndOfBody, "i"));
+
+        Assert.That(response.MilterRequestedMacros, Is.Null);
+    }
+
+    // The states are handed an outcome built from exactly the three values this reply carries, and the
+    // reply is where a test can still read them: nothing publishes the outcome to the machine any more,
+    // because what the negotiation settled is not an invariant of the machine the way the configuration
+    // is.
+    private static ProtocolNegotiationOutcome OutcomeOf(OptionNegotiationResponsePacket response)
+    {
+        return new ProtocolNegotiationOutcome(
+            response.MilterProtocolVersion,
+            response.MilterRequiredActions,
+            response.MilterUndesiredProtocolContent);
     }
 
     private static OptionNegotiationResponsePacket Negotiate(
@@ -227,16 +303,19 @@ public sealed class OptionNegotiationTests
         ActionDiscriminator? mtaActions = null,
         ProtocolRequirements protocolRequirements = ProtocolRequirements.EndOfBody,
         ActionRequirements actionRequirements = ActionRequirements.None,
-        ProtocolVersionRequirement versionRequirement = ProtocolVersionRequirement.Version2)
+        DeliveryRequirements deliveryRequirements = DeliveryRequirements.None,
+        ProtocolVersionRequirement versionRequirement = ProtocolVersionRequirement.Version2,
+        MacroRequirements? macroRequirements = null)
     {
         var stateMachine = new FakeProtocolStateMachine
         {
             Configuration = new ProtocolStateMachineConfiguration(
                 protocolRequirements,
                 actionRequirements,
-                DeliveryRequirements.None,
+                deliveryRequirements,
                 NoReplyRequirements.None,
-                versionRequirement),
+                versionRequirement,
+                macroRequirements),
         };
 
         var state = new AwaitingNegotiationState(stateMachine, stateMachine.Configuration);

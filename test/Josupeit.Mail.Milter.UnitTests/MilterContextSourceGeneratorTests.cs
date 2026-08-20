@@ -133,6 +133,8 @@ public sealed class MilterContextSourceGeneratorTests
         var run = GeneratorHarness.Run(Context(
             "ValueTask<CommitAction> IMilterCallbacks.OnClientHello(ClientHelloInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);"));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.That(run.GeneratedSource, Contains.Substring("ProtocolRequirements => Josupeit.Mail.Milter.ProtocolRequirements.ClientHello;"));
     }
 
@@ -574,6 +576,38 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
+    // The implementation the analysis is handed is the one that satisfies the interface, which is the
+    // base's - not the override that actually runs. So a callback inherited from a base is never proved
+    // quiet, whatever either body says, and both directions are here because only one of them is safe by
+    // luck: the second would be a wrong derivation if the analysis followed the base's body.
+    [TestCase("Reject", "Continue", TestName = "The_base_decides_and_the_override_is_quiet")]
+    [TestCase("Continue", "Reject", TestName = "The_base_is_quiet_and_the_override_decides")]
+    public void A_callback_inherited_from_a_base_is_never_proved_quiet(string baseAnswer, string overrideAnswer)
+    {
+        var run = GeneratorHarness.Run(PREAMBLE +
+            $$"""
+              internal abstract class QuietBase : IMilterContext
+              {
+                  public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Header;
+
+                  public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                  public virtual ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.{{baseAnswer}});
+              }
+
+              internal sealed partial class BarnacleFilter : QuietBase
+              {
+                  public override ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.{{overrideAnswer}});
+              }
+              """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Does.Not.Contain("NoReplyRequirements.Header"));
+        });
+    }
+
     [Test]
     public void A_filter_using_nothing_newer_asks_for_no_particular_version()
     {
@@ -593,6 +627,8 @@ public sealed class MilterContextSourceGeneratorTests
         var run = GeneratorHarness.Run(Context(
             "public ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken) => new(CommitActions.Reject);"));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version3;"));
     }
 
@@ -601,6 +637,8 @@ public sealed class MilterContextSourceGeneratorTests
     {
         var run = GeneratorHarness.Run(Context(
             "public ValueTask<CommitAction> OnMessageDataStarted(CancellationToken cancellationToken) => new(CommitActions.Reject);"));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
 
         Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version4;"));
     }
@@ -616,7 +654,33 @@ public sealed class MilterContextSourceGeneratorTests
             }
             """));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
+    }
+
+    // AddRecipientAction_V6 derives from AddRecipientAction_V2 and both carry a marker. The analysis
+    // takes the nearest one up the hierarchy, so the derived action has to declare the parameters right
+    // on its own: picking up the base's as well would be harmless on the wire but would put the version
+    // fold and the requirement flags out of step for anyone reading the generated line.
+    [Test]
+    public void Adding_a_recipient_with_arguments_needs_version_6_and_only_the_parameters_right()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            public IAsyncEnumerable<Action> OnEndOfBody()
+            {
+                return new Action[] { ModificationActions.AddRecipient("<audit@example.com>", "NOTIFY=NEVER"), CommitActions.Continue }.ToAsyncEnumerable();
+            }
+            """));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
+            Assert.That(run.GeneratedSource, Contains.Substring("ActionRequirements => Josupeit.Mail.Milter.ActionRequirements.AddRecipientsWithParameters;"));
+        });
     }
 
     // The skip action contributes no ActionRequirements flag at all - SMFIP_SKIP is an event bit - so a
@@ -626,6 +690,8 @@ public sealed class MilterContextSourceGeneratorTests
     {
         var run = GeneratorHarness.Run(Context(
             "public ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken) => new(CommitActions.SkipRemainingEvents);"));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
 
         Assert.Multiple(() =>
         {
@@ -645,6 +711,8 @@ public sealed class MilterContextSourceGeneratorTests
             }
             """));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
     }
 
@@ -658,6 +726,8 @@ public sealed class MilterContextSourceGeneratorTests
 
             public ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken) => new(CommitActions.SkipRemainingEvents);
             """));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
 
         Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version6;"));
     }
@@ -676,6 +746,37 @@ public sealed class MilterContextSourceGeneratorTests
         {
             Assert.That(run.Errors, Is.Empty);
             Assert.That(run.GeneratedSource, Does.Not.Contain("ProtocolVersionRequirement =>"));
+        });
+    }
+
+    // Neither of these may raise the floor. Both degrade into behaviour the filter already copes with -
+    // an MTA below version 6 sends its own, larger macro set and waits for every answer - so demanding
+    // version 6 would refuse an MTA the filter works perfectly well against. Reading one macro at
+    // end-of-body is the commonest thing a filter does, and it used to derive Version6.
+    [Test]
+    public void Reading_macros_and_answering_quietly_leave_the_version_floor_alone()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _queueId;
+
+            public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (info.ProtocolStage == ProtocolStage.EndOfBody)
+                    _queueId = info.Macros["i"];
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSource, Contains.Substring("NoReplyRequirements => Josupeit.Mail.Milter.NoReplyRequirements.Header;"));
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements => Josupeit.Mail.Milter.MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\");"));
+            Assert.That(run.GeneratedSource, Contains.Substring("ProtocolVersionRequirement => Josupeit.Mail.Milter.ProtocolVersionRequirement.Version2;"));
         });
     }
 
@@ -759,6 +860,8 @@ public sealed class MilterContextSourceGeneratorTests
             }
             """));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.Multiple(() =>
         {
             Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
@@ -784,6 +887,8 @@ public sealed class MilterContextSourceGeneratorTests
             }
             """));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
     }
 
@@ -799,6 +904,8 @@ public sealed class MilterContextSourceGeneratorTests
                 return new();
             }
             """));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
 
         Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
     }
@@ -819,6 +926,8 @@ public sealed class MilterContextSourceGeneratorTests
             }
             """));
 
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
         Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
     }
 
@@ -836,6 +945,8 @@ public sealed class MilterContextSourceGeneratorTests
                 return new();
             }
             """));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
 
         Assert.Multiple(() =>
         {

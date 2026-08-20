@@ -107,7 +107,6 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
                 diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedAction, analysis.UntrackedLocation, contextType.Name, analysis.UntrackedSource));
         }
 
-
         if (NeedsGenerating(contextType, deliveryProperty))
         {
             var delivery = DeliveryRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
@@ -122,10 +121,11 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         {
             var noReply = NoReplyRequirementsAnalysis.Run(contextType, contextInterface, context.SemanticModel.Compilation, cancellationToken);
 
+            // No contribution to the version fold, deliberately. An MTA below version 6 has the no-reply
+            // bits masked away and waits for every answer, which is what it did before any of this
+            // existed - so demanding version 6 for it would refuse an MTA the filter works perfectly
+            // well against, in exchange for a round trip per event.
             properties.Add(RenderProperty(noReplyProperty!, Combine(noReplyProperty!.Type, noReply)));
-
-            if (noReply.Length > 0)
-                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(noReplyProperty!.Type, NoReplyRequirementsMarkerAttribute.IsDescribedBy, NoReplyRequirementsMarkerAttribute.GetMinimumProtocolVersion));
         }
 
         if (NeedsGenerating(contextType, macroProperty))
@@ -139,8 +139,11 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             else
                 diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedMacro, contextType.Locations.FirstOrDefault(), contextType.Name, "a macro read at a stage the protocol gives no macro class"));
 
-            if (macros.ByStage.Count > 0)
-                minimumProtocolVersion = Math.Max(minimumProtocolVersion, 6);
+            // No contribution to the version fold either, and for the same reason as the no-reply family.
+            // Below version 6 the list is simply not sent and the MTA falls back to its configured macro
+            // set, which is larger rather than smaller - the filter's reads all still succeed. Reading
+            // one macro is the commonest thing a filter does, and demanding version 6 for it would lock
+            // out every MTA the library was written against.
         }
 
         // Last, because it is a fold over what the four above turned out to need.
@@ -282,8 +285,6 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         return string.Join(" | ", declared);
     }
 
-
-
     // Renders the chained factory call the macro requirements are built with. Null when a stage has no
     // macro class in the protocol - Header and Body - because emitting a call that throws at runtime
     // would be worse than refusing to emit at all.
@@ -294,10 +295,13 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         if (byStage.Count == 0)
             return $"{typeName}.None";
 
+        // Read off the factory the generated line calls rather than named here: the generator knows
+        // MacroRequirements only through its marker attribute, and For's first parameter is the very stage
+        // the emitted call has to spell.
         var stageEnum = requirementsType
-            .GetMembers("GetMacroStageCode")
+            .GetMembers("For")
             .OfType<IMethodSymbol>()
-            .FirstOrDefault()
+            .FirstOrDefault(method => method.Parameters.Length > 0)
             ?.Parameters[0]
             .Type;
 
@@ -320,7 +324,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             if (!byStage.TryGetValue(member.Name, out var names))
                 continue;
 
-            var arguments = string.Join(", ", names.Select(name => $"\"{name}\""));
+            var arguments = string.Join(", ", names.Select(name => SymbolDisplay.FormatLiteral(name, quote: true)));
 
             rendered.Add($"{stageEnum.ToDisplayString()}.{member.Name}, {arguments}");
         }
@@ -332,6 +336,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 
         return rendered.Skip(1).Aggregate(head, (accumulated, arguments) => $"{accumulated}.And({arguments})");
     }
+
     // Reads the version an enum's own marker declares, for the two whose every member needs the same one.
     private static int VersionOfRequirementsEnum(ITypeSymbol requirementsEnum, Func<INamedTypeSymbol, bool> isMarker, Func<AttributeData, int> getVersion)
     {
@@ -358,6 +363,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 
         return declared ?? $"default({typeName})";
     }
+
     private static string RenderProperty(IPropertySymbol property, string expression)
     {
         return

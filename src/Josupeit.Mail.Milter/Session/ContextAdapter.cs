@@ -115,16 +115,6 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
             static adapter => adapter._isSkippingRecipients = true);
     }
 
-    // Postfix sets {rcpt_mailer} to "error" for a recipient it has already refused, and puts the status
-    // code and reason in {rcpt_host} and {rcpt_addr}. The braces are part of the macro name as it
-    // arrives on the wire, so looking it up without them silently never matches.
-    private static bool IsRejectedByMta(IReadOnlyDictionary<string, string>? macros)
-    {
-        return macros != null
-               && macros.TryGetValue("{rcpt_mailer}", out var mailer)
-               && string.Equals(mailer, "error", StringComparison.Ordinal);
-    }
-
     public IAsyncEnumerable<ResponsePacket> OnHeader(HeaderRequestPacket request)
     {
         return InvokeRepeatable(
@@ -216,6 +206,42 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
         }
     }
 
+    // Postfix sets {rcpt_mailer} to "error" for a recipient it has already refused, and puts the status
+    // code and reason in {rcpt_host} and {rcpt_addr}. The braces are part of the macro name as it
+    // arrives on the wire, so looking it up without them silently never matches.
+    private static bool IsRejectedByMta(IReadOnlyDictionary<string, string>? macros)
+    {
+        return macros != null
+               && macros.TryGetValue("{rcpt_mailer}", out var mailer)
+               && string.Equals(mailer, "error", StringComparison.Ordinal);
+    }
+
+    // There is nothing left to stop sending when the event happens once, so a skip answered there means
+    // something the protocol cannot express. Unlike a skip the MTA declined, this is the filter's own
+    // mistake and is worth saying out loud.
+    private static void ThrowIfNotRepeatable(CommitAction commitAction)
+    {
+        if (commitAction is SkipRemainingEventsAction)
+            throw new InvalidOperationException(
+                "SkipRemainingEvents was answered from an event that happens once. Only headers, "
+                + "recipients and body chunks repeat, so only they can be skipped.");
+    }
+
+    // The MTA is not reading a reply to this event, so there is nowhere to put a decision. Writing one
+    // anyway would be read as the answer to the next command and leave every request and response after
+    // it out of step for the rest of the connection; dropping it silently would deliver mail the filter
+    // rejected. Both are worse than ending the session.
+    //
+    // Unreachable when the flag was derived, because the analysis only sets it once it has proved the
+    // callback cannot answer anything else - which makes this a check on the analysis as much as on a
+    // hand-written declaration.
+    private static void ThrowIfDecisionCannotBeDelivered(CommitAction commitAction)
+    {
+        if (commitAction is not ContinueAction)
+            throw new InvalidOperationException(
+                "A callback listed in NoReplyRequirements answered with something other than Continue. "
+                + "The MTA is not waiting for a reply to that event, so the decision cannot be delivered.");
+    }
 
     // The three events that repeat, and the only ones a skip means anything for.
     //
@@ -264,6 +290,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
         await foreach (var response in commitAction.CreateResponsePackets().WithCancellation(cancellationToken).ConfigureAwait(false))
             yield return response;
     }
+
     private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
         TInfo info,
         Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
@@ -285,32 +312,5 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
         }
 
         ThrowIfDecisionCannotBeDelivered(commitAction);
-    }
-
-    // The MTA is not reading a reply to this event, so there is nowhere to put a decision. Writing one
-    // anyway would be read as the answer to the next command and leave every request and response after
-    // it out of step for the rest of the connection; dropping it silently would deliver mail the filter
-    // rejected. Both are worse than ending the session.
-    //
-    // Unreachable when the flag was derived, because the analysis only sets it once it has proved the
-    // callback cannot answer anything else - which makes this a check on the analysis as much as on a
-    // hand-written declaration.
-    // There is nothing to stop sending when the event happens once, so the filter meant something the
-    // protocol cannot express. Unlike a skip the MTA declined, this is the filter's own mistake and is
-    // worth saying out loud.
-    private static void ThrowIfNotRepeatable(CommitAction commitAction)
-    {
-        if (commitAction is SkipRemainingEventsAction)
-            throw new InvalidOperationException(
-                "SkipRemainingEvents was answered from an event that happens once. Only headers, "
-                + "recipients and body chunks repeat, so only they can be skipped.");
-    }
-
-    private static void ThrowIfDecisionCannotBeDelivered(CommitAction commitAction)
-    {
-        if (commitAction is not ContinueAction)
-            throw new InvalidOperationException(
-                "A callback listed in NoReplyRequirements answered with something other than Continue. "
-                + "The MTA is not waiting for a reply to that event, so the decision cannot be delivered.");
     }
 }

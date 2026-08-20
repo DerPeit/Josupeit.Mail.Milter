@@ -35,14 +35,14 @@ public sealed class ActionValidationTests
     [TestCase("X-Test\r\n")]
     public void A_malformed_header_name_is_rejected_when_inserting(string name)
     {
-        Assert.That(() => ModificationActions.InsertHeader(name, "value"), Throws.ArgumentException);
+        Assert.That(() => ModificationActions.InsertHeader(0, name, "value"), Throws.ArgumentException);
     }
 
     [Test]
     public void An_inserted_header_value_carrying_a_control_character_is_rejected()
     {
         Assert.That(
-            () => ModificationActions.InsertHeader("X-Test", "plain\r\nX-Injected: yes"),
+            () => ModificationActions.InsertHeader(0, "X-Test", "plain\r\nX-Injected: yes"),
             Throws.ArgumentException);
     }
 
@@ -50,14 +50,14 @@ public sealed class ActionValidationTests
     public void A_negative_insertion_index_is_rejected()
     {
         Assert.That(
-            () => ModificationActions.InsertHeader("X-Test", "value", index: -1),
+            () => ModificationActions.InsertHeader(-1, "X-Test", "value"),
             Throws.InstanceOf<ArgumentOutOfRangeException>());
     }
 
     [Test]
     public void An_inserted_header_defaults_to_the_top_of_the_message()
     {
-        var action = ModificationActions.InsertHeader("X-Checked-By", "Sybil Sieve");
+        var action = ModificationActions.InsertHeader(0, "X-Checked-By", "Sybil Sieve");
 
         Assert.That(action.Index, Is.Zero);
     }
@@ -91,7 +91,7 @@ public sealed class ActionValidationTests
     public void A_parameterised_recipient_carrying_a_control_character_is_rejected(string recipient, string arguments)
     {
         Assert.That(
-            () => ModificationActions.AddRecipientWithParameters(recipient, arguments),
+            () => ModificationActions.AddRecipient(recipient, arguments),
             Throws.ArgumentException);
     }
 
@@ -99,7 +99,7 @@ public sealed class ActionValidationTests
     public void A_parameterised_recipient_requires_its_parameters()
     {
         Assert.That(
-            () => ModificationActions.AddRecipientWithParameters("<archive@example.com>", string.Empty),
+            () => ModificationActions.AddRecipient("<archive@example.com>", string.Empty),
             Throws.ArgumentException);
     }
 

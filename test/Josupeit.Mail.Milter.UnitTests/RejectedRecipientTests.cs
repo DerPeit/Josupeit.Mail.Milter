@@ -21,7 +21,7 @@ public sealed class RejectedRecipientTests
     public async Task A_recipient_the_mta_refused_is_marked_as_such()
     {
         var recipients = new List<RecipientInformation>();
-        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), TestNegotiation.Nothing);
 
         await Drain(adapter.OnDefineMacro(RecipientMacros(mailer: "error")));
         await Drain(adapter.OnRecipient(Recipient("<nosuchbox@example.com>")));
@@ -33,7 +33,7 @@ public sealed class RejectedRecipientTests
     public async Task A_recipient_the_mta_accepted_is_not_marked()
     {
         var recipients = new List<RecipientInformation>();
-        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), TestNegotiation.Nothing);
 
         await Drain(adapter.OnDefineMacro(RecipientMacros(mailer: "smtp")));
         await Drain(adapter.OnRecipient(Recipient("<pennypost@example.com>")));
@@ -47,7 +47,7 @@ public sealed class RejectedRecipientTests
     public async Task A_verdict_is_not_carried_over_to_the_next_recipient()
     {
         var recipients = new List<RecipientInformation>();
-        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), TestNegotiation.Nothing);
 
         await Drain(adapter.OnDefineMacro(RecipientMacros(mailer: "error")));
         await Drain(adapter.OnRecipient(Recipient("<nosuchbox@example.com>")));
@@ -64,7 +64,7 @@ public sealed class RejectedRecipientTests
     public async Task A_recipient_arriving_with_no_macros_at_all_is_not_marked()
     {
         var recipients = new List<RecipientInformation>();
-        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), TestNegotiation.Nothing);
 
         await Drain(adapter.OnRecipient(Recipient("<pennypost@example.com>")));
 
@@ -77,7 +77,7 @@ public sealed class RejectedRecipientTests
     public async Task The_macro_name_is_matched_with_its_braces()
     {
         var recipients = new List<RecipientInformation>();
-        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), TestNegotiation.Nothing);
 
         var withoutBraces = new DefineMacroRequestPacket
         {
@@ -95,7 +95,7 @@ public sealed class RejectedRecipientTests
     public async Task Macros_from_another_stage_do_not_mark_a_recipient()
     {
         var recipients = new List<RecipientInformation>();
-        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new RecipientRecordingContext(recipients), TestNegotiation.Nothing);
 
         var senderStage = new DefineMacroRequestPacket
         {

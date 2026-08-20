@@ -18,7 +18,7 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Connected_rejects_a_null_request_at_the_call()
     {
-        var state = new ConnectedState(new FakeProtocolStateMachine());
+        var state = new ConnectedState(new FakeProtocolStateMachine(), TestNegotiation.Nothing);
 
         Assert.That(
             async () => await state.ProcessHeader(null!, CancellationToken.None),
@@ -28,7 +28,7 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Negotiated_rejects_a_null_request_at_the_call()
     {
-        var state = new NegotiatedState(new FakeProtocolStateMachine());
+        var state = new NegotiatedState(new FakeProtocolStateMachine(), TestNegotiation.Nothing);
 
         Assert.That(
             async () => await state.ProcessMacroDefinition(null!, CancellationToken.None),
@@ -38,7 +38,7 @@ public sealed class ProtocolStateValidationTests
     [Test]
     public void Aborted_rejects_a_null_request_at_the_call()
     {
-        var state = new AbortedState(new FakeProtocolStateMachine());
+        var state = new AbortedState(new FakeProtocolStateMachine(), TestNegotiation.Nothing);
 
         Assert.That(
             async () => await state.ProcessQuitting(null!, CancellationToken.None),

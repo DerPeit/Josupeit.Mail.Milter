@@ -11,8 +11,10 @@ namespace Josupeit.Mail.Milter;
 /// <remarks>
 /// <para>
 /// The callbacks come from <see cref="IMilterCallbacks"/> and all have default implementations, so an
-/// implementation only overrides the events it cares about. The two properties here have none: they are
-/// what the library tells the MTA during negotiation, and only the filter knows what to put in them.
+/// implementation only overrides the events it cares about. The six properties here are what the library
+/// tells the MTA during negotiation. Two of them have no default, because no default is safe; the other
+/// four behave exactly as protocol version 2 did until something says otherwise, and the source
+/// generator writes all six from the filter's own code unless the filter declares one by hand.
 /// </para>
 /// <para>
 /// An instance serves <em>one message</em>, not one connection. An MTA keeps a connection open across

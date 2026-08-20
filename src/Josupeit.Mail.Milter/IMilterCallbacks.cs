@@ -132,24 +132,6 @@ public interface IMilterCallbacks
     }
 
     /// <summary>
-    /// Called when the client has sent an SMTP command the MTA does not recognise.
-    /// </summary>
-    /// <remarks>
-    /// Requires <see cref="ProtocolRequirements.UnknownCommand"/>, and an MTA speaking protocol version
-    /// 3 or above. Unlike the other events this one has no fixed place in the conversation - an
-    /// unrecognised verb can arrive wherever the client chooses to send it, including before
-    /// <c>HELO</c>.
-    /// </remarks>
-    /// <param name="info">The command line the MTA could not parse.</param>
-    /// <param name="cancellationToken">A token that cancels the callback.</param>
-    /// <returns>What the MTA should do with the message.</returns>
-    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand), nameof(NoReplyRequirements.UnknownCommand), MinimumProtocolVersion = 3)]
-    ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken)
-    {
-        return new(CommitActions.Continue);
-    }
-
-    /// <summary>
     /// Called once for each header of the message.
     /// </summary>
     /// <remarks>
@@ -226,5 +208,24 @@ public interface IMilterCallbacks
     IAsyncEnumerable<Action> OnEndOfBody()
     {
         return new Action[] { CommitActions.Continue }.ToAsyncEnumerable();
+    }
+
+    /// <summary>
+    /// Called when the client has sent an SMTP command the MTA does not recognise.
+    /// </summary>
+    /// <remarks>
+    /// Requires <see cref="ProtocolRequirements.UnknownCommand"/>, and an MTA speaking protocol version
+    /// 3 or above. Unlike the other events this one has no fixed place in the conversation - an
+    /// unrecognised verb can arrive wherever the client chooses to send it, including before
+    /// <c>HELO</c> and after the body - which is why it sits at the end here rather than somewhere in
+    /// the flow above.
+    /// </remarks>
+    /// <param name="info">The command line the MTA could not parse.</param>
+    /// <param name="cancellationToken">A token that cancels the callback.</param>
+    /// <returns>What the MTA should do with the message.</returns>
+    [MilterCallbackMarker(nameof(ProtocolRequirements.UnknownCommand), nameof(NoReplyRequirements.UnknownCommand), MinimumProtocolVersion = 3)]
+    ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken)
+    {
+        return new(CommitActions.Continue);
     }
 }

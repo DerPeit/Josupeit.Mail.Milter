@@ -22,9 +22,9 @@ public sealed class QuitForNewConnectionTests
     public async Task Quitting_for_a_new_connection_expects_no_reply_and_drops_the_context()
     {
         var stateMachine = new FakeProtocolStateMachine();
-        var state = new ConnectedState(stateMachine);
+        var state = new ConnectedState(stateMachine, TestNegotiation.Nothing);
 
-        stateMachine.EnsureContextAdapter();
+        stateMachine.EnsureContextAdapter(TestNegotiation.Nothing);
 
         var responses = await Drain(state.ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket.Instance, CancellationToken.None));
 
@@ -39,7 +39,7 @@ public sealed class QuitForNewConnectionTests
     public async Task A_filter_wanting_the_connection_event_returns_to_recording_a_replay()
     {
         var stateMachine = CreateStateMachine(ProtocolRequirements.Connect);
-        var state = new ConnectedState(stateMachine);
+        var state = new ConnectedState(stateMachine, TestNegotiation.Nothing);
 
         await Drain(state.ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket.Instance, CancellationToken.None));
 
@@ -50,7 +50,7 @@ public sealed class QuitForNewConnectionTests
     public async Task A_filter_not_wanting_the_connection_event_returns_to_the_negotiated_state()
     {
         var stateMachine = CreateStateMachine(ProtocolRequirements.EndOfBody);
-        var state = new ConnectedState(stateMachine);
+        var state = new ConnectedState(stateMachine, TestNegotiation.Nothing);
 
         await Drain(state.ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket.Instance, CancellationToken.None));
 
@@ -67,7 +67,7 @@ public sealed class QuitForNewConnectionTests
         var hostnames = new List<string>();
         var stateMachine = CreateStateMachine(ProtocolRequirements.Connect, () => new HostnameRecordingContext(hostnames));
 
-        var recording = new ReplayRecordingNegotiatedState(stateMachine);
+        var recording = new ReplayRecordingNegotiatedState(stateMachine, TestNegotiation.Nothing);
 
         await Drain(recording.ProcessConnectionAttempt(Connect("gonefishing.example.com"), CancellationToken.None));
         await Drain(Current(stateMachine).ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket.Instance, CancellationToken.None));

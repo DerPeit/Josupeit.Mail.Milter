@@ -26,7 +26,7 @@ public sealed class MessageDataAndUnknownCommandTests
     public async Task The_data_verb_reaches_the_context_from_the_connected_state()
     {
         var stateMachine = new FakeProtocolStateMachine();
-        var state = new ConnectedState(stateMachine);
+        var state = new ConnectedState(stateMachine, TestNegotiation.Nothing);
 
         var responses = await Drain(state.ProcessMessageDataStart(MessageDataRequestPacket.Instance, CancellationToken.None));
 
@@ -37,7 +37,7 @@ public sealed class MessageDataAndUnknownCommandTests
     public async Task An_unrecognised_command_reaches_the_context_from_the_connected_state()
     {
         var stateMachine = new FakeProtocolStateMachine();
-        var state = new ConnectedState(stateMachine);
+        var state = new ConnectedState(stateMachine, TestNegotiation.Nothing);
 
         var responses = await Drain(state.ProcessUnknownCommand(_unknownCommand, CancellationToken.None));
 

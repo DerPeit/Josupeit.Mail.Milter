@@ -11,7 +11,7 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
-internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, IReadOnlyList<RequestPacket> packetReplayHistory) : ProtocolState
+internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, ProtocolNegotiationOutcome negotiation, IReadOnlyList<RequestPacket> packetReplayHistory) : ProtocolState
 {
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
@@ -23,39 +23,29 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnBodyChunk, stateMachine.Negotiation.IsAnsweringBody, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnBodyChunk(packet), negotiation.IsAnsweringBody, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnClientHello, stateMachine.Negotiation.IsAnsweringClientHello, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnClientHello(packet), negotiation.IsAnsweringClientHello, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
         // End-of-body is the one event with no no-reply flag in the protocol: it carries the verdict,
         // so the MTA always waits for it.
-        return ProcessRequest(request, static ca => ca.OnEndOfBody, responseExpected: true, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnEndOfBody(packet), responseExpected: true, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfHeaders, stateMachine.Negotiation.IsAnsweringEndOfHeaders, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnEndOfHeaders(packet), negotiation.IsAnsweringEndOfHeaders, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnHeader, stateMachine.Negotiation.IsAnsweringHeaders, cancellationToken);
-    }
-
-    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
-    {
-        return ProcessRequest(request, static ca => ca.OnMessageDataStarted, stateMachine.Negotiation.IsAnsweringMessageData, cancellationToken);
-    }
-
-    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
-    {
-        return ProcessRequest(request, static ca => ca.OnUnknownCommand, stateMachine.Negotiation.IsAnsweringUnknownCommands, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnHeader(packet), negotiation.IsAnsweringHeaders, cancellationToken);
     }
 
     // Unlike AbortedState, a macro definition does transition here, and that difference is deliberate:
@@ -63,7 +53,12 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
     // the fresh context. The macro cannot be handled without it.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => packet => ca.OnDefineMacro(packet), responseExpected: false, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnDefineMacro(packet), responseExpected: false, cancellationToken);
+    }
+
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static (ca, packet) => ca.OnMessageDataStarted(packet), negotiation.IsAnsweringMessageData, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
@@ -94,33 +89,41 @@ internal sealed class ReplayingAbortedState(IProtocolStateMachine stateMachine, 
         async Task ToNegotiatedState()
         {
             await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
-            await stateMachine.TransitionTo(NegotiatedStateFactory.Create(stateMachine, stateMachine.Configuration)).ConfigureAwait(false);
+            await stateMachine.TransitionTo(NegotiatedStateFactory.Create(stateMachine, stateMachine.Configuration, negotiation)).ConfigureAwait(false);
         }
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnRecipient, stateMachine.Negotiation.IsAnsweringRecipients, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnRecipient(packet), negotiation.IsAnsweringRecipients, cancellationToken);
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnSender, stateMachine.Negotiation.IsAnsweringSender, cancellationToken);
+        return ProcessRequest(request, static (ca, packet) => ca.OnSender(packet), negotiation.IsAnsweringSender, cancellationToken);
     }
 
-    private async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor, bool responseExpected, CancellationToken cancellationToken)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static (ca, packet) => ca.OnUnknownCommand(packet), negotiation.IsAnsweringUnknownCommands, cancellationToken);
+    }
+
+    // The callback arrives as (adapter, packet) rather than as a method group off the adapter. A method
+    // group with a receiver cannot be cached, so the shorter `static ca => ca.OnHeader` allocated a
+    // delegate for every event that reached this state, and events are the hot path here.
+    private async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, TRequest, IAsyncEnumerable<ResponsePacket>> processor, bool responseExpected, CancellationToken cancellationToken)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
 
         var replayed = await Replay(contextAdapter, responseExpected, cancellationToken).ConfigureAwait(false);
-        var responses = replayed ?? processor(contextAdapter).Invoke(request);
+        var responses = replayed ?? processor(contextAdapter, request);
 
         return responses.Finally(ToReplayingConnectedState);
 
-        async Task ToReplayingConnectedState() => await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, packetReplayHistory)).ConfigureAwait(false);
+        async Task ToReplayingConnectedState() => await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, negotiation, packetReplayHistory)).ConfigureAwait(false);
     }
 
     // Replays the recorded connection packets into the fresh context, returning the decision that ends

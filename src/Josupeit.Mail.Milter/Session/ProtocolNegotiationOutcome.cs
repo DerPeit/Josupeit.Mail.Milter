@@ -17,19 +17,16 @@ namespace Josupeit.Mail.Milter.Session;
 //
 // Paired with the configuration's IsAwaiting* by name: IsAwaitingX asks whether the filter wants the
 // event, IsAnsweringX whether the MTA is waiting for a reply to it.
+//
+// Held by the states that exist only once negotiation is done, and handed on to each state they
+// transition to. Not by the session: the configuration is an invariant of the machine and this is not,
+// so a value there would need a setter for something written exactly once and a stand-in for the window
+// before it was. A state with no outcome to read is a state where none has been negotiated yet.
 internal sealed record ProtocolNegotiationOutcome(
     Version ProtocolVersion,
     ActionDiscriminator RequiredActions,
     ContentBypassDiscriminator ProtocolContentOptions)
 {
-    // Nothing negotiated yet. Every event is answered and no version 6 behaviour is on, which is what
-    // the library did before any of this was negotiable - so a session that somehow reads this before
-    // its OPTNEG reply behaves like a version 2 one rather than misbehaving.
-    public static readonly ProtocolNegotiationOutcome NotNegotiated = new(
-        new Version(2, 0),
-        ActionDiscriminator.None,
-        ContentBypassDiscriminator.None);
-
     public bool IsAnsweringConnection => IsAnswering(ContentBypassDiscriminator.NoReplyToConnect);
 
     public bool IsAnsweringClientHello => IsAnswering(ContentBypassDiscriminator.NoReplyToClientHello);

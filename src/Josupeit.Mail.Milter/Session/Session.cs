@@ -32,10 +32,6 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         TContext.ProtocolVersionRequirement,
         TContext.MacroRequirements);
 
-    // Replaced once the OPTNEG reply has been written. Until then it reads as a version 2 session, so
-    // nothing has to cope with a null and no state before AwaitingNegotiationState can be misled.
-    private ProtocolNegotiationOutcome _negotiation = ProtocolNegotiationOutcome.NotNegotiated;
-
     private readonly ChannelReader<RequestFrame> _requestFrameReader;
     private readonly IRequestPacketFactory _requestPacketFactory;
     private readonly IResponseFrameFactory _responseFrameFactory;
@@ -147,9 +143,11 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         }
     }
 
-    internal ContextAdapter EnsureContextAdapter()
+    // The adapter is per message and the outcome is per connection, so the state that asks for one
+    // carries the outcome in and the session only owns the lifetime.
+    internal ContextAdapter EnsureContextAdapter(ProtocolNegotiationOutcome negotiation)
     {
-        return _contextAdapter ??= new(() => _contextFactory(), _negotiation);
+        return _contextAdapter ??= new(() => _contextFactory(), negotiation);
     }
 
     internal ValueTask DisposeContextAdapter()
@@ -169,13 +167,9 @@ partial class Session<TContext> : IProtocolStateMachine
 
     ProtocolStateMachineConfiguration IProtocolStateMachine.Configuration => _protocolStateMachineConfiguration;
 
-    ProtocolNegotiationOutcome IProtocolStateMachine.Negotiation => _negotiation;
-
-    void IProtocolStateMachine.CompleteNegotiation(ProtocolNegotiationOutcome outcome) => _negotiation = outcome;
-
     ValueTask IProtocolStateMachine.DisposeContextAdapter() => DisposeContextAdapter();
 
-    ContextAdapter IProtocolStateMachine.EnsureContextAdapter() => EnsureContextAdapter();
+    ContextAdapter IProtocolStateMachine.EnsureContextAdapter(ProtocolNegotiationOutcome negotiation) => EnsureContextAdapter(negotiation);
 
     ValueTask IStateMachine<IProtocolState>.TransitionTo(IProtocolState state)
     {

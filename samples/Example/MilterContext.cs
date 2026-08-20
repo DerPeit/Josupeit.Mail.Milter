@@ -84,7 +84,7 @@ internal sealed partial class MilterContext : IMilterContext
         var actions = new List<Action> { ModificationActions.AddHeader("X-Filtered-By", "Josupeit.Mail.Milter") };
 
         if (_queueId != null)
-            actions.Add(ModificationActions.InsertHeader("X-Filter-Queue-Id", _queueId, index: 0));
+            actions.Add(ModificationActions.InsertHeader(index: 0, "X-Filter-Queue-Id", _queueId));
 
         if (_refusedRecipients > 0)
             actions.Add(ModificationActions.AddHeader("X-Refused-Recipients", _refusedRecipients.ToString()));

@@ -76,24 +76,63 @@ public sealed class NoReplyTests
         Assert.That(response.MilterUndesiredProtocolContent & ALL_NO_REPLY_FLAGS, Is.EqualTo(ContentBypassDiscriminator.None));
     }
 
-    [Test]
-    public async Task An_event_the_mta_is_not_reading_is_answered_with_nothing()
+    // Every event, not one of them. The adapter picks one of nine IsAnswering properties by hand, one per
+    // event, and a copy-and-paste slip there wires an event to its neighbour's flag - which is the
+    // desynchronisation this whole file exists to catch, and which testing only OnHeader would miss.
+    [TestCase(ContentBypassDiscriminator.NoReplyToConnect)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToClientHello)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToSender)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToRecipient)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToMessageData)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToUnknownCommand)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToHeader)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToEndOfHeaders)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToBody)]
+    public async Task An_event_the_mta_is_not_reading_is_answered_with_nothing(ContentBypassDiscriminator flag)
     {
-        var adapter = Adapter(ContentBypassDiscriminator.NoReplyToHeader, static () => new TestMilterContext());
+        var adapter = Adapter(flag, static () => new TestMilterContext());
 
-        var responses = await Drain(adapter.OnHeader(Header()));
+        var responses = await Drain(Deliver(adapter, flag));
 
         Assert.That(responses, Is.Empty);
     }
 
-    [Test]
-    public async Task The_same_event_is_answered_normally_when_the_flag_was_not_negotiated()
+    [TestCase(ContentBypassDiscriminator.NoReplyToConnect)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToClientHello)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToSender)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToRecipient)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToMessageData)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToUnknownCommand)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToHeader)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToEndOfHeaders)]
+    [TestCase(ContentBypassDiscriminator.NoReplyToBody)]
+    public async Task The_same_event_is_answered_normally_when_its_flag_was_not_negotiated(ContentBypassDiscriminator flag)
     {
         var adapter = Adapter(ContentBypassDiscriminator.None, static () => new TestMilterContext());
 
-        var responses = await Drain(adapter.OnHeader(Header()));
+        var responses = await Drain(Deliver(adapter, flag));
 
         Assert.That(responses, Has.One.InstanceOf<ContinueProcessingResponsePacket>());
+    }
+
+    // One arm per event the MTA can be told not to wait for, which is what makes the two tests above
+    // cover all nine rather than headers alone. End-of-body has no arm because the protocol gives it no
+    // flag: its verdict is the reason the event exists.
+    private static IAsyncEnumerable<ResponsePacket> Deliver(ContextAdapter adapter, ContentBypassDiscriminator flag)
+    {
+        return flag switch
+        {
+            ContentBypassDiscriminator.NoReplyToConnect => adapter.OnConnectionEstablished(Connect()),
+            ContentBypassDiscriminator.NoReplyToClientHello => adapter.OnClientHello(new HeloRequestPacket { HeloString = "quietly.example.com" }),
+            ContentBypassDiscriminator.NoReplyToSender => adapter.OnSender(new SenderRequestPacket { Sender = "<norbert.noreply@example.com>", ESmtpArguments = [] }),
+            ContentBypassDiscriminator.NoReplyToRecipient => adapter.OnRecipient(new RecipientRequestPacket { Recipient = "<hushed.hazel@example.com>", ESmtpArguments = [] }),
+            ContentBypassDiscriminator.NoReplyToMessageData => adapter.OnMessageDataStarted(MessageDataRequestPacket.Instance),
+            ContentBypassDiscriminator.NoReplyToUnknownCommand => adapter.OnUnknownCommand(new UnknownCommandRequestPacket { CommandText = "SPLOSH" }),
+            ContentBypassDiscriminator.NoReplyToHeader => adapter.OnHeader(Header()),
+            ContentBypassDiscriminator.NoReplyToEndOfHeaders => adapter.OnEndOfHeaders(EndOfHeadersRequestPacket.Instance),
+            ContentBypassDiscriminator.NoReplyToBody => adapter.OnBodyChunk(new BodyChunkRequestPacket(null, ..0)),
+            _ => throw new ArgumentOutOfRangeException(nameof(flag), flag, "No event is paired with this flag."),
+        };
     }
 
     // Should be unreachable once the flag is derived - the analysis sets it only after proving the
@@ -128,10 +167,9 @@ public sealed class NoReplyTests
         var stateMachine = new FakeProtocolStateMachine
         {
             Configuration = new ProtocolStateMachineConfiguration(ProtocolRequirements.Connect, ActionRequirements.None),
-            Negotiation = Outcome(ContentBypassDiscriminator.NoReplyToConnect),
         };
 
-        var state = new ReplayRecordingNegotiatedState(stateMachine);
+        var state = new ReplayRecordingNegotiatedState(stateMachine, Outcome(ContentBypassDiscriminator.NoReplyToConnect));
 
         var responses = await Drain(state.ProcessConnectionAttempt(Connect(), CancellationToken.None));
 
@@ -147,16 +185,17 @@ public sealed class NoReplyTests
     [Test]
     public void A_replayed_decision_is_refused_when_the_triggering_event_is_not_answered()
     {
-        var stateMachine = new FakeProtocolStateMachine(static () => new RejectingContext())
-        {
-            Negotiation = Outcome(ContentBypassDiscriminator.NoReplyToHeader),
-        };
+        var stateMachine = new FakeProtocolStateMachine(static () => new RejectingContext());
 
-        var state = new ReplayingAbortedState(stateMachine, [Connect()]);
+        var state = new ReplayingAbortedState(stateMachine, Outcome(ContentBypassDiscriminator.NoReplyToHeader), [Connect()]);
 
+        // Named, because more than one InvalidOperationException is reachable from this call and only one
+        // of them is the point. This one comes from the replay path rather than from the context adapter:
+        // the recorded connect callback answered a rejection while replaying under an event the MTA is
+        // not reading a reply to, so there is nowhere to put it.
         Assert.That(
             async () => await Drain(state.ProcessHeader(Header(), CancellationToken.None)),
-            Throws.InstanceOf<InvalidOperationException>());
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("expects no reply"));
     }
 
     private static ProtocolNegotiationOutcome Outcome(ContentBypassDiscriminator options)

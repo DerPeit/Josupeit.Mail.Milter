@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Josupeit.Mail.Milter.Generator.Markers;
 
 namespace Josupeit.Mail.Milter;
@@ -86,7 +87,7 @@ public sealed record MacroRequirements
         if (macroNames == null)
             throw new ArgumentNullException(nameof(macroNames));
 
-        GetMacroStageCode(stage);
+        ArgumentException.ThrowIfInvalidMacroClass(stage);
 
         foreach (var macroName in macroNames)
         {
@@ -107,28 +108,82 @@ public sealed record MacroRequirements
     }
 
     /// <summary>
-    /// The protocol's macro class for a stage (<c>SMFIM_</c>).
+    /// Whether another set names the same macros at the same stages, in the same order.
     /// </summary>
     /// <remarks>
-    /// Deliberately not the same numbers as <see cref="ProtocolStage"/>, which runs in conversation
-    /// order. <see cref="ProtocolStage.Header"/> and <see cref="ProtocolStage.Body"/> have no macro
-    /// class at all, so no list can be asked for at either.
+    /// Written by hand because the record's generated equality would compare the dictionary behind these
+    /// by reference, so two sets built from identical calls would come out unequal - a record that
+    /// advertises value semantics and does not have them. Order counts within a stage: the names travel
+    /// as one space-separated string, so two orders are two different strings on the wire.
     /// </remarks>
-    /// <param name="stage">The stage to translate.</param>
-    /// <returns>The <c>SMFIM_</c> code.</returns>
-    /// <exception cref="ArgumentException">The stage has no macro class.</exception>
-    public static uint GetMacroStageCode(ProtocolStage stage)
+    /// <param name="other">The set to compare with.</param>
+    /// <returns><see langword="true"/> when both name exactly the same macros.</returns>
+    public bool Equals(MacroRequirements? other)
     {
-        return stage switch
+        if (other is null)
+            return false;
+
+        if (ReferenceEquals(this, other))
+            return true;
+
+        if (_byStage.Count != other._byStage.Count)
+            return false;
+
+        foreach (var (stage, macroNames) in _byStage)
         {
-            ProtocolStage.Connect => 0,
-            ProtocolStage.ClientHello => 1,
-            ProtocolStage.Sender => 2,
-            ProtocolStage.Recipient => 3,
-            ProtocolStage.MessageData => 4,
-            ProtocolStage.EndOfBody => 5,
-            ProtocolStage.EndOfHeaders => 6,
-            _ => throw new ArgumentException($"The protocol defines no macro class for {stage}.", nameof(stage)),
-        };
+            if (!other._byStage.TryGetValue(stage, out var otherMacroNames))
+                return false;
+
+            if (!macroNames.SequenceEqual(otherMacroNames, StringComparer.Ordinal))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <inheritdoc />
+    public override int GetHashCode()
+    {
+        var hash = 0;
+
+        // Combined with exclusive-or across stages because a dictionary has no defined enumeration
+        // order, and a hash that depended on it would differ between two sets that compare equal.
+        foreach (var (stage, macroNames) in _byStage)
+        {
+            var stageHash = (int)stage;
+
+            foreach (var macroName in macroNames)
+                stageHash = (stageHash * 31) + StringComparer.Ordinal.GetHashCode(macroName);
+
+            hash ^= stageHash;
+        }
+
+        return hash;
+    }
+}
+
+// Guards the stages a macro list can be asked for. The protocol gives most of them a macro class
+// (SMFIM_) but not all: Header and Body have none, and asking for one there would put a stage code on
+// the wire that means something else. Only the guard lives here - the codes themselves belong to the
+// frame factory, which is the one place that writes them, so nothing outside it has to know that the
+// numbers are not ProtocolStage's own.
+file static class MacroClass
+{
+    extension(ArgumentException)
+    {
+        public static void ThrowIfInvalidMacroClass(ProtocolStage stage, [CallerArgumentExpression(nameof(stage))] string? paramName = null)
+        {
+            var hasMacroClass = stage
+                is ProtocolStage.Connect
+                or ProtocolStage.ClientHello
+                or ProtocolStage.Sender
+                or ProtocolStage.Recipient
+                or ProtocolStage.MessageData
+                or ProtocolStage.EndOfHeaders
+                or ProtocolStage.EndOfBody;
+
+            if (!hasMacroClass)
+                throw new ArgumentException($"The protocol defines no macro class for {stage}.", paramName);
+        }
     }
 }

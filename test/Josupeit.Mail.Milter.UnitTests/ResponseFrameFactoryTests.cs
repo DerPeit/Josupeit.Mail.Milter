@@ -144,17 +144,26 @@ public sealed class ResponseFrameFactoryTests
     }
 
     [Test]
-    public void Inserting_a_header_counts_from_one_on_the_wire()
+    // Insertion counts from zero on the wire, a header change counts occurrences from one. Writing the
+    // change's translation here - which is how this was first written - puts the header one place too
+    // low, and Postfix says so at the point it reads the field: "With Sendmail 8, index 0 means the
+    // top-most header", after which it adds the one itself.
+    [TestCase(0u, "above every existing header")]
+    [TestCase(2u, "after the second existing header")]
+    public void Inserting_a_header_puts_the_index_on_the_wire_unaltered(uint index, string meaning)
     {
-        var packet = new InsertHeaderResponsePacket { Index = 0, Name = "X-Checked-By", Value = "Sybil Sieve" };
+        var packet = new InsertHeaderResponsePacket { Index = index, Name = "X-Checked-By", Value = "Sybil Sieve" };
 
         using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
 
-        Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.InsertHeader));
-        Assert.That(
-            GetData(frame),
-            Is.EqualTo(new byte[] { 0, 0, 0, 1 }.Concat(Latin1("X-Checked-By\0Sybil Sieve\0")).ToArray()),
-            "Index 0 means above every header, which the wire spells as 1.");
+        Assert.Multiple(() =>
+        {
+            Assert.That(frame.ResponseCode, Is.EqualTo(ResponseCode.InsertHeader));
+            Assert.That(
+                GetData(frame),
+                Is.EqualTo(new byte[] { 0, 0, 0, (byte)index }.Concat(Latin1("X-Checked-By\0Sybil Sieve\0")).ToArray()),
+                $"Index {index} means {meaning}, and the wire spells it the same way.");
+        });
     }
 
     [Test]
@@ -191,10 +200,13 @@ public sealed class ResponseFrameFactoryTests
         Assert.That(GetData(frame), Is.EqualTo(Latin1("<bounces@example.com>\0")));
     }
 
+    // The same packet type as Adding_a_recipient_terminates_the_address, and the arguments are the only
+    // thing that picks SMFIR_ADDRCPT_PAR over SMFIR_ADDRCPT. Getting that backwards has the MTA refuse
+    // the recipient of any filter that only negotiated AddRecipients.
     [Test]
     public void Adding_a_recipient_with_parameters_writes_both_fields()
     {
-        var packet = new AddRecipientWithParametersResponsePacket
+        var packet = new AddRecipientResponsePacket
         {
             Recipient = "<archive@example.com>",
             ESmtpArguments = "NOTIFY=NEVER",

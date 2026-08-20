@@ -19,14 +19,14 @@ namespace Josupeit.Mail.Milter;
 /// </remarks>
 public sealed record ProgressAction : Action
 {
+    private ProgressAction()
+    {
+    }
+
     /// <summary>
     /// The single shared instance. This action carries no state, so there is never a reason for another.
     /// </summary>
     public static ProgressAction Instance { get; } = new();
-
-    private ProgressAction()
-    {
-    }
 
     /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)

@@ -70,42 +70,6 @@ internal sealed record ProtocolStateMachineConfiguration(
         return flags;
     }
 
-    // One flag per event, and no member for end-of-body: the MTA always waits for the verdict there, so
-    // the protocol gives it no flag to set.
-    private ContentBypassDiscriminator ToNoReplyFlags()
-    {
-        var flags = ContentBypassDiscriminator.None;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Connect))
-            flags |= ContentBypassDiscriminator.NoReplyToConnect;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.ClientHello))
-            flags |= ContentBypassDiscriminator.NoReplyToClientHello;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Sender))
-            flags |= ContentBypassDiscriminator.NoReplyToSender;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Recipient))
-            flags |= ContentBypassDiscriminator.NoReplyToRecipient;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.MessageData))
-            flags |= ContentBypassDiscriminator.NoReplyToMessageData;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.UnknownCommand))
-            flags |= ContentBypassDiscriminator.NoReplyToUnknownCommand;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Header))
-            flags |= ContentBypassDiscriminator.NoReplyToHeader;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.EndOfHeaders))
-            flags |= ContentBypassDiscriminator.NoReplyToEndOfHeaders;
-
-        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Body))
-            flags |= ContentBypassDiscriminator.NoReplyToBody;
-
-        return flags;
-    }
-
     internal ContentBypassDiscriminator ToContentBypassDiscriminator()
     {
         var flags = ContentBypassDiscriminator.None;
@@ -139,6 +103,13 @@ internal sealed record ProtocolStateMachineConfiguration(
         // Also positive: naming an event here tells the MTA not to wait for an answer to it.
         flags |= ToNoReplyFlags();
 
+        // Positive as well, and asked for unconditionally. SMFIP_SKIP announces that this filter may
+        // answer SMFIR_SKIP and the MTA answers with whether it understands one, so it is a capability
+        // rather than a request for fewer events and a filter that never skips loses nothing by naming
+        // it. There is also nothing to derive it from: the skip action carries no modification right,
+        // because the protocol expresses skip as an event bit rather than an SMFIF_ flag.
+        flags |= ContentBypassDiscriminator.SkipRemainingEvents;
+
         if (!IsAwaitingHeaders)
             flags |= ContentBypassDiscriminator.NoHeader;
 
@@ -147,6 +118,42 @@ internal sealed record ProtocolStateMachineConfiguration(
 
         if (!IsAwaitingBody)
             flags |= ContentBypassDiscriminator.NoBody;
+
+        return flags;
+    }
+
+    // One flag per event, and no member for end-of-body: the MTA always waits for the verdict there, so
+    // the protocol gives it no flag to set.
+    private ContentBypassDiscriminator ToNoReplyFlags()
+    {
+        var flags = ContentBypassDiscriminator.None;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Connect))
+            flags |= ContentBypassDiscriminator.NoReplyToConnect;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.ClientHello))
+            flags |= ContentBypassDiscriminator.NoReplyToClientHello;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Sender))
+            flags |= ContentBypassDiscriminator.NoReplyToSender;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Recipient))
+            flags |= ContentBypassDiscriminator.NoReplyToRecipient;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.MessageData))
+            flags |= ContentBypassDiscriminator.NoReplyToMessageData;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.UnknownCommand))
+            flags |= ContentBypassDiscriminator.NoReplyToUnknownCommand;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Header))
+            flags |= ContentBypassDiscriminator.NoReplyToHeader;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.EndOfHeaders))
+            flags |= ContentBypassDiscriminator.NoReplyToEndOfHeaders;
+
+        if (NoReplyRequirements.HasFlag(NoReplyRequirements.Body))
+            flags |= ContentBypassDiscriminator.NoReplyToBody;
 
         return flags;
     }

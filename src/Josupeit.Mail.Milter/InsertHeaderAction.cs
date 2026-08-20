@@ -21,12 +21,22 @@ namespace Josupeit.Mail.Milter;
 [MilterActionMarker(nameof(ActionRequirements.AddHeaders))]
 public sealed record InsertHeaderAction : ModificationAction
 {
-    internal InsertHeaderAction(string name, string value, int index)
+    internal InsertHeaderAction(int index, string name, string value)
     {
+        Index = index;
         Name = name;
         Value = value;
-        Index = index;
     }
+
+    /// <summary>
+    /// How many headers the new one is placed after.
+    /// </summary>
+    /// <remarks>
+    /// Counts from zero, so zero puts the header above every existing one - which is what a filter
+    /// adding a <c>Received</c>-like trace header usually wants. The wire counts from zero too, unlike
+    /// a header change, so the value travels unaltered.
+    /// </remarks>
+    public int Index { get; }
 
     /// <summary>
     /// The name of the header to insert, without the separating colon.
@@ -37,16 +47,6 @@ public sealed record InsertHeaderAction : ModificationAction
     /// The value of the header to insert.
     /// </summary>
     public string Value { get; }
-
-    /// <summary>
-    /// How many headers the new one is placed after.
-    /// </summary>
-    /// <remarks>
-    /// Counts from zero, so zero puts the header above every existing one - which is what a filter
-    /// adding a <c>Received</c>-like trace header usually wants. The wire counts from one, and the
-    /// translation happens on the way out.
-    /// </remarks>
-    public int Index { get; }
 
     /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)

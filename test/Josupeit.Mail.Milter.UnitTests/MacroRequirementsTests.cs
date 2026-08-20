@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Buffers.Binary;
 using System.Linq;
 using System.Text;
 using Josupeit.Mail.Milter.Link;
@@ -25,7 +26,7 @@ public sealed class MacroRequirementsTests
     [TestCase(ProtocolStage.EndOfHeaders, 6u)]
     public void A_stage_carries_the_macro_class_the_protocol_gives_it(ProtocolStage stage, uint expected)
     {
-        Assert.That(MacroRequirements.GetMacroStageCode(stage), Is.EqualTo(expected));
+        Assert.That(GetMacroStageCode(stage), Is.EqualTo(expected));
     }
 
     // The two that would be wrong by a plain cast: conversation order runs Header then EndOfHeaders,
@@ -35,8 +36,8 @@ public sealed class MacroRequirementsTests
     {
         Assert.Multiple(() =>
         {
-            Assert.That(MacroRequirements.GetMacroStageCode(ProtocolStage.EndOfBody), Is.EqualTo(5u));
-            Assert.That(MacroRequirements.GetMacroStageCode(ProtocolStage.EndOfHeaders), Is.EqualTo(6u));
+            Assert.That(GetMacroStageCode(ProtocolStage.EndOfBody), Is.EqualTo(5u));
+            Assert.That(GetMacroStageCode(ProtocolStage.EndOfHeaders), Is.EqualTo(6u));
             Assert.That((int)ProtocolStage.EndOfBody, Is.GreaterThan((int)ProtocolStage.EndOfHeaders));
         });
     }
@@ -45,11 +46,7 @@ public sealed class MacroRequirementsTests
     [TestCase(ProtocolStage.Body)]
     public void A_stage_with_no_macro_class_cannot_be_asked_for(ProtocolStage stage)
     {
-        Assert.Multiple(() =>
-        {
-            Assert.That(() => MacroRequirements.GetMacroStageCode(stage), Throws.ArgumentException);
-            Assert.That(() => MacroRequirements.For(stage, "i"), Throws.ArgumentException);
-        });
+        Assert.That(() => MacroRequirements.For(stage, "i"), Throws.ArgumentException);
     }
 
     [Test]
@@ -111,6 +108,15 @@ public sealed class MacroRequirementsTests
             .ToArray();
 
         Assert.That(GetData(frame), Is.EqualTo(expected));
+    }
+
+    // The codes are private to the frame factory - a stage's class only ever shows up as the four bytes
+    // in front of its macro names, so that is where it has to be read back from.
+    private static uint GetMacroStageCode(ProtocolStage stage)
+    {
+        using var frame = Negotiate(MacroRequirements.For(stage, "j"));
+
+        return BinaryPrimitives.ReadUInt32BigEndian(GetData(frame).AsSpan(12, 4));
     }
 
     private static ResponseFrame Negotiate(MacroRequirements? macroRequirements)

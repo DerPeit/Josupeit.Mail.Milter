@@ -29,6 +29,11 @@ public static class ModificationActions
     /// <summary>
     /// Adds an envelope recipient to the message.
     /// </summary>
+    /// <remarks>
+    /// Requires <see cref="ActionRequirements.AddRecipients"/>. Reach for the overload taking ESMTP
+    /// arguments only when there are some to send: the two need different rights from the MTA, and
+    /// asking for the wider one buys nothing.
+    /// </remarks>
     /// <param name="recipient">The address to add to the envelope.</param>
     /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
     /// <exception cref="ArgumentException">
@@ -36,12 +41,37 @@ public static class ModificationActions
     /// </exception>
     /// <exception cref="ArgumentNullException"><paramref name="recipient"/> is
     /// <see langword="null"/>.</exception>
-    public static AddRecipientAction AddRecipient(string recipient)
+    public static AddRecipientAction_V2 AddRecipient(string recipient)
     {
         ArgumentException.ThrowIfNullOrEmpty(recipient);
         ArgumentException.ThrowIfContainsControlCharacter(recipient);
 
-        return new AddRecipientAction(recipient);
+        return new AddRecipientAction_V2(recipient);
+    }
+
+    /// <summary>
+    /// Adds an envelope recipient together with the ESMTP arguments that travel with it.
+    /// </summary>
+    /// <remarks>
+    /// Requires <see cref="ActionRequirements.AddRecipientsWithParameters"/> - a separate right from
+    /// <see cref="ActionRequirements.AddRecipients"/> rather than an extension of it - and an MTA
+    /// speaking protocol version 6.
+    /// </remarks>
+    /// <param name="recipient">The address to add to the envelope.</param>
+    /// <param name="eSmtpArguments">The ESMTP arguments to send with it, such as <c>NOTIFY=NEVER</c>.</param>
+    /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
+    /// <exception cref="ArgumentException">
+    /// Either argument is empty or contains a control character.
+    /// </exception>
+    /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
+    public static AddRecipientAction_V6 AddRecipient(string recipient, string eSmtpArguments)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(recipient);
+        ArgumentException.ThrowIfNullOrEmpty(eSmtpArguments);
+        ArgumentException.ThrowIfContainsControlCharacter(recipient);
+        ArgumentException.ThrowIfContainsControlCharacter(eSmtpArguments);
+
+        return new AddRecipientAction_V6(recipient, eSmtpArguments);
     }
 
     /// <summary>
@@ -94,12 +124,12 @@ public static class ModificationActions
     /// Requires the same <see cref="ActionRequirements.AddHeaders"/> as
     /// <see cref="AddHeader"/>: the protocol has one flag for both.
     /// </remarks>
+    /// <param name="index">
+    /// How many headers to place the new one after, counting from zero. Zero puts it above every
+    /// existing header, which is what a filter adding a trace header usually wants.
+    /// </param>
     /// <param name="name">The name of the header to insert, without the separating colon.</param>
     /// <param name="value">The value of the header to insert.</param>
-    /// <param name="index">
-    /// How many headers to place the new one after, counting from zero. Zero, the default, puts it above
-    /// every existing header.
-    /// </param>
     /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
     /// <exception cref="ArgumentException">
     /// <paramref name="name"/> or <paramref name="value"/> is empty, <paramref name="name"/> is not a
@@ -109,15 +139,15 @@ public static class ModificationActions
     /// <paramref name="name"/> or <paramref name="value"/> is <see langword="null"/>.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
-    public static InsertHeaderAction InsertHeader(string name, string value, int index = 0)
+    public static InsertHeaderAction InsertHeader(int index, string name, string value)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
         ArgumentException.ThrowIfNullOrEmpty(name);
         ArgumentException.ThrowIfNullOrEmpty(value);
-        ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
         ArgumentException.ThrowIfNotHeaderName(name);
         ArgumentException.ThrowIfContainsControlCharacter(value);
 
-        return new InsertHeaderAction(name, value, index);
+        return new InsertHeaderAction(index, name, value);
     }
 
     /// <summary>
@@ -147,31 +177,6 @@ public static class ModificationActions
             ArgumentException.ThrowIfContainsControlCharacter(eSmtpArguments);
 
         return new ChangeSenderAction(sender, eSmtpArguments);
-    }
-
-    /// <summary>
-    /// Adds an envelope recipient together with the ESMTP arguments that travel with it.
-    /// </summary>
-    /// <remarks>
-    /// Requires <see cref="ActionRequirements.AddRecipientsWithParameters"/> and an MTA speaking
-    /// protocol version 6. Use <see cref="AddRecipient"/> when there are no arguments to send: the two
-    /// need different rights from the MTA, and asking for the wider one buys nothing.
-    /// </remarks>
-    /// <param name="recipient">The address to add to the envelope.</param>
-    /// <param name="eSmtpArguments">The ESMTP arguments to send with it, such as <c>NOTIFY=NEVER</c>.</param>
-    /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
-    /// <exception cref="ArgumentException">
-    /// Either argument is empty or contains a control character.
-    /// </exception>
-    /// <exception cref="ArgumentNullException">Either argument is <see langword="null"/>.</exception>
-    public static AddRecipientWithParametersAction AddRecipientWithParameters(string recipient, string eSmtpArguments)
-    {
-        ArgumentException.ThrowIfNullOrEmpty(recipient);
-        ArgumentException.ThrowIfNullOrEmpty(eSmtpArguments);
-        ArgumentException.ThrowIfContainsControlCharacter(recipient);
-        ArgumentException.ThrowIfContainsControlCharacter(eSmtpArguments);
-
-        return new AddRecipientWithParametersAction(recipient, eSmtpArguments);
     }
 
     /// <summary>

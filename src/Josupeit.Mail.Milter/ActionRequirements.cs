@@ -25,7 +25,7 @@ public enum ActionRequirements
     None = 0,
 
     /// <summary>
-    /// The filter may add envelope recipients. See <see cref="ModificationActions.AddRecipient"/>.
+    /// The filter may add envelope recipients. See <see cref="ModificationActions.AddRecipient(string)"/>.
     /// </summary>
     AddRecipients = 1,
 
@@ -69,7 +69,7 @@ public enum ActionRequirements
 
     /// <summary>
     /// The filter may add envelope recipients carrying ESMTP arguments. See
-    /// <see cref="ModificationActions.AddRecipientWithParameters"/>.
+    /// <see cref="ModificationActions.AddRecipient(string, string)"/>.
     /// </summary>
     /// <remarks>
     /// Needs an MTA speaking protocol version 6, and is a separate right from

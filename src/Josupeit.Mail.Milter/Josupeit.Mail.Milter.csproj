@@ -65,8 +65,8 @@
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterMacroStageMarkerAttribute.cs" Link="Properties\MilterMacroStageMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterUnobservableActionMarkerAttribute.cs" Link="Properties\MilterUnobservableActionMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\NoReplyRequirementsMarkerAttribute.cs" Link="Properties\NoReplyRequirementsMarkerAttribute.cs" />
-    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolVersionRequirementMarkerAttribute.cs" Link="Properties\ProtocolVersionRequirementMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolRequirementsMarkerAttribute.cs" Link="Properties\ProtocolRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolVersionRequirementMarkerAttribute.cs" Link="Properties\ProtocolVersionRequirementMarkerAttribute.cs" />
   </ItemGroup>
 
   <!--

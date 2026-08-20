@@ -60,11 +60,11 @@ public abstract class ResponsePacketVisitor
     }
 
     /// <summary>
-    /// Called for a <see cref="AddRecipientWithParametersResponsePacket"/>. The base implementation does nothing.
+    /// Called for a <see cref="ChangeOrDeleteHeaderResponsePacket"/>. The base implementation does nothing.
     /// </summary>
     /// <param name="responsePacket">The packet being visited.</param>
     /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
-    protected internal virtual bool VisitAddRecipientWithParametersResponsePacket(AddRecipientWithParametersResponsePacket responsePacket)
+    protected internal virtual bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
     {
         return true;
     }
@@ -75,16 +75,6 @@ public abstract class ResponsePacketVisitor
     /// <param name="responsePacket">The packet being visited.</param>
     /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
     protected internal virtual bool VisitChangeSenderResponsePacket(ChangeSenderResponsePacket responsePacket)
-    {
-        return true;
-    }
-
-    /// <summary>
-    /// Called for a <see cref="ChangeOrDeleteHeaderResponsePacket"/>. The base implementation does nothing.
-    /// </summary>
-    /// <param name="responsePacket">The packet being visited.</param>
-    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
-    protected internal virtual bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
     {
         return true;
     }
@@ -180,16 +170,6 @@ public abstract class ResponsePacketVisitor
     }
 
     /// <summary>
-    /// Called for a <see cref="SkipRemainingEventsResponsePacket"/>. The base implementation does nothing.
-    /// </summary>
-    /// <param name="responsePacket">The packet being visited.</param>
-    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
-    protected internal virtual bool VisitSkipRemainingEventsResponsePacket(SkipRemainingEventsResponsePacket responsePacket)
-    {
-        return true;
-    }
-
-    /// <summary>
     /// Called for a <see cref="ReplaceBodyResponsePacket"/>. The base implementation does nothing.
     /// </summary>
     /// <param name="responsePacket">The packet being visited.</param>
@@ -205,6 +185,16 @@ public abstract class ResponsePacketVisitor
     /// <param name="responsePacket">The packet being visited.</param>
     /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
     protected internal virtual bool VisitReplyWithCodeResponsePacket(ReplyWithCodeResponsePacket responsePacket)
+    {
+        return true;
+    }
+
+    /// <summary>
+    /// Called for a <see cref="SkipRemainingEventsResponsePacket"/>. The base implementation does nothing.
+    /// </summary>
+    /// <param name="responsePacket">The packet being visited.</param>
+    /// <returns><see langword="true"/> to carry on visiting; <see langword="false"/> to stop.</returns>
+    protected internal virtual bool VisitSkipRemainingEventsResponsePacket(SkipRemainingEventsResponsePacket responsePacket)
     {
         return true;
     }

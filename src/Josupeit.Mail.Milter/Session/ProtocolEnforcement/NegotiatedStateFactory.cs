@@ -20,10 +20,13 @@ internal static class NegotiatedStateFactory
     // and ReplayRecordingNegotiatedState deliberately keeps them. QUIT_NC ends the connection: a
     // different client follows, and replaying the previous one's SMFIC_CONNECT would report the wrong
     // peer to the filter, silently, for every message that client sends.
-    public static ProtocolState Create(IProtocolStateMachine stateMachine, ProtocolStateMachineConfiguration configuration)
+    public static ProtocolState Create(
+        IProtocolStateMachine stateMachine,
+        ProtocolStateMachineConfiguration configuration,
+        ProtocolNegotiationOutcome negotiation)
     {
         return configuration.IsAwaitingConnection
-            ? new ReplayRecordingNegotiatedState(stateMachine)
-            : new NegotiatedState(stateMachine);
+            ? new ReplayRecordingNegotiatedState(stateMachine, negotiation)
+            : new NegotiatedState(stateMachine, negotiation);
     }
 }

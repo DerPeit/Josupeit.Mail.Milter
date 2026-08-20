@@ -19,14 +19,14 @@ namespace Josupeit.Mail.Milter;
 [MilterUnobservableActionMarker]
 public sealed record ContinueAction : CommitAction
 {
+    private ContinueAction()
+    {
+    }
+
     /// <summary>
     /// The single shared instance. This action carries no state, so there is never a reason for another.
     /// </summary>
     public static ContinueAction Instance { get; } = new();
-
-    private ContinueAction()
-    {
-    }
 
     /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)

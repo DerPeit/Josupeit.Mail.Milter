@@ -81,7 +81,7 @@ public sealed class ContextAdapterTests
     // filter streams them, so the packets seen up to that point are handed back with the throw.
     private static async Task<IReadOnlyList<ResponsePacket>> EnumerateEndOfBodyAsync(Action[] actions)
     {
-        var adapter = new ContextAdapter(() => new EndOfBodyContext(actions), ProtocolNegotiationOutcome.NotNegotiated);
+        var adapter = new ContextAdapter(() => new EndOfBodyContext(actions), TestNegotiation.Nothing);
         var responses = new List<ResponsePacket>();
 
         await foreach (var response in adapter.OnEndOfBody(EndOfBodyRequestPacket.Instance))
