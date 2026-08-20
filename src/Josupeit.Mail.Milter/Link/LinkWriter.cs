@@ -39,7 +39,7 @@ public class LinkWriter : ILinkWriter
     }
 
     /// <inheritdoc />
-    public ValueTask WriteResponseCode(ResponseCode responseCode, CancellationToken cancellationToken)
+    public virtual ValueTask WriteResponseCode(ResponseCode responseCode, CancellationToken cancellationToken)
     {
         Span<byte> buffer = stackalloc byte[sizeof(byte)];
 

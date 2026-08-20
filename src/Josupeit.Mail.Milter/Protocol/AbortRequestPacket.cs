@@ -14,7 +14,10 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </remarks>
 public sealed class AbortRequestPacket : RequestPacket
 {
-    internal static readonly AbortRequestPacket Instance = new();
+    /// <summary>
+    /// The single shared instance. This packet carries nothing, so there is never a reason for another.
+    /// </summary>
+    public static readonly AbortRequestPacket Instance = new();
 
     private AbortRequestPacket()
     {

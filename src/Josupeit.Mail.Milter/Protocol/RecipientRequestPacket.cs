@@ -11,7 +11,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class RecipientRequestPacket : RequestPacket
 {
-    internal RecipientRequestPacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public RecipientRequestPacket()
     {
     }
 

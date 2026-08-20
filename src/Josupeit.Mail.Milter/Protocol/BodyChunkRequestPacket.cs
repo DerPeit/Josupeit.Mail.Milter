@@ -21,7 +21,15 @@ public sealed class BodyChunkRequestPacket : RequestPacket, IDisposable
 
     private bool _isDisposed;
 
-    internal BodyChunkRequestPacket(IMemoryOwner<byte>? memory, Range dataRange)
+    /// <summary>
+    /// Creates the packet around the memory the chunk arrived in.
+    /// </summary>
+    /// <param name="memory">
+    /// The buffer holding the chunk, or <see langword="null"/> for an empty one. The packet takes
+    /// ownership of it and returns it to the pool when disposed, so the caller must not keep it.
+    /// </param>
+    /// <param name="dataRange">The part of the buffer the chunk occupies.</param>
+    public BodyChunkRequestPacket(IMemoryOwner<byte>? memory, Range dataRange)
     {
         _memory = memory;
         _dataRange = dataRange;

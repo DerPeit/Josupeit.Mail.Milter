@@ -14,7 +14,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </remarks>
 public sealed class ReplaceBodyResponsePacket : ResponsePacket
 {
-    internal ReplaceBodyResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public ReplaceBodyResponsePacket()
     {
     }
 

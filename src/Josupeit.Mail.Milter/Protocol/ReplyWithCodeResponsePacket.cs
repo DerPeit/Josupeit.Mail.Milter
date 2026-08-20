@@ -10,7 +10,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class ReplyWithCodeResponsePacket : ResponsePacket
 {
-    internal ReplyWithCodeResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public ReplyWithCodeResponsePacket()
     {
     }
 

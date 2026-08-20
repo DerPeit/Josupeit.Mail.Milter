@@ -10,7 +10,10 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class EndOfHeadersRequestPacket : RequestPacket
 {
-    internal static readonly EndOfHeadersRequestPacket Instance = new();
+    /// <summary>
+    /// The single shared instance. This packet carries nothing, so there is never a reason for another.
+    /// </summary>
+    public static readonly EndOfHeadersRequestPacket Instance = new();
 
     private EndOfHeadersRequestPacket()
     {

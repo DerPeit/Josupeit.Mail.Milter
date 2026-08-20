@@ -78,6 +78,43 @@ public class RequestParser : IRequestParser
     }
 
     /// <summary>
+    /// Reads one frame off the link and publishes it.
+    /// </summary>
+    /// <remarks>
+    /// The unit an override changes to read the wire differently, leaving the loop, its cancellation and
+    /// its shutdown alone. Ownership of the frame's buffer passes to the channel here: a frame that
+    /// cannot be published is disposed rather than dropped, which is why the publish is inside rather
+    /// than left to the caller.
+    /// </remarks>
+    /// <param name="cancellationToken">A token that cancels the read.</param>
+    /// <returns>A task that completes once the frame has been published.</returns>
+    protected virtual async Task ProcessFrame(CancellationToken cancellationToken)
+    {
+        var length = await _linkReader.ReadUInt32(cancellationToken).ConfigureAwait(false);
+
+        // The length covers the command byte, so it must be at least 1. Guarding here is what keeps
+        // "length - 1" from underflowing to uint.MaxValue and turning a zero-length frame into a 4 GiB
+        // read, and what keeps an announced length from sizing an unbounded rent.
+        EnsureFrameLengthIsInRange(length);
+
+        var commandCode = await _linkReader.ReadCommandCode(cancellationToken).ConfigureAwait(false);
+        var (memory, dataRange) = await _linkReader.ReadData(length - 1, cancellationToken).ConfigureAwait(false);
+
+        var requestFrame = new RequestFrame(commandCode, memory, dataRange);
+
+        try
+        {
+            await _outputWriter.WriteAsync(requestFrame, cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            requestFrame.Dispose();
+
+            throw;
+        }
+    }
+
+    /// <summary>
     /// The loop the worker runs: reads frames off the link and publishes them until the token is
     /// cancelled or the link ends.
     /// </summary>
@@ -90,30 +127,7 @@ public class RequestParser : IRequestParser
         try
         {
             while (!cancellationToken.IsCancellationRequested)
-            {
-                var length = await _linkReader.ReadUInt32(cancellationToken).ConfigureAwait(false);
-
-                // The length covers the command byte, so it must be at least 1. Guarding here is what
-                // keeps "length - 1" from underflowing to uint.MaxValue and turning a zero-length frame
-                // into a 4 GiB read, and what keeps an announced length from sizing an unbounded rent.
-                EnsureFrameLengthIsInRange(length);
-
-                var commandCode = await _linkReader.ReadCommandCode(cancellationToken).ConfigureAwait(false);
-                var (memory, dataRange) = await _linkReader.ReadData(length - 1, cancellationToken).ConfigureAwait(false);
-
-                var requestFrame = new RequestFrame(commandCode, memory, dataRange);
-
-                try
-                {
-                    await _outputWriter.WriteAsync(requestFrame, cancellationToken).ConfigureAwait(false);
-                }
-                catch
-                {
-                    requestFrame.Dispose();
-
-                    throw;
-                }
-            }
+                await ProcessFrame(cancellationToken).ConfigureAwait(false);
 
             cancellationToken.ThrowIfCancellationRequested();
         }

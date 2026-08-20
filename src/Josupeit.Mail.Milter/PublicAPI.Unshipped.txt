@@ -1,6 +1,8 @@
 #nullable enable
 abstract Josupeit.Mail.Milter.Action.<Clone>$() -> Josupeit.Mail.Milter.Action!
 abstract Josupeit.Mail.Milter.Action.CreateResponsePackets(System.Threading.CancellationToken cancellationToken) -> System.Collections.Generic.IAsyncEnumerable<Josupeit.Mail.Milter.Protocol.ResponsePacket!>!
+abstract Josupeit.Mail.Milter.Protocol.RequestPacket.Accept(Josupeit.Mail.Milter.Protocol.RequestPacketVisitor! visitor) -> bool
+abstract Josupeit.Mail.Milter.Protocol.ResponsePacket.Accept(Josupeit.Mail.Milter.Protocol.ResponsePacketVisitor! visitor) -> bool
 Josupeit.Mail.Milter.AcceptAction
 Josupeit.Mail.Milter.AcceptAction.Equals(Josupeit.Mail.Milter.AcceptAction? other) -> bool
 Josupeit.Mail.Milter.Action
@@ -170,11 +172,13 @@ Josupeit.Mail.Milter.Link.ILinkWriter.WriteUInt32(uint value, System.Threading.C
 Josupeit.Mail.Milter.Link.IRequestParser
 Josupeit.Mail.Milter.Link.IRequestParser.Start() -> void
 Josupeit.Mail.Milter.Link.IRequestParser.Stop() -> System.Threading.Tasks.Task!
+Josupeit.Mail.Milter.Link.IResponseFormatter
+Josupeit.Mail.Milter.Link.IResponseFormatter.Start() -> void
+Josupeit.Mail.Milter.Link.IResponseFormatter.Stop() -> System.Threading.Tasks.Task!
 Josupeit.Mail.Milter.Link.LinkReader
 Josupeit.Mail.Milter.Link.LinkReader.LinkReader(System.IO.Pipelines.PipeReader! pipeReader, uint maxDataLength) -> void
 Josupeit.Mail.Milter.Link.LinkWriter
 Josupeit.Mail.Milter.Link.LinkWriter.LinkWriter(System.IO.Pipelines.PipeWriter! pipeWriter) -> void
-Josupeit.Mail.Milter.Link.LinkWriter.WriteResponseCode(Josupeit.Mail.Milter.Link.ResponseCode responseCode, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 Josupeit.Mail.Milter.Link.ProtocolFamily
 Josupeit.Mail.Milter.Link.ProtocolFamily.Ip4 = 52 -> Josupeit.Mail.Milter.Link.ProtocolFamily
 Josupeit.Mail.Milter.Link.ProtocolFamily.Ip6 = 54 -> Josupeit.Mail.Milter.Link.ProtocolFamily
@@ -286,20 +290,24 @@ Josupeit.Mail.Milter.ProgressAction.Equals(Josupeit.Mail.Milter.ProgressAction? 
 Josupeit.Mail.Milter.Protocol.AbortRequestPacket
 Josupeit.Mail.Milter.Protocol.AcceptMessageResponsePacket
 Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket
+Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket.AddHeaderResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket.Name.get -> string!
 Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket.Name.init -> void
 Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket.Value.get -> string!
 Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket.Value.init -> void
 Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket
+Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket.AddRecipientResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket.ESmtpArguments.get -> string?
 Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket.ESmtpArguments.init -> void
 Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket.Recipient.get -> string!
 Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket.Recipient.init -> void
 Josupeit.Mail.Milter.Protocol.BodyChunkRequestPacket
+Josupeit.Mail.Milter.Protocol.BodyChunkRequestPacket.BodyChunkRequestPacket(System.Buffers.IMemoryOwner<byte>? memory, System.Range dataRange) -> void
 Josupeit.Mail.Milter.Protocol.BodyChunkRequestPacket.Data.get -> System.ReadOnlyMemory<byte>
 Josupeit.Mail.Milter.Protocol.BodyChunkRequestPacket.DataSpan.get -> System.ReadOnlySpan<byte>
 Josupeit.Mail.Milter.Protocol.BodyChunkRequestPacket.Dispose() -> void
 Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket
+Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.ChangeOrDeleteHeaderResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.Index.get -> uint
 Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.Index.init -> void
 Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.Name.get -> string!
@@ -307,11 +315,13 @@ Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.Name.init -> vo
 Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.Value.get -> string!
 Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket.Value.init -> void
 Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket
+Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket.ChangeSenderResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket.ESmtpArguments.get -> string?
 Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket.ESmtpArguments.init -> void
 Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket.Sender.get -> string!
 Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket.Sender.init -> void
 Josupeit.Mail.Milter.Protocol.ConnectRequestPacket
+Josupeit.Mail.Milter.Protocol.ConnectRequestPacket.ConnectRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.ConnectRequestPacket.EndPoint.get -> System.Net.EndPoint?
 Josupeit.Mail.Milter.Protocol.ConnectRequestPacket.EndPoint.init -> void
 Josupeit.Mail.Milter.Protocol.ConnectRequestPacket.HostName.get -> string!
@@ -321,25 +331,30 @@ Josupeit.Mail.Milter.Protocol.DeferMessageResponsePacket
 Josupeit.Mail.Milter.Protocol.DefineMacroRequestPacket
 Josupeit.Mail.Milter.Protocol.DefineMacroRequestPacket.CommandCode.get -> Josupeit.Mail.Milter.Link.CommandCode
 Josupeit.Mail.Milter.Protocol.DefineMacroRequestPacket.CommandCode.init -> void
+Josupeit.Mail.Milter.Protocol.DefineMacroRequestPacket.DefineMacroRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.DefineMacroRequestPacket.Macros.get -> System.Collections.Generic.IReadOnlyDictionary<string!, string!>!
 Josupeit.Mail.Milter.Protocol.DefineMacroRequestPacket.Macros.init -> void
 Josupeit.Mail.Milter.Protocol.DeleteRecipientResponsePacket
+Josupeit.Mail.Milter.Protocol.DeleteRecipientResponsePacket.DeleteRecipientResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.DeleteRecipientResponsePacket.Recipient.get -> string!
 Josupeit.Mail.Milter.Protocol.DeleteRecipientResponsePacket.Recipient.init -> void
 Josupeit.Mail.Milter.Protocol.DiscardMessageResponsePacket
 Josupeit.Mail.Milter.Protocol.EndOfBodyRequestPacket
 Josupeit.Mail.Milter.Protocol.EndOfHeadersRequestPacket
 Josupeit.Mail.Milter.Protocol.HeaderRequestPacket
+Josupeit.Mail.Milter.Protocol.HeaderRequestPacket.HeaderRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.HeaderRequestPacket.Name.get -> string!
 Josupeit.Mail.Milter.Protocol.HeaderRequestPacket.Name.init -> void
 Josupeit.Mail.Milter.Protocol.HeaderRequestPacket.Value.get -> string!
 Josupeit.Mail.Milter.Protocol.HeaderRequestPacket.Value.init -> void
 Josupeit.Mail.Milter.Protocol.HeloRequestPacket
+Josupeit.Mail.Milter.Protocol.HeloRequestPacket.HeloRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.HeloRequestPacket.HeloString.get -> string!
 Josupeit.Mail.Milter.Protocol.HeloRequestPacket.HeloString.init -> void
 Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket
 Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket.Index.get -> uint
 Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket.Index.init -> void
+Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket.InsertHeaderResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket.Name.get -> string!
 Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket.Name.init -> void
 Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket.Value.get -> string!
@@ -356,6 +371,7 @@ Josupeit.Mail.Milter.Protocol.OptionNegotiationRequestPacket.MtaSupportedActions
 Josupeit.Mail.Milter.Protocol.OptionNegotiationRequestPacket.MtaSupportedActions.init -> void
 Josupeit.Mail.Milter.Protocol.OptionNegotiationRequestPacket.MtaSupportedContentBypass.get -> Josupeit.Mail.Milter.Link.ContentBypassDiscriminator
 Josupeit.Mail.Milter.Protocol.OptionNegotiationRequestPacket.MtaSupportedContentBypass.init -> void
+Josupeit.Mail.Milter.Protocol.OptionNegotiationRequestPacket.OptionNegotiationRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket
 Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.MilterProtocolVersion.get -> System.Version!
 Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.MilterProtocolVersion.init -> void
@@ -365,8 +381,10 @@ Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.MilterRequiredActi
 Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.MilterRequiredActions.init -> void
 Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.MilterUndesiredProtocolContent.get -> Josupeit.Mail.Milter.Link.ContentBypassDiscriminator
 Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.MilterUndesiredProtocolContent.init -> void
+Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket.OptionNegotiationResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.ProgressResponsePacket
 Josupeit.Mail.Milter.Protocol.QuarantineMessageResponsePacket
+Josupeit.Mail.Milter.Protocol.QuarantineMessageResponsePacket.QuarantineMessageResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.QuarantineMessageResponsePacket.Reason.get -> string!
 Josupeit.Mail.Milter.Protocol.QuarantineMessageResponsePacket.Reason.init -> void
 Josupeit.Mail.Milter.Protocol.QuitForNewConnectionRequestPacket
@@ -376,27 +394,35 @@ Josupeit.Mail.Milter.Protocol.RecipientRequestPacket.ESmtpArguments.get -> Syste
 Josupeit.Mail.Milter.Protocol.RecipientRequestPacket.ESmtpArguments.init -> void
 Josupeit.Mail.Milter.Protocol.RecipientRequestPacket.Recipient.get -> string!
 Josupeit.Mail.Milter.Protocol.RecipientRequestPacket.Recipient.init -> void
+Josupeit.Mail.Milter.Protocol.RecipientRequestPacket.RecipientRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.RejectMessageResponsePacket
 Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket
 Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket.BodyRange.get -> System.Range
 Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket.BodyRange.init -> void
 Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket.Memory.get -> System.Buffers.IMemoryOwner<byte>!
 Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket.Memory.init -> void
+Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket.ReplaceBodyResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket
+Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket.ReplyWithCodeResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket.SmtpCode.get -> string!
 Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket.SmtpCode.init -> void
 Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket.Text.get -> string!
 Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket.Text.init -> void
 Josupeit.Mail.Milter.Protocol.RequestPacket
+Josupeit.Mail.Milter.Protocol.RequestPacket.RequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.RequestPacketFactory
-Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateRequestPacket(Josupeit.Mail.Milter.Link.RequestFrame frame) -> Josupeit.Mail.Milter.Protocol.RequestPacket!
 Josupeit.Mail.Milter.Protocol.RequestPacketFactory.RequestPacketFactory() -> void
 Josupeit.Mail.Milter.Protocol.RequestPacketVisitor
 Josupeit.Mail.Milter.Protocol.RequestPacketVisitor.RequestPacketVisitor() -> void
 Josupeit.Mail.Milter.Protocol.ResponseFrameFactory
-Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.CreateResponseFrame(Josupeit.Mail.Milter.Protocol.ResponsePacket! response) -> Josupeit.Mail.Milter.Link.ResponseFrame
+Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor
+Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.CreateResponseFrame(Josupeit.Mail.Milter.Protocol.ResponsePacket! responsePacket) -> Josupeit.Mail.Milter.Link.ResponseFrame
+Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.ResponseFrameCreatingVisitor() -> void
+Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.Result.get -> Josupeit.Mail.Milter.Link.ResponseFrame
+Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.Result.set -> void
 Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameFactory() -> void
 Josupeit.Mail.Milter.Protocol.ResponsePacket
+Josupeit.Mail.Milter.Protocol.ResponsePacket.ResponsePacket() -> void
 Josupeit.Mail.Milter.Protocol.ResponsePacketVisitor
 Josupeit.Mail.Milter.Protocol.ResponsePacketVisitor.ResponsePacketVisitor() -> void
 Josupeit.Mail.Milter.Protocol.SenderRequestPacket
@@ -404,10 +430,12 @@ Josupeit.Mail.Milter.Protocol.SenderRequestPacket.ESmtpArguments.get -> System.C
 Josupeit.Mail.Milter.Protocol.SenderRequestPacket.ESmtpArguments.init -> void
 Josupeit.Mail.Milter.Protocol.SenderRequestPacket.Sender.get -> string!
 Josupeit.Mail.Milter.Protocol.SenderRequestPacket.Sender.init -> void
+Josupeit.Mail.Milter.Protocol.SenderRequestPacket.SenderRequestPacket() -> void
 Josupeit.Mail.Milter.Protocol.SkipRemainingEventsResponsePacket
 Josupeit.Mail.Milter.Protocol.UnknownCommandRequestPacket
 Josupeit.Mail.Milter.Protocol.UnknownCommandRequestPacket.CommandText.get -> string!
 Josupeit.Mail.Milter.Protocol.UnknownCommandRequestPacket.CommandText.init -> void
+Josupeit.Mail.Milter.Protocol.UnknownCommandRequestPacket.UnknownCommandRequestPacket() -> void
 Josupeit.Mail.Milter.ProtocolRequirements
 Josupeit.Mail.Milter.ProtocolRequirements.All = Josupeit.Mail.Milter.ProtocolRequirements.Connect | Josupeit.Mail.Milter.ProtocolRequirements.ClientHello | Josupeit.Mail.Milter.ProtocolRequirements.Sender | Josupeit.Mail.Milter.ProtocolRequirements.Recipient | Josupeit.Mail.Milter.ProtocolRequirements.Header | Josupeit.Mail.Milter.ProtocolRequirements.EndOfHeaders | Josupeit.Mail.Milter.ProtocolRequirements.Body | Josupeit.Mail.Milter.ProtocolRequirements.MessageData | Josupeit.Mail.Milter.ProtocolRequirements.UnknownCommand -> Josupeit.Mail.Milter.ProtocolRequirements
 Josupeit.Mail.Milter.ProtocolRequirements.Body = 64 -> Josupeit.Mail.Milter.ProtocolRequirements
@@ -472,7 +500,7 @@ Josupeit.Mail.Milter.Session.ISession
 Josupeit.Mail.Milter.Session.ISession.Run(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 Josupeit.Mail.Milter.Session.Session<TContext>
 Josupeit.Mail.Milter.Session.Session<TContext>.Run(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
-Josupeit.Mail.Milter.Session.Session<TContext>.Session(System.Threading.Channels.ChannelReader<Josupeit.Mail.Milter.Link.RequestFrame>! requestFrameReader, Josupeit.Mail.Milter.Protocol.IRequestPacketFactory! requestPacketFactory, Josupeit.Mail.Milter.Protocol.IResponseFrameFactory! responseFrameFactory, System.Threading.Channels.ChannelWriter<Josupeit.Mail.Milter.Link.ResponseFrame>! responseFrameWriter, System.TimeSpan? timeout, System.TimeProvider? timeProvider, System.Func<TContext>? contextFactory) -> void
+Josupeit.Mail.Milter.Session.Session<TContext>.Session(System.Threading.Channels.ChannelReader<Josupeit.Mail.Milter.Link.RequestFrame>! requestFrameReader, Josupeit.Mail.Milter.Protocol.IRequestPacketFactory! requestPacketFactory, Josupeit.Mail.Milter.Protocol.IResponseFrameFactory! responseFrameFactory, System.Threading.Channels.ChannelWriter<Josupeit.Mail.Milter.Link.ResponseFrame>! responseFrameWriter, System.Func<TContext>? contextFactory) -> void
 Josupeit.Mail.Milter.SkipRemainingEventsAction
 Josupeit.Mail.Milter.SkipRemainingEventsAction.Equals(Josupeit.Mail.Milter.SkipRemainingEventsAction? other) -> bool
 Josupeit.Mail.Milter.UnknownCommandInformation
@@ -564,6 +592,23 @@ override Josupeit.Mail.Milter.ProgressAction.<Clone>$() -> Josupeit.Mail.Milter.
 override Josupeit.Mail.Milter.ProgressAction.Equals(object? obj) -> bool
 override Josupeit.Mail.Milter.ProgressAction.GetHashCode() -> int
 override Josupeit.Mail.Milter.ProgressAction.ToString() -> string!
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitAcceptMessageResponsePacket(Josupeit.Mail.Milter.Protocol.AcceptMessageResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitAddHeaderResponsePacket(Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitAddRecipientResponsePacket(Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitChangeOrDeleteHeaderResponsePacket(Josupeit.Mail.Milter.Protocol.ChangeOrDeleteHeaderResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitChangeSenderResponsePacket(Josupeit.Mail.Milter.Protocol.ChangeSenderResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitContinueProcessingResponsePacket(Josupeit.Mail.Milter.Protocol.ContinueProcessingResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitDeferMessageResponsePacket(Josupeit.Mail.Milter.Protocol.DeferMessageResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitDeleteRecipientResponsePacket(Josupeit.Mail.Milter.Protocol.DeleteRecipientResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitDiscardMessageResponsePacket(Josupeit.Mail.Milter.Protocol.DiscardMessageResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitInsertHeaderResponsePacket(Josupeit.Mail.Milter.Protocol.InsertHeaderResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitOptionNegotiationResponsePacket(Josupeit.Mail.Milter.Protocol.OptionNegotiationResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitProgressResponsePacket(Josupeit.Mail.Milter.Protocol.ProgressResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitQuarantineMessageResponsePacket(Josupeit.Mail.Milter.Protocol.QuarantineMessageResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitRejectMessageResponsePacket(Josupeit.Mail.Milter.Protocol.RejectMessageResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitReplaceBodyResponsePacket(Josupeit.Mail.Milter.Protocol.ReplaceBodyResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitReplyWithCodeResponsePacket(Josupeit.Mail.Milter.Protocol.ReplyWithCodeResponsePacket! responsePacket) -> bool
+override Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.VisitSkipRemainingEventsResponsePacket(Josupeit.Mail.Milter.Protocol.SkipRemainingEventsResponsePacket! responsePacket) -> bool
 override Josupeit.Mail.Milter.QuarantineAction.<Clone>$() -> Josupeit.Mail.Milter.QuarantineAction!
 override Josupeit.Mail.Milter.QuarantineAction.Equals(object? obj) -> bool
 override Josupeit.Mail.Milter.QuarantineAction.GetHashCode() -> int
@@ -685,6 +730,10 @@ static Josupeit.Mail.Milter.Protocol.RequestPacketFactory.TryGetNextStringFixedL
 static Josupeit.Mail.Milter.Protocol.RequestPacketFactory.TryGetNextStringVariableLength(ref System.ReadOnlySpan<byte> remaining, out string? value) -> bool
 static Josupeit.Mail.Milter.Protocol.RequestPacketFactory.TryGetNextUInt16(ref System.ReadOnlySpan<byte> remaining, out ushort value) -> bool
 static Josupeit.Mail.Milter.Protocol.RequestPacketFactory.TryGetNextUInt32(ref System.ReadOnlySpan<byte> remaining, out uint value) -> bool
+static Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.GetByteCountWithDoubledPercentSigns(string! text) -> int
+static Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.GetMacroStageCode(Josupeit.Mail.Milter.ProtocolStage stage) -> uint
+static Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.ToMacroLists(Josupeit.Mail.Milter.MacroRequirements? macroRequirements) -> System.Collections.Generic.IReadOnlyList<(uint StageCode, string! MacroNames)>!
+static Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor.WriteWithDoubledPercentSigns(string! text, System.Span<byte> destination) -> void
 static Josupeit.Mail.Milter.QuarantineAction.operator !=(Josupeit.Mail.Milter.QuarantineAction? left, Josupeit.Mail.Milter.QuarantineAction? right) -> bool
 static Josupeit.Mail.Milter.QuarantineAction.operator ==(Josupeit.Mail.Milter.QuarantineAction? left, Josupeit.Mail.Milter.QuarantineAction? right) -> bool
 static Josupeit.Mail.Milter.RecipientInformation.operator !=(Josupeit.Mail.Milter.RecipientInformation left, Josupeit.Mail.Milter.RecipientInformation right) -> bool
@@ -705,6 +754,19 @@ static Josupeit.Mail.Milter.UnknownCommandInformation.operator ==(Josupeit.Mail.
 static readonly Josupeit.Mail.Milter.MacroRequirements.None -> Josupeit.Mail.Milter.MacroRequirements!
 static readonly Josupeit.Mail.Milter.MilterOptions.DefaultMaxConcurrentSessions -> int
 static readonly Josupeit.Mail.Milter.MilterOptions.DefaultMaxFrameLength -> uint
+static readonly Josupeit.Mail.Milter.Protocol.AbortRequestPacket.Instance -> Josupeit.Mail.Milter.Protocol.AbortRequestPacket!
+static readonly Josupeit.Mail.Milter.Protocol.AcceptMessageResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.AcceptMessageResponsePacket!
+static readonly Josupeit.Mail.Milter.Protocol.ContinueProcessingResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.ContinueProcessingResponsePacket!
+static readonly Josupeit.Mail.Milter.Protocol.DeferMessageResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.DeferMessageResponsePacket!
+static readonly Josupeit.Mail.Milter.Protocol.DiscardMessageResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.DiscardMessageResponsePacket!
+static readonly Josupeit.Mail.Milter.Protocol.EndOfBodyRequestPacket.Instance -> Josupeit.Mail.Milter.Protocol.EndOfBodyRequestPacket!
+static readonly Josupeit.Mail.Milter.Protocol.EndOfHeadersRequestPacket.Instance -> Josupeit.Mail.Milter.Protocol.EndOfHeadersRequestPacket!
+static readonly Josupeit.Mail.Milter.Protocol.MessageDataRequestPacket.Instance -> Josupeit.Mail.Milter.Protocol.MessageDataRequestPacket!
+static readonly Josupeit.Mail.Milter.Protocol.ProgressResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.ProgressResponsePacket!
+static readonly Josupeit.Mail.Milter.Protocol.QuitForNewConnectionRequestPacket.Instance -> Josupeit.Mail.Milter.Protocol.QuitForNewConnectionRequestPacket!
+static readonly Josupeit.Mail.Milter.Protocol.QuitRequestPacket.Instance -> Josupeit.Mail.Milter.Protocol.QuitRequestPacket!
+static readonly Josupeit.Mail.Milter.Protocol.RejectMessageResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.RejectMessageResponsePacket!
+static readonly Josupeit.Mail.Milter.Protocol.SkipRemainingEventsResponsePacket.Instance -> Josupeit.Mail.Milter.Protocol.SkipRemainingEventsResponsePacket!
 virtual Josupeit.Mail.Milter.Action.EqualityContract.get -> System.Type!
 virtual Josupeit.Mail.Milter.Action.Equals(Josupeit.Mail.Milter.Action? other) -> bool
 virtual Josupeit.Mail.Milter.Action.PrintMembers(System.Text.StringBuilder! builder) -> bool
@@ -714,9 +776,19 @@ virtual Josupeit.Mail.Milter.Link.LinkReader.ReadCommandCode(System.Threading.Ca
 virtual Josupeit.Mail.Milter.Link.LinkReader.ReadData(uint length, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<(System.Buffers.IMemoryOwner<byte>? Memory, System.Range DataRange)>
 virtual Josupeit.Mail.Milter.Link.LinkReader.ReadUInt32(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask<uint>
 virtual Josupeit.Mail.Milter.Link.LinkWriter.WriteData(System.ReadOnlySpan<byte> data, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+virtual Josupeit.Mail.Milter.Link.LinkWriter.WriteResponseCode(Josupeit.Mail.Milter.Link.ResponseCode responseCode, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
 virtual Josupeit.Mail.Milter.Link.LinkWriter.WriteUInt32(uint value, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.ValueTask
+virtual Josupeit.Mail.Milter.Link.RequestParser.ProcessFrame(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 virtual Josupeit.Mail.Milter.Link.RequestParser.ProcessFrames(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+virtual Josupeit.Mail.Milter.Link.ResponseFormatter.ProcessFrame(Josupeit.Mail.Milter.Link.ResponseFrame frame, System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
 virtual Josupeit.Mail.Milter.Link.ResponseFormatter.ProcessFrames(System.Threading.CancellationToken cancellationToken) -> System.Threading.Tasks.Task!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateLinkReader(System.IO.Pipelines.PipeReader! reader, uint maxFrameLength) -> Josupeit.Mail.Milter.Link.ILinkReader!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateLinkWriter(System.IO.Pipelines.PipeWriter! writer) -> Josupeit.Mail.Milter.Link.ILinkWriter!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateRequestPacketFactory() -> Josupeit.Mail.Milter.Protocol.IRequestPacketFactory!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateRequestParser(Josupeit.Mail.Milter.Link.ILinkReader! linkReader, System.Threading.Channels.ChannelWriter<Josupeit.Mail.Milter.Link.RequestFrame>! frameWriter, uint maxFrameLength) -> Josupeit.Mail.Milter.Link.IRequestParser!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateResponseFormatter(System.Threading.Channels.ChannelReader<Josupeit.Mail.Milter.Link.ResponseFrame>! frameReader, Josupeit.Mail.Milter.Link.ILinkWriter! linkWriter) -> Josupeit.Mail.Milter.Link.IResponseFormatter!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateResponseFrameFactory() -> Josupeit.Mail.Milter.Protocol.IResponseFrameFactory!
+virtual Josupeit.Mail.Milter.Milter<TContext>.CreateSession(System.Threading.Channels.ChannelReader<Josupeit.Mail.Milter.Link.RequestFrame>! requestFrameReader, Josupeit.Mail.Milter.Protocol.IRequestPacketFactory! requestPacketFactory, Josupeit.Mail.Milter.Protocol.IResponseFrameFactory! responseFrameFactory, System.Threading.Channels.ChannelWriter<Josupeit.Mail.Milter.Link.ResponseFrame>! responseFrameWriter, System.Func<TContext>? contextFactory) -> Josupeit.Mail.Milter.Session.ISession!
 virtual Josupeit.Mail.Milter.ModificationAction.Equals(Josupeit.Mail.Milter.ModificationAction? other) -> bool
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateAbortRequestPacket(System.ReadOnlyMemory<byte> data) -> Josupeit.Mail.Milter.Protocol.AbortRequestPacket!
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateBodyChunkRequestPacket(System.Buffers.IMemoryOwner<byte>? memory, System.Range dataRange) -> Josupeit.Mail.Milter.Protocol.BodyChunkRequestPacket!
@@ -731,6 +803,7 @@ virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateOptionNegotiati
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateQuitForNewConnectionRequestPacket(System.ReadOnlyMemory<byte> data) -> Josupeit.Mail.Milter.Protocol.QuitForNewConnectionRequestPacket!
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateQuitRequestPacket(System.ReadOnlyMemory<byte> data) -> Josupeit.Mail.Milter.Protocol.QuitRequestPacket!
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateRecipientRequestPacket(System.ReadOnlyMemory<byte> data) -> Josupeit.Mail.Milter.Protocol.RecipientRequestPacket!
+virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateRequestPacket(Josupeit.Mail.Milter.Link.RequestFrame frame) -> Josupeit.Mail.Milter.Protocol.RequestPacket!
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateSenderRequestPacket(System.ReadOnlyMemory<byte> data) -> Josupeit.Mail.Milter.Protocol.SenderRequestPacket!
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketFactory.CreateUnknownCommandRequestPacket(System.ReadOnlyMemory<byte> data) -> Josupeit.Mail.Milter.Protocol.UnknownCommandRequestPacket!
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketVisitor.VisitAbortRequestPacket(Josupeit.Mail.Milter.Protocol.AbortRequestPacket! requestPacket) -> bool
@@ -749,6 +822,8 @@ virtual Josupeit.Mail.Milter.Protocol.RequestPacketVisitor.VisitQuitRequestPacke
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketVisitor.VisitRcptToRequestPacket(Josupeit.Mail.Milter.Protocol.RecipientRequestPacket! requestPacket) -> bool
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketVisitor.VisitRequestPacket(Josupeit.Mail.Milter.Protocol.RequestPacket! requestPacket) -> bool
 virtual Josupeit.Mail.Milter.Protocol.RequestPacketVisitor.VisitUnknownCommandRequestPacket(Josupeit.Mail.Milter.Protocol.UnknownCommandRequestPacket! requestPacket) -> bool
+virtual Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.CreateResponseFrame(Josupeit.Mail.Milter.Protocol.ResponsePacket! response) -> Josupeit.Mail.Milter.Link.ResponseFrame
+virtual Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.CreateVisitor() -> Josupeit.Mail.Milter.Protocol.ResponseFrameFactory.ResponseFrameCreatingVisitor!
 virtual Josupeit.Mail.Milter.Protocol.ResponsePacketVisitor.VisitAcceptMessageResponsePacket(Josupeit.Mail.Milter.Protocol.AcceptMessageResponsePacket! responsePacket) -> bool
 virtual Josupeit.Mail.Milter.Protocol.ResponsePacketVisitor.VisitAddHeaderResponsePacket(Josupeit.Mail.Milter.Protocol.AddHeaderResponsePacket! responsePacket) -> bool
 virtual Josupeit.Mail.Milter.Protocol.ResponsePacketVisitor.VisitAddRecipientResponsePacket(Josupeit.Mail.Milter.Protocol.AddRecipientResponsePacket! responsePacket) -> bool
