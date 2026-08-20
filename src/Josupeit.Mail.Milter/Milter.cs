@@ -48,26 +48,51 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private AsyncMonitor? _monitor;
     private int _activeSessions;
 
+    // Four overloads and not an optional parameter among them, which is uglier than two and correct
+    // where two were not. Both of the old pair ended in an optional MilterOptions, so `new Milter<T>(
+    // socket, null)` could not be resolved at all, and giving either one a further optional parameter
+    // later would have silently rebound call sites that already compiled. RS0026 says so, and it is
+    // right.
+
     /// <summary>
-    /// Creates a milter that builds each context through <see cref="System.Activator"/>.
+    /// Creates a milter that builds each context through <see cref="System.Activator"/>, with the
+    /// default limits.
     /// </summary>
     /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
     /// it.</param>
-    /// <param name="options">Limits on frame size and session count, or <see langword="null"/> for the
-    /// defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="socket"/> is <see langword="null"/>.</exception>
-    public Milter(Socket socket, MilterOptions? options = null)
+    public Milter(Socket socket)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
             contextFactory: null,
-            options,
+            options: null,
             timeout: null,
             timeProvider: null)
     {
     }
 
     /// <summary>
-    /// Creates a milter that builds each context through a factory. Use this when the filter has dependencies.
+    /// Creates a milter that builds each context through <see cref="System.Activator"/>.
+    /// </summary>
+    /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
+    /// it.</param>
+    /// <param name="options">Limits on frame size and session count.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="socket"/> or <paramref name="options"/> is <see langword="null"/>.
+    /// </exception>
+    public Milter(Socket socket, MilterOptions options)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory: null,
+            options ?? throw new ArgumentNullException(nameof(options)),
+            timeout: null,
+            timeProvider: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a milter that builds each context through a factory, with the default limits. Use this
+    /// when the filter has dependencies.
     /// </summary>
     /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
     /// it.</param>
@@ -75,16 +100,39 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     /// Called once per message. It may be called from several sessions at once, so it has to be safe to
     /// call concurrently - the contexts it returns need not be.
     /// </param>
-    /// <param name="options">Limits on frame size and session count, or <see langword="null"/> for the
-    /// defaults.</param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="socket"/> or <paramref name="contextFactory"/> is <see langword="null"/>.
     /// </exception>
-    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
+    public Milter(Socket socket, Func<TContext> contextFactory)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
             contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
-            options,
+            options: null,
+            timeout: null,
+            timeProvider: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a milter that builds each context through a factory. Use this when the filter has
+    /// dependencies.
+    /// </summary>
+    /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
+    /// it.</param>
+    /// <param name="contextFactory">
+    /// Called once per message. It may be called from several sessions at once, so it has to be safe to
+    /// call concurrently - the contexts it returns need not be.
+    /// </param>
+    /// <param name="options">Limits on frame size and session count.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="socket"/>, <paramref name="contextFactory"/> or <paramref name="options"/> is
+    /// <see langword="null"/>.
+    /// </exception>
+    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions options)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
+            options ?? throw new ArgumentNullException(nameof(options)),
             timeout: null,
             timeProvider: null)
     {
