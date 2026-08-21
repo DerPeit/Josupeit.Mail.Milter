@@ -28,8 +28,7 @@ public sealed class QuitForNewConnectionRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitQuitForNewConnectionRequestPacket(this);
     }

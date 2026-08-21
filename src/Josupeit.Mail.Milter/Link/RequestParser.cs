@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -16,6 +17,7 @@ namespace Josupeit.Mail.Milter.Link;
 /// one, so it stays exactly one frame ahead of the session handling them - enough to overlap reading with
 /// handling, not enough for a fast peer to pile up work.
 /// </remarks>
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "The cancellation source belongs to a run, not to the instance: Start creates it and Stop disposes it.")]
 public class RequestParser : IRequestParser
 {
     private readonly ILinkReader _linkReader;

@@ -34,8 +34,7 @@ public sealed class UnknownCommandRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitUnknownCommandRequestPacket(this);
     }

@@ -19,8 +19,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
     // replayed into the context that serves the next one.
     public override async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
 
@@ -39,8 +38,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessConnectionAttempt(ConnectRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         _packetReplayHistory.Add(request);
 
@@ -64,8 +62,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         _packetReplayHistory.Add(request);
 
@@ -81,8 +78,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
 
@@ -99,8 +95,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
     // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
 

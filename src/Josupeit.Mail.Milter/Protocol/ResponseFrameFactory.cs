@@ -24,8 +24,7 @@ public class ResponseFrameFactory : IResponseFrameFactory
     /// <inheritdoc />
     public virtual ResponseFrame CreateResponseFrame(ResponsePacket response)
     {
-        if (response == null)
-            throw new ArgumentNullException(nameof(response));
+        ArgumentNullException.ThrowIfNull(response);
 
         return CreateVisitor().CreateResponseFrame(response);
     }
@@ -86,6 +85,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitAddHeaderResponsePacket(AddHeaderResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
             const int END_OF_NAME_MARK_LENGTH = 1;
             var valueLength = Encoding.Latin1.GetByteCount(responsePacket.Value);
@@ -129,6 +130,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitAddRecipientResponsePacket(AddRecipientResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
             const int END_OF_RECIPIENT_MARK_LENGTH = 1;
 
@@ -185,6 +188,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitChangeOrDeleteHeaderResponsePacket(ChangeOrDeleteHeaderResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             const int INDEX_LENGTH = sizeof(uint);
             var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
             const int END_OF_NAME_MARK_LENGTH = 1;
@@ -233,6 +238,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitChangeSenderResponsePacket(ChangeSenderResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             var senderLength = Encoding.Latin1.GetByteCount(responsePacket.Sender);
             const int END_OF_SENDER_MARK_LENGTH = 1;
 
@@ -302,6 +309,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitDeleteRecipientResponsePacket(DeleteRecipientResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             var recipientLength = Encoding.Latin1.GetByteCount(responsePacket.Recipient);
             const int END_OF_RECIPIENT_MARK_LENGTH = 1;
             var blockLength = recipientLength + END_OF_RECIPIENT_MARK_LENGTH;
@@ -345,6 +354,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitInsertHeaderResponsePacket(InsertHeaderResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             const int INDEX_LENGTH = sizeof(uint);
             var nameLength = Encoding.Latin1.GetByteCount(responsePacket.Name);
             const int END_OF_NAME_MARK_LENGTH = 1;
@@ -396,6 +407,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitOptionNegotiationResponsePacket(OptionNegotiationResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             const int VERSION_LENGTH = sizeof(uint);
             const int ACTIONS_LENGTH = sizeof(uint);
             const int UNDESIRED_CONTENT_LENGTH = sizeof(uint);
@@ -473,6 +486,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitQuarantineMessageResponsePacket(QuarantineMessageResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             var reasonLength = Encoding.Latin1.GetByteCount(responsePacket.Reason);
             const int END_OF_REASON_MARK_LENGTH = 1;
             var blockLength = reasonLength + END_OF_REASON_MARK_LENGTH;
@@ -516,6 +531,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitReplaceBodyResponsePacket(ReplaceBodyResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             Result = new(ResponseCode.ReplaceBody, responsePacket.Memory, responsePacket.BodyRange);
 
             return true;
@@ -524,6 +541,8 @@ public class ResponseFrameFactory : IResponseFrameFactory
         /// <inheritdoc />
         protected internal override bool VisitReplyWithCodeResponsePacket(ReplyWithCodeResponsePacket responsePacket)
         {
+            ArgumentNullException.ThrowIfNull(responsePacket);
+
             var codeLength = Encoding.Latin1.GetByteCount(responsePacket.SmtpCode);
             const int END_OF_CODE_MARK_LENGTH = 1;
             var textLength = GetByteCountWithDoubledPercentSigns(responsePacket.Text);

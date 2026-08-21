@@ -26,11 +26,11 @@ public class LinkWriter : ILinkWriter
         _pipeWriter = pipeWriter ?? throw new ArgumentNullException(nameof(pipeWriter));
     }
 
-    // WriteData hands the span straight to PipeWriter.Write, which copies it synchronously, so the
-    // stack buffer is no longer referenced by the time the returned flush is awaited.
     /// <inheritdoc />
     public virtual ValueTask WriteUInt32(uint value, CancellationToken cancellationToken)
     {
+        // WriteData hands the span straight to PipeWriter.Write, which copies it synchronously, so the
+        // stack buffer is no longer referenced by the time the returned flush is awaited.
         Span<byte> buffer = stackalloc byte[sizeof(uint)];
 
         BinaryPrimitives.WriteUInt32BigEndian(buffer, value);

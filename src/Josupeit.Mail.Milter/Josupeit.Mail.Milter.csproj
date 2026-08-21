@@ -23,6 +23,10 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+    <PackageReference Include="Josupeit.Practices.Mixins.Disposable" Version="[1.0.12,2)">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <!--
       Turns the public surface into a file that has to be edited on purpose. Every public member is
       listed in PublicAPI.Unshipped.txt, and adding, removing or changing the signature of one is a build

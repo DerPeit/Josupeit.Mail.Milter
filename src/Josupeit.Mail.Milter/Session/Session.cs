@@ -22,7 +22,8 @@ namespace Josupeit.Mail.Milter.Session;
 /// but never the transport.
 /// </remarks>
 /// <typeparam name="TContext">The filter this session runs. One instance is built per message.</typeparam>
-public partial class Session<TContext> : ISession where TContext : IMilterContext
+public partial class Session<TContext> : ISession
+    where TContext : IMilterContext
 {
     private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(
         TContext.ProtocolRequirements,
@@ -65,11 +66,14 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
             requestPacketFactory,
             responseFrameFactory,
             responseFrameWriter,
-            contextFactory, timeout: null, timeProvider: null)
+            contextFactory,
+            timeout: null,
+            timeProvider: null)
     {
     }
 
-    internal Session(ChannelReader<RequestFrame> requestFrameReader,
+    internal Session(
+        ChannelReader<RequestFrame> requestFrameReader,
         IRequestPacketFactory requestPacketFactory,
         IResponseFrameFactory responseFrameFactory,
         ChannelWriter<ResponseFrame> responseFrameWriter,
@@ -158,16 +162,16 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
 
     internal ValueTask DisposeContextAdapter()
     {
-        return Interlocked.Exchange(ref _contextAdapter, null)?.DisposeAsync() ?? new();
+        return Interlocked.Exchange(ref _contextAdapter, null)?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
 }
 
-partial class Session<TContext> : ISessionControlee
+public partial class Session<TContext> : ISessionControlee
 {
     IProtocolStateMachine ISessionControlee.ProtocolStateMachine => this;
 }
 
-partial class Session<TContext> : IProtocolStateMachine
+public partial class Session<TContext> : IProtocolStateMachine
 {
     IProtocolState IStateMachine<IProtocolState>.State => _protocolState!;
 
@@ -181,6 +185,6 @@ partial class Session<TContext> : IProtocolStateMachine
     {
         _protocolState = state;
 
-        return new();
+        return ValueTask.CompletedTask;
     }
 }

@@ -15,8 +15,7 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
 {
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         var negotiatedVersion = ProtocolVersionCapabilities.Clamp(request.MtaProtocolVersion);
 

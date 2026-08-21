@@ -25,8 +25,7 @@ public abstract class RequestPacketVisitor
     /// <see langword="null"/>.</exception>
     public virtual bool VisitRequestPacket(RequestPacket requestPacket)
     {
-        if (requestPacket == null)
-            throw new ArgumentNullException(nameof(requestPacket));
+        ArgumentNullException.ThrowIfNull(requestPacket);
 
         return requestPacket.Accept(this);
     }

@@ -100,8 +100,7 @@ internal abstract class ProtocolState : IProtocolState
     [StackTraceHidden]
     private static ValueTask<IAsyncEnumerable<ResponsePacket>> RejectUnexpected(RequestPacket request)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         ThrowInvalidPacketReceived();
 

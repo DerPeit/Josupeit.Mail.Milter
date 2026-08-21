@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using Josupeit.Mail.Milter.Generator.Markers;
@@ -29,6 +30,8 @@ namespace Josupeit.Mail.Milter;
 /// <see cref="ModificationActions.AddRecipient(string)"/>, which is where the address is validated.
 /// </remarks>
 [MilterActionMarker(nameof(ActionRequirements.AddRecipients))]
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "The suffix names the protocol version that introduced this action, which is the distinction between the two types and what the generator derives the negotiation right from.")]
+[SuppressMessage("StyleCop.CSharp.DocumentationRules", "SA1649:File name should match first type name", Justification = "The file is named after the action, not after either of the two versioned forms of it.")]
 public record AddRecipientAction_V2 : ModificationAction
 {
     internal AddRecipientAction_V2(string recipient)
@@ -77,6 +80,8 @@ public record AddRecipientAction_V2 : ModificationAction
 /// </para>
 /// </remarks>
 [MilterActionMarker(nameof(ActionRequirements.AddRecipientsWithParameters), MinimumProtocolVersion = 6)]
+[SuppressMessage("Naming", "CA1707:Identifiers should not contain underscores", Justification = "The suffix names the protocol version that introduced this action, which is the distinction between the two types and what the generator derives the negotiation right from.")]
+[SuppressMessage("StyleCop.CSharp.MaintainabilityRules", "SA1402:File may only contain a single type", Justification = "The version 6 form is the version 2 form plus one field and reads only beside it.")]
 public sealed record AddRecipientAction_V6 : AddRecipientAction_V2
 {
     internal AddRecipientAction_V6(string recipient, string eSmtpArguments)

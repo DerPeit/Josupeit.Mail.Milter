@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
@@ -114,7 +114,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             properties.Add(RenderProperty(deliveryProperty!, Combine(deliveryProperty!.Type, delivery)));
 
             if (delivery.Length > 0)
-                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(deliveryProperty!.Type, DeliveryRequirementsMarkerAttribute.IsDescribedBy, DeliveryRequirementsMarkerAttribute.GetMinimumProtocolVersion));
+                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(deliveryProperty.Type, DeliveryRequirementsMarkerAttribute.IsDescribedBy, DeliveryRequirementsMarkerAttribute.GetMinimumProtocolVersion));
         }
 
         if (NeedsGenerating(contextType, noReplyProperty))
@@ -217,6 +217,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         source.Append(Indent(depth)).Append(emission.TypeDeclaration).AppendLine();
         source.Append(Indent(depth)).AppendLine("{");
 
+        // ReSharper disable once AccessToModifiedClosure, because it's instantly handled
         source.AppendLine(string.Join(NEW_LINE + NEW_LINE, emission.Properties.Select(property => Reindent(property, depth + 1))));
 
         source.Append(Indent(depth)).AppendLine("}");

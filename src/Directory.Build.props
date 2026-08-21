@@ -16,6 +16,21 @@
   </PropertyGroup>
 
   <PropertyGroup>
+    <!--
+      The SDK runs the CA rules by default, but only the subset it calls the default set. This turns
+      every rule on and pins the level, so a new SDK does not quietly change which rules apply.
+
+      Here rather than in the repository-wide props on purpose: the rules police a shipped surface, and
+      most of what they say is meaningless for the projects that ship nothing. Underscored test names,
+      an un-awaited ConfigureAwait in a test, a sample type the generator instantiates by reflection -
+      all of it would be noise, and hundreds of lines of it, drowning the handful of findings that
+      actually concern a consumer.
+    -->
+    <AnalysisMode>AllEnabledByDefault</AnalysisMode>
+    <AnalysisLevel>latest</AnalysisLevel>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <Authors>Manuel Josupeit-Walter</Authors>
     <Company>Manuel Josupeit-Walter, Freelancing Developer</Company>
     <Product>Manuel Josupeit-Walter, Mail Filtering</Product>
@@ -97,6 +112,17 @@
 
     <PackageReference Include="Nerdbank.GitVersioning" Version="[3.9.50,4)">
       <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
+
+    <!--
+      Every category is on, and .editorconfig switches off the eleven ids someone else already owns:
+      the this. prefix, the field and constant naming, the brace family, and the documentation rules
+      that CS1591 and CONTRIBUTING.md decide between them. What is left is what nothing else here
+      checks - where a member sits in its type, and whether a file ends the way .editorconfig says.
+    -->
+    <PackageReference Include="StyleCop.Analyzers" Version="[1.2.0-beta.556,2)">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
   </ItemGroup>
 

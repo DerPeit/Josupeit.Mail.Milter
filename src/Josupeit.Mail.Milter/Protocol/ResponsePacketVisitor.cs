@@ -23,8 +23,7 @@ public abstract class ResponsePacketVisitor
     /// <see langword="null"/>.</exception>
     public virtual bool VisitResponsePacket(ResponsePacket responsePacket)
     {
-        if (responsePacket == null)
-            throw new ArgumentNullException(nameof(responsePacket));
+        ArgumentNullException.ThrowIfNull(responsePacket);
 
         return responsePacket.Accept(this);
     }

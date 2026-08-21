@@ -1,7 +1,6 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 
 namespace Josupeit.Mail.Milter.Generator;

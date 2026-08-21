@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Threading;
@@ -35,7 +36,9 @@ namespace Josupeit.Mail.Milter;
 /// The filter. One instance is built per message, either through the factory passed to the constructor
 /// or through <see cref="System.Activator"/>, which needs a public parameterless constructor.
 /// </typeparam>
-public class Milter<TContext> where TContext : IMilterContext
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "The cancellation source belongs to a run, not to the instance: Start creates it and Stop disposes it.")]
+public class Milter<TContext>
+    where TContext : IMilterContext
 {
     private readonly Socket _socket;
     private readonly MilterOptions _options;
@@ -217,46 +220,6 @@ public class Milter<TContext> where TContext : IMilterContext
                 await _monitor.WaitAsync().ConfigureAwait(false);
     }
 
-    private async Task AcceptConnections()
-    {
-        var cancellationToken = _stopper!.Token;
-
-        while (!cancellationToken.IsCancellationRequested)
-        {
-            // Deliberately unguarded for now. A transient socket error here, EMFILE under connection
-            // pressure for instance, faults this loop and stops the listener while the process stays up
-            // and healthy-looking. Handling it means deciding what to report and whether to continue,
-            // which waits on the diagnostics decision noted in RunSession.
-            var connection = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
-
-            bool hasCapacity;
-
-            using (await _monitor!.EnterAsync(CancellationToken.None).ConfigureAwait(false))
-            {
-                hasCapacity = _activeSessions < _options.MaxConcurrentSessions;
-
-                if (hasCapacity)
-                    _activeSessions++;
-            }
-
-            // Refuse rather than queue. A peer we have no capacity for should find that out immediately
-            // instead of holding a socket open while we are saturated.
-            if (!hasCapacity)
-            {
-                connection.Dispose();
-
-                continue;
-            }
-
-            _ = Task.Factory.StartNew(
-                RunSession,
-                connection,
-                CancellationToken.None,
-                TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
-                TaskScheduler.Default);
-        }
-    }
-
     // The six pieces of the per-connection pipeline, each behind a method a derived milter can replace.
     // Without these the wire layer is public and non-sealed for nothing: a consumer can subclass a packet
     // factory or a link reader perfectly well, and has nowhere to hand the result to, because this class
@@ -358,7 +321,49 @@ public class Milter<TContext> where TContext : IMilterContext
             requestPacketFactory,
             responseFrameFactory,
             responseFrameWriter,
-            contextFactory, _timeout, _timeProvider);
+            contextFactory,
+            _timeout,
+            _timeProvider);
+    }
+
+    private async Task AcceptConnections()
+    {
+        var cancellationToken = _stopper!.Token;
+
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            // Deliberately unguarded for now. A transient socket error here, EMFILE under connection
+            // pressure for instance, faults this loop and stops the listener while the process stays up
+            // and healthy-looking. Handling it means deciding what to report and whether to continue,
+            // which waits on the diagnostics decision noted in RunSession.
+            var connection = await _socket.AcceptAsync(cancellationToken).ConfigureAwait(false);
+
+            bool hasCapacity;
+
+            using (await _monitor!.EnterAsync(CancellationToken.None).ConfigureAwait(false))
+            {
+                hasCapacity = _activeSessions < _options.MaxConcurrentSessions;
+
+                if (hasCapacity)
+                    _activeSessions++;
+            }
+
+            // Refuse rather than queue. A peer we have no capacity for should find that out immediately
+            // instead of holding a socket open while we are saturated.
+            if (!hasCapacity)
+            {
+                connection.Dispose();
+
+                continue;
+            }
+
+            _ = Task.Factory.StartNew(
+                RunSession,
+                connection,
+                CancellationToken.None,
+                TaskCreationOptions.DenyChildAttach | TaskCreationOptions.LongRunning,
+                TaskScheduler.Default);
+        }
     }
 
     private async Task RunSession(object? socket)
