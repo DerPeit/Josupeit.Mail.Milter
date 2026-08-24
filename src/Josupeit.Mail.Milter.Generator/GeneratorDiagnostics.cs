@@ -20,7 +20,7 @@ internal static class GeneratorDiagnostics
         category: "Josupeit.Mail.Milter",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "The generator emits the ProtocolRequirements and ActionRequirements properties into a second part of the class. Declare the class partial, or declare both properties by hand.");
+        description: "The generator emits the six requirement properties into a second part of the class. Declare the class partial, or declare ProtocolRequirements and ActionRequirements by hand - the other four have a safe default.");
 
     public static readonly DiagnosticDescriptor UntrackedAction = new(
         id: "MILT002",
