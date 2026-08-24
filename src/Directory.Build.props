@@ -98,6 +98,23 @@
 
   <ItemGroup>
     <!--
+      The ban list itself, shared by every project under src. AdditionalFiles paths are relative to
+      the *project*, so the one file has to be named from this directory rather than from theirs.
+    -->
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)BannedSymbols.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Turns the conventions this code already keeps into something a build can fail on. The list is in
+      BannedSymbols.txt beside this file, and says there what each entry is for.
+    -->
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+
+    <!--
       Bounded ranges as everywhere else, but note the lower bound has to be a version that exists: NuGet
       resolves a range to its *lowest* satisfying version, so "[3,4)" would pull Nerdbank.GitVersioning
       3.0.24, whose LibGit2Sharp cannot even load on a current runtime.

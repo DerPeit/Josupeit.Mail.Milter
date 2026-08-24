@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -187,6 +188,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             Diagnostics: diagnostics);
     }
 
+    [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The ban is about milter frames, and this is C# source. SourceText.From needs an encoding with a preamble or the sources cannot be embedded in the symbol package.")]
     private static void Emit(SourceProductionContext context, MilterContextEmission emission)
     {
         foreach (var diagnostic in emission.Diagnostics)
