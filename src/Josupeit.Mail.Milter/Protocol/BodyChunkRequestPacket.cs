@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Josupeit.Practices.Mixins.Disposable;
 
 namespace Josupeit.Mail.Milter.Protocol;
 
@@ -14,14 +15,21 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// except transport. The payload is pooled memory, which is why this packet is disposable and why its data must
 /// be copied to outlive the handling of it.
 /// </remarks>
-public sealed class BodyChunkRequestPacket : RequestPacket, IDisposable
+[DisposableMixin(DisposableMixinOptions.WithoutAsyncDisposable)]
+public sealed partial class BodyChunkRequestPacket : RequestPacket
 {
     private readonly IMemoryOwner<byte>? _memory;
     private readonly Range _dataRange;
 
-    private bool _isDisposed;
-
-    internal BodyChunkRequestPacket(IMemoryOwner<byte>? memory, Range dataRange)
+    /// <summary>
+    /// Creates the packet around the memory the chunk arrived in.
+    /// </summary>
+    /// <param name="memory">
+    /// The buffer holding the chunk, or <see langword="null"/> for an empty one. The packet takes
+    /// ownership of it and returns it to the pool when disposed, so the caller must not keep it.
+    /// </param>
+    /// <param name="dataRange">The part of the buffer the chunk occupies.</param>
+    public BodyChunkRequestPacket(IMemoryOwner<byte>? memory, Range dataRange)
     {
         _memory = memory;
         _dataRange = dataRange;
@@ -45,33 +53,21 @@ public sealed class BodyChunkRequestPacket : RequestPacket, IDisposable
     /// </summary>
     public ReadOnlySpan<byte> DataSpan => Data.Span;
 
-    /// <summary>
-    /// Returns the payload memory to the pool.
-    /// </summary>
-    public void Dispose()
-    {
-        if (_isDisposed)
-            return;
-
-        _memory?.Dispose();
-
-        _isDisposed = true;
-    }
-
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         ThrowIfDisposed();
 
         return visitor.VisitBodyChunkRequestPacket(this);
     }
 
-    private void ThrowIfDisposed()
+    /// <summary>
+    /// Returns the payload memory to the pool.
+    /// </summary>
+    private void DisposeManagedResources()
     {
-        if (_isDisposed)
-            throw new ObjectDisposedException(GetType().ToString());
+        _memory?.Dispose();
     }
 }

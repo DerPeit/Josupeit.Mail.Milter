@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Josupeit.Mail.Milter.Generator.Markers;
 using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter;
@@ -15,16 +16,17 @@ namespace Josupeit.Mail.Milter;
 /// The answer every callback gives by default, and the only one that leaves the message's fate open.
 /// Reached through <see cref="CommitActions.Continue"/>.
 /// </remarks>
+[MilterUnobservableActionMarker]
 public sealed record ContinueAction : CommitAction
 {
+    private ContinueAction()
+    {
+    }
+
     /// <summary>
     /// The single shared instance. This action carries no state, so there is never a reason for another.
     /// </summary>
     public static ContinueAction Instance { get; } = new();
-
-    private ContinueAction()
-    {
-    }
 
     /// <inheritdoc />
     protected override IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)

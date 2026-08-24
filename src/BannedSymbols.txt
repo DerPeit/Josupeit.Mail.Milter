@@ -1,0 +1,48 @@
+; Read by Microsoft.CodeAnalysis.BannedApiAnalyzers as RS0030, for every project under src.
+;
+; Only APIs nothing else here polices. The culture-sensitive string overloads are the obvious
+; candidates for a wire protocol and are deliberately absent: CA1304, CA1305, CA1307, CA1309 and
+; CA1310 already own them under AnalysisMode=AllEnabledByDefault, and a rule with two owners is a
+; rule that gets half-disabled by whoever meets it first.
+;
+; The format is one documentation comment id per line, optionally followed by ; and the message the
+; diagnostic carries. An id that resolves to nothing is silently ignored, so a typo disables an
+; entry without saying so - which is why every line below was verified against a build that fails.
+
+; -- The clock ------------------------------------------------------------------------------------
+; Milter is a protocol with timeouts in it, and Session takes a TimeProvider so a test can move time
+; without spending it. An ambient clock read anywhere in the library puts a real second back into a
+; test that had arranged not to need one.
+P:System.DateTime.Now; Take the time from the session's TimeProvider.
+P:System.DateTime.UtcNow; Take the time from the session's TimeProvider.
+P:System.DateTime.Today; Take the time from the session's TimeProvider.
+P:System.DateTimeOffset.Now; Take the time from the session's TimeProvider.
+P:System.DateTimeOffset.UtcNow; Take the time from the session's TimeProvider.
+T:System.Diagnostics.Stopwatch; Use TimeProvider.GetTimestamp and TimeProvider.GetElapsedTime.
+M:System.Threading.Tasks.Task.Delay(System.Int32); Use TimeProvider.Delay, or the timeout the caller was given.
+M:System.Threading.Tasks.Task.Delay(System.Int32,System.Threading.CancellationToken); Use TimeProvider.Delay, or the timeout the caller was given.
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan); Use TimeProvider.Delay, or the timeout the caller was given.
+M:System.Threading.Tasks.Task.Delay(System.TimeSpan,System.Threading.CancellationToken); Use TimeProvider.Delay, or the timeout the caller was given.
+
+; -- Sync over async ------------------------------------------------------------------------------
+; A session is a loop over two channels and a pipe; blocking a thread inside it stalls the MTA on the
+; other end of the socket. Everything here is awaitable and every path to it is already async.
+M:System.Threading.Thread.Sleep(System.Int32); Await instead of blocking a session's thread.
+M:System.Threading.Thread.Sleep(System.TimeSpan); Await instead of blocking a session's thread.
+P:System.Threading.Tasks.Task`1.Result; Await the task.
+M:System.Threading.Tasks.Task.Wait; Await the task.
+M:System.Threading.Tasks.Task.Wait(System.Int32); Await the task.
+M:System.Threading.Tasks.Task.Wait(System.TimeSpan); Await the task.
+M:System.Threading.Tasks.Task.Wait(System.Threading.CancellationToken); Await the task.
+M:System.Threading.Tasks.Task.WaitAll(System.Threading.Tasks.Task[]); Await Task.WhenAll.
+M:System.Threading.Tasks.Task.WaitAny(System.Threading.Tasks.Task[]); Await Task.WhenAny.
+
+; -- What goes on the wire ------------------------------------------------------------------------
+; Milter frames carry bytes, and the protocol decides which ones. An encoding that follows the
+; machine's culture, or a newline that follows its platform, makes the same message serialise
+; differently on two hosts - which the MTA at the other end has no way to notice.
+P:System.Environment.NewLine; The protocol decides its own line endings; write them literally.
+P:System.Text.Encoding.Default; The wire is Latin1. Say so, or say why not.
+P:System.Text.Encoding.ASCII; The wire is Latin1. Say so, or say why not.
+P:System.Text.Encoding.UTF8; The wire is Latin1. Say so, or say why not.
+P:System.Text.Encoding.Unicode; The wire is Latin1. Say so, or say why not.

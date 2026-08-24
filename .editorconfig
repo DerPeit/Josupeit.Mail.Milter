@@ -168,6 +168,28 @@ dotnet_style_parentheses_in_other_binary_operators = always_for_clarity:none
 
 csharp_preferred_modifier_order = public, private, protected, internal, file, new, static, abstract, virtual, sealed, readonly, override, extern, unsafe, volatile, async, required:suggestion
 
+#### Code quality ####
+
+dotnet_diagnostic.CA1028.severity = silent
+dotnet_diagnostic.CA1031.severity = suggestion
+dotnet_diagnostic.CA1716.severity = none
+dotnet_diagnostic.CA1724.severity = suggestion
+dotnet_diagnostic.CA1859.severity = suggestion
+
+#### StyleCop ####
+
+dotnet_diagnostic.SA1101.severity = none
+dotnet_diagnostic.SA1309.severity = none
+dotnet_diagnostic.SA1310.severity = none
+dotnet_diagnostic.SA1503.severity = none
+dotnet_diagnostic.SA1519.severity = none
+dotnet_diagnostic.SA1520.severity = none
+dotnet_diagnostic.SA1600.severity = none
+dotnet_diagnostic.SA1601.severity = none
+dotnet_diagnostic.SA1623.severity = none
+dotnet_diagnostic.SA1633.severity = none
+dotnet_diagnostic.SA1642.severity = none
+
 #### ReSharper ####
 
 # Only the entries with no Roslyn equivalent. Anything ReSharper exported that duplicates a setting
@@ -176,6 +198,7 @@ resharper_apply_auto_detected_rules = false
 resharper_show_autodetect_configure_formatting_tip = false
 resharper_csharp_wrap_lines = false
 resharper_csharp_wrap_parameters_style = chop_if_long
+resharper_csharp_trailing_comma_in_multiline_lists = true
 resharper_max_formal_parameters_on_line = 7
 resharper_keep_existing_declaration_parens_arrangement = false
 resharper_new_line_before_while = true

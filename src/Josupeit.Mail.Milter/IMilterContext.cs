@@ -11,8 +11,10 @@ namespace Josupeit.Mail.Milter;
 /// <remarks>
 /// <para>
 /// The callbacks come from <see cref="IMilterCallbacks"/> and all have default implementations, so an
-/// implementation only overrides the events it cares about. The two properties here have none: they are
-/// what the library tells the MTA during negotiation, and only the filter knows what to put in them.
+/// implementation only overrides the events it cares about. The six properties here are what the library
+/// tells the MTA during negotiation. Two of them have no default, because no default is safe; the other
+/// four behave exactly as protocol version 2 did until something says otherwise, and the source
+/// generator writes all six from the filter's own code unless the filter declares one by hand.
 /// </para>
 /// <para>
 /// An instance serves <em>one message</em>, not one connection. An MTA keeps a connection open across
@@ -40,4 +42,49 @@ public interface IMilterContext : IMilterCallbacks
     /// <see cref="IMilterCallbacks.OnEndOfBody"/> may yield.
     /// </remarks>
     static abstract ActionRequirements ActionRequirements { get; }
+
+    /// <summary>
+    /// Changes this filter wants to how the MTA delivers events.
+    /// </summary>
+    /// <remarks>
+    /// Unlike the two properties above this one has a safe default, so it is
+    /// <see langword="virtual"/> rather than abstract: <see cref="DeliveryRequirements.None"/> is what
+    /// every version 2 filter has always negotiated, and a filter that never declares it behaves exactly
+    /// as it did. The source generator still writes it when it is left alone, deriving
+    /// <see cref="DeliveryRequirements.RejectedRecipients"/> from whether the code reads
+    /// <see cref="RecipientInformation.IsRejectedByMta"/>.
+    /// </remarks>
+    static virtual DeliveryRequirements DeliveryRequirements => DeliveryRequirements.None;
+
+    /// <summary>
+    /// The events this filter promises not to answer.
+    /// </summary>
+    /// <remarks>
+    /// Left to the source generator, which sets an event here only once it has proved the callback can
+    /// answer nothing but <see cref="CommitActions.Continue"/> - so declaring it by hand is rarely
+    /// needed, and is a promise the library will hold the filter to.
+    /// </remarks>
+    static virtual NoReplyRequirements NoReplyRequirements => NoReplyRequirements.None;
+
+    /// <summary>
+    /// The lowest protocol version an MTA must speak for this filter to work.
+    /// </summary>
+    /// <remarks>
+    /// Left to the source generator, which folds it out of what the other properties turned out to need.
+    /// Negotiation fails when the MTA offers less, which turns a capability silently withheld into a
+    /// failure on the first connection.
+    /// </remarks>
+    static virtual ProtocolVersionRequirement ProtocolVersionRequirement => ProtocolVersionRequirement.Version2;
+
+    /// <summary>
+    /// The macros this filter wants, per point in the conversation.
+    /// </summary>
+    /// <remarks>
+    /// Left to the source generator, which reads which names the macro callback looks up and under which
+    /// stage. A read it cannot pin down is reported rather than guessed, because a list that leaves a
+    /// macro out fails nowhere near where it was caused - the filter simply finds the key missing at
+    /// runtime. <see cref="MacroRequirements.None"/> asks for no list at all, which is the behaviour
+    /// that predates this.
+    /// </remarks>
+    static virtual MacroRequirements MacroRequirements => MacroRequirements.None;
 }

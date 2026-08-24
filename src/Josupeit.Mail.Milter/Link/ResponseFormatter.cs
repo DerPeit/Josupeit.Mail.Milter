@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -16,7 +17,8 @@ namespace Josupeit.Mail.Milter.Link;
 /// once it has been written, which is what lets the session wait for a response to have actually left
 /// rather than merely been queued.
 /// </remarks>
-public class ResponseFormatter
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "The cancellation source belongs to a run, not to the instance: Start creates it and Stop disposes it.")]
+public class ResponseFormatter : IResponseFormatter
 {
     private readonly ChannelReader<ResponseFrame> _inputReader;
     private readonly ILinkWriter _linkWriter;
@@ -35,9 +37,7 @@ public class ResponseFormatter
         _linkWriter = linkWriter ?? throw new ArgumentNullException(nameof(linkWriter));
     }
 
-    /// <summary>
-    /// Starts the worker and returns immediately.
-    /// </summary>
+    /// <inheritdoc />
     public void Start()
     {
         if (_runner != null)
@@ -47,10 +47,7 @@ public class ResponseFormatter
         _runner = Task.Run(ProcessFramesCore, _stopper.Token);
     }
 
-    /// <summary>
-    /// Stops the worker and waits for it to finish.
-    /// </summary>
-    /// <returns>A task that completes once the worker has ended.</returns>
+    /// <inheritdoc />
     public async Task Stop()
     {
         if (_runner == null)
@@ -75,6 +72,36 @@ public class ResponseFormatter
     }
 
     /// <summary>
+    /// Writes one frame to the link.
+    /// </summary>
+    /// <remarks>
+    /// The unit an override changes to put different bytes on the wire, leaving the loop alone. Telling
+    /// the frame it is done is deliberately not part of this: the session waits on that signal, so a
+    /// forgetful override would hang it rather than merely write the wrong thing. The loop completes,
+    /// cancels or faults the frame around this call whatever it does.
+    /// </remarks>
+    /// <param name="frame">The frame to write. Its buffer stays owned by the loop.</param>
+    /// <param name="cancellationToken">A token that cancels the write.</param>
+    /// <returns>A task that completes once the frame has been written.</returns>
+    protected virtual async Task ProcessFrame(ResponseFrame frame, CancellationToken cancellationToken)
+    {
+        if (frame.Memory == null)
+        {
+            await _linkWriter.WriteUInt32(sizeof(ResponseCode), cancellationToken).ConfigureAwait(false);
+            await _linkWriter.WriteResponseCode(frame.ResponseCode, cancellationToken).ConfigureAwait(false);
+
+            return;
+        }
+
+        var data = frame.Memory.Memory[frame.DataRange];
+        var frameLength = (uint)(sizeof(ResponseCode) + data.Length);
+
+        await _linkWriter.WriteUInt32(frameLength, cancellationToken).ConfigureAwait(false);
+        await _linkWriter.WriteResponseCode(frame.ResponseCode, cancellationToken).ConfigureAwait(false);
+        await _linkWriter.WriteData(data.Span, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// The loop the worker runs: takes frames off the channel and writes them to the link until the token
     /// is cancelled or the channel completes.
     /// </summary>
@@ -90,20 +117,7 @@ public class ResponseFormatter
                 {
                     try
                     {
-                        if (frame.Memory == null)
-                        {
-                            await _linkWriter.WriteUInt32(sizeof(ResponseCode), cancellationToken).ConfigureAwait(false);
-                            await _linkWriter.WriteResponseCode(frame.ResponseCode, cancellationToken).ConfigureAwait(false);
-                        }
-                        else
-                        {
-                            var data = frame.Memory.Memory[frame.DataRange];
-                            var frameLength = (uint)(sizeof(ResponseCode) + data.Length);
-
-                            await _linkWriter.WriteUInt32(frameLength, cancellationToken).ConfigureAwait(false);
-                            await _linkWriter.WriteResponseCode(frame.ResponseCode, cancellationToken).ConfigureAwait(false);
-                            await _linkWriter.WriteData(data.Span, cancellationToken).ConfigureAwait(false);
-                        }
+                        await ProcessFrame(frame, cancellationToken).ConfigureAwait(false);
 
                         frame.SetCompleted();
                     }

@@ -56,12 +56,22 @@ internal abstract class ProtocolState : IProtocolState
         return RejectUnexpected(request);
     }
 
+    public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return RejectUnexpected(request);
+    }
+
     public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessOptionNegotiationAttempt(OptionNegotiationRequestPacket request, CancellationToken cancellationToken)
     {
         return RejectUnexpected(request);
     }
 
     public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
+    {
+        return RejectUnexpected(request);
+    }
+
+    public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
     {
         return RejectUnexpected(request);
     }
@@ -76,6 +86,11 @@ internal abstract class ProtocolState : IProtocolState
         return RejectUnexpected(request);
     }
 
+    public virtual ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return RejectUnexpected(request);
+    }
+
     [DoesNotReturn]
     protected static void ThrowInvalidPacketReceived()
     {
@@ -85,8 +100,7 @@ internal abstract class ProtocolState : IProtocolState
     [StackTraceHidden]
     private static ValueTask<IAsyncEnumerable<ResponsePacket>> RejectUnexpected(RequestPacket request)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         ThrowInvalidPacketReceived();
 

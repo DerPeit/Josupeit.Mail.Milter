@@ -12,6 +12,9 @@
     -->
     <IsPackable>false</IsPackable>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- SA0001 says the doc file is off, which is the line above saying so. It has no location, so only NoWarn reaches it. -->
+    <NoWarn>$(NoWarn);SA0001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

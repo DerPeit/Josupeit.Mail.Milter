@@ -11,7 +11,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class OptionNegotiationResponsePacket : ResponsePacket
 {
-    internal OptionNegotiationResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public OptionNegotiationResponsePacket()
     {
     }
 
@@ -32,11 +36,15 @@ public sealed class OptionNegotiationResponsePacket : ResponsePacket
     /// </summary>
     public required ContentBypassDiscriminator MilterUndesiredProtocolContent { get; init; }
 
+    /// <summary>
+    /// The macros the filter wants, per stage, or <see langword="null"/> to leave the MTA sending its own set.
+    /// </summary>
+    public MacroRequirements? MilterRequestedMacros { get; init; }
+
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitOptionNegotiationResponsePacket(this);
     }

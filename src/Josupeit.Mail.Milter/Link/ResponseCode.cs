@@ -91,4 +91,45 @@ public enum ResponseCode : byte
     /// real answer is still being worked out.
     /// </remarks>
     Progress = (byte)'p',
+
+    /// <summary>
+    /// Inserts a header at a chosen position (<c>SMFIR_INSHEADER</c>).
+    /// </summary>
+    /// <remarks>
+    /// Shares <c>SMFIF_ADDHDRS</c> with <see cref="AddHeader"/> rather than having a flag of its own,
+    /// so a filter that may add a header may also insert one.
+    /// </remarks>
+    InsertHeader = (byte)'i',
+
+    /// <summary>
+    /// Replaces the envelope sender (<c>SMFIR_CHGFROM</c>).
+    /// </summary>
+    ChangeSender = (byte)'e',
+
+    /// <summary>
+    /// Adds an envelope recipient together with its ESMTP arguments (<c>SMFIR_ADDRCPT_PAR</c>).
+    /// </summary>
+    /// <remarks>
+    /// The plain <see cref="AddRecipient"/> carries an address and nothing else; this one is the form
+    /// to reach for when the recipient needs parameters such as <c>NOTIFY</c> to travel with it.
+    /// </remarks>
+    AddRecipientWithParameters = (byte)'2',
+
+    /// <summary>
+    /// Names the macros the filter wants, per protocol stage (<c>SMFIR_SETSYMLIST</c>).
+    /// </summary>
+    /// <remarks>
+    /// Not written as a frame of its own by this library: the lists ride along in the negotiation reply,
+    /// which is the only point at which the MTA reads them.
+    /// </remarks>
+    SetMacroList = (byte)'l',
+
+    /// <summary>
+    /// Stops the MTA sending any more of the event just answered (<c>SMFIR_SKIP</c>).
+    /// </summary>
+    /// <remarks>
+    /// Only meaningful for an event that repeats - body chunks above all - and only once the MTA has
+    /// granted it during negotiation. The message carries on; all that stops is the reporting.
+    /// </remarks>
+    Skip = (byte)'s',
 }

@@ -1,7 +1,6 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
-using System.Collections.Immutable;
 using Microsoft.CodeAnalysis;
 
 namespace Josupeit.Mail.Milter.Generator;
@@ -12,7 +11,7 @@ namespace Josupeit.Mail.Milter.Generator;
 internal sealed record MilterContextEmission(
     string HintName,
     string? Namespace,
-    ImmutableArray<string> ContainingTypes,
+    EquatableArray<string> ContainingTypes,
     string TypeDeclaration,
-    ImmutableArray<string> Properties,
-    ImmutableArray<Diagnostic> Diagnostics);
+    EquatableArray<string> Properties,
+    EquatableArray<Diagnostic> Diagnostics);

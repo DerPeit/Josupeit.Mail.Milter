@@ -198,6 +198,39 @@ public sealed class RequestPacketFactoryTests
         Assert.That(memoryOwner.IsDisposed, Is.True);
     }
 
+
+    [Test]
+    public void Message_data_carries_no_payload()
+    {
+        var factory = new RequestPacketFactory();
+        var frame = CreateFrame(CommandCode.MessageData, []);
+
+        var packet = factory.CreateRequestPacket(frame);
+
+        Assert.That(packet, Is.SameAs(MessageDataRequestPacket.Instance));
+    }
+
+    [Test]
+    public void Unknown_command_keeps_the_command_line_verbatim()
+    {
+        var factory = new RequestPacketFactory();
+        var frame = CreateFrame(CommandCode.UnknownCommand, [.. Encoding.Latin1.GetBytes("WOTSIT /etc/passwd"), 0]);
+
+        var packet = (UnknownCommandRequestPacket)factory.CreateRequestPacket(frame);
+
+        Assert.That(packet.CommandText, Is.EqualTo("WOTSIT /etc/passwd"));
+    }
+
+    [Test]
+    public void Unknown_command_without_a_terminator_is_rejected_as_malformed()
+    {
+        var factory = new RequestPacketFactory();
+        var frame = CreateFrame(CommandCode.UnknownCommand, Encoding.Latin1.GetBytes("HELO-ish"));
+
+        Assert.That(
+            () => factory.CreateRequestPacket(frame),
+            Throws.InstanceOf<InvalidOperationException>());
+    }
     private static RequestFrame CreateFrame(CommandCode commandCode, byte[] data)
     {
         var owner = MemoryPool<byte>.Shared.Rent(minBufferSize: Math.Max(data.Length, 1));

@@ -10,7 +10,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class HeaderRequestPacket : RequestPacket
 {
-    internal HeaderRequestPacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public HeaderRequestPacket()
     {
     }
 
@@ -27,8 +31,7 @@ public sealed class HeaderRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitHeaderRequestPacket(this);
     }

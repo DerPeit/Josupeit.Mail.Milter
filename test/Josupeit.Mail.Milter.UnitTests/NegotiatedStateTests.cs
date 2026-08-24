@@ -18,9 +18,9 @@ public sealed class NegotiatedStateTests
     public async Task Aborting_drops_the_context_without_replying()
     {
         var stateMachine = new FakeProtocolStateMachine();
-        var state = new NegotiatedState(stateMachine);
+        var state = new NegotiatedState(stateMachine, TestNegotiation.Nothing);
 
-        stateMachine.EnsureContextAdapter();
+        stateMachine.EnsureContextAdapter(TestNegotiation.Nothing);
 
         var responses = await Drain(state.ProcessAbortion(AbortRequestPacket.Instance, CancellationToken.None));
 
@@ -36,9 +36,9 @@ public sealed class NegotiatedStateTests
     public async Task Aborting_while_recording_a_replay_drops_the_context_without_replying()
     {
         var stateMachine = new FakeProtocolStateMachine();
-        var state = new ReplayRecordingNegotiatedState(stateMachine);
+        var state = new ReplayRecordingNegotiatedState(stateMachine, TestNegotiation.Nothing);
 
-        stateMachine.EnsureContextAdapter();
+        stateMachine.EnsureContextAdapter(TestNegotiation.Nothing);
 
         var responses = await Drain(state.ProcessAbortion(AbortRequestPacket.Instance, CancellationToken.None));
 

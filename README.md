@@ -2,7 +2,7 @@
 
 A .NET implementation of the **Milter protocol** - the mail filter protocol spoken by Postfix and Sendmail - so a mail filter can be written in C# instead of in the C the protocol was designed around.
 
-An MTA connects to a milter over a socket and streams the SMTP conversation to it as it happens. After each event the filter answers, and the answer decides what the MTA does next: continue, accept, reject, defer or discard. At the end of the message the filter may also rewrite it - headers, recipients, body - or quarantine it.
+An MTA connects to a milter over a socket and streams the SMTP conversation to it as it happens. After each event the filter answers, and the answer decides what the MTA does next: continue, accept, reject, defer or discard. At the end of the message the filter may also rewrite it - headers, recipients, the envelope sender, the body - or quarantine it.
 
 ## Packages
 
@@ -10,9 +10,9 @@ An MTA connects to a milter over a socket and streams the SMTP conversation to i
 | ------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`Josupeit.Mail.Milter`](src/Josupeit.Mail.Milter/README.md) | The library. Implement `IMilterContext`, hand it to `Milter<TContext>`, and the wire protocol, framing and protocol-state enforcement are taken care of. |
 
-Targets `net8.0` and speaks **wire version 2** of the protocol, which every current Postfix and Sendmail accepts.
+Targets `net8.0` and speaks **wire version 6** of the protocol, negotiating down to whatever the MTA offers - so a Postfix pinned to `milter_protocol = 2` still works, it simply gets less.
 
-A runnable filter lives in [`samples/Example`](samples/Example) - roughly thirty lines, including the socket setup and a graceful shutdown.
+A runnable filter lives in [`samples/Example`](samples/Example), declaring none of the six requirement properties and leaving all of them to the generator - which makes it the readable proof that the derivation works.
 
 ## Building and testing
 

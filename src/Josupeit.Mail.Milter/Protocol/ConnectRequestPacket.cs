@@ -12,7 +12,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class ConnectRequestPacket : RequestPacket
 {
-    internal ConnectRequestPacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public ConnectRequestPacket()
     {
     }
 
@@ -42,8 +46,7 @@ public sealed class ConnectRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitConnectRequestPacket(this);
     }

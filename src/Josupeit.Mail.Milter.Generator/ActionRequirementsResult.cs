@@ -11,6 +11,7 @@ namespace Josupeit.Mail.Milter.Generator;
 // a guess would be wrong in a way that only shows up as the MTA refusing the modification.
 internal readonly record struct ActionRequirementsResult(
     ImmutableArray<string> RequirementNames,
+    int MinimumProtocolVersion,
     string? UntrackedSource,
     Location? UntrackedLocation)
 {

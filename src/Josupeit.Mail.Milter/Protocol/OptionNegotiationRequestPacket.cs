@@ -15,7 +15,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </remarks>
 public sealed class OptionNegotiationRequestPacket : RequestPacket
 {
-    internal OptionNegotiationRequestPacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public OptionNegotiationRequestPacket()
     {
     }
 
@@ -37,8 +41,7 @@ public sealed class OptionNegotiationRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitOptionsNegotiationRequestPacket(this);
     }

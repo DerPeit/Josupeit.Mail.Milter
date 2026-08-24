@@ -1,64 +1,67 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
-    <Description>An implementation of the Milter protocol (wire version 2), the mail filter protocol spoken by Postfix and Sendmail. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
+    <Description>An implementation of the Milter protocol, the mail filter protocol spoken by Postfix and Sendmail. Speaks wire version 6 and negotiates down to whatever the MTA offers, with a floor of version 2. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
     <PackageTags>milter postfix sendmail smtp mail-filter mta email antispam</PackageTags>
     <PackageVersionTagPrefix>v</PackageVersionTagPrefix>
     <NoWarn>$(NoWarn),CS9107</NoWarn>
   </PropertyGroup>
 
-  <ItemGroup>
+  <ItemGroup Label="InternalsVisibleTo Declarations">
     <InternalsVisibleTo Include="Josupeit.Mail.Milter.IntegrationTests" />
     <InternalsVisibleTo Include="Josupeit.Mail.Milter.UnitTests" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.0.0.1">
+  <ItemGroup Label="Analyzers and Source-Generators">
+    <PackageReference Include="ConfigureAwaitChecker.Analyzer" Version="5.*">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
-    <PackageReference Include="Nito.AsyncEx.Coordination" Version="[5,6)" />
-    <!--
-      Ix 7 rather than 6: 6 depends on System.Linq.Async, whose System.Linq.AsyncEnumerable type is
-      in the box from net10 on, so a net10 consumer got two definitions and an ambiguous call the
-      moment they wrote ToAsyncEnumerable themselves. Ix 7 depends on Microsoft's backport instead,
-      which resolves to nothing on net10 and to a real assembly below it. AsyncEnumerableEx.Return and
-      Finally, the only two operators here that are not plain async LINQ, still come from this package.
-    -->
-    <PackageReference Include="System.Interactive.Async" Version="[7.0.1,8)" />
-    <PackageReference Include="System.IO.Pipelines" Version="[8,9)" />
+    
+    <PackageReference Include="Josupeit.Practices.Mixins.Disposable" Version="1.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    
+    <PackageReference Include="Microsoft.CodeAnalysis.PublicApiAnalyzers" Version="5.*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
-
-  <ItemGroup>
-    <!--
-      Analyzer only, and no assembly reference at all: nothing of the compiler reaches this assembly's
-      output or its deps.json. The marker attributes the library applies to IMilterContext and the action
-      records come from the linked sources below rather than from the generator's assembly.
-    -->
+  
+  <ItemGroup Label="Integrated Source-Generator">
     <ProjectReference Include="..\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj"
                       OutputItemType="Analyzer"
                       ReferenceOutputAssembly="false"
                       PrivateAssets="all" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!--
-      The declaration half of each marker attribute, compiled into this assembly rather than referenced
-      from the generator's. Each has a partial in the generator project carrying the Roslyn side, which is
-      the half that must not come along - so these files name nothing outside System, and the generator
-      matches them by full type name rather than by symbol.
+  <ItemGroup Label="Regular Packages">
+    <PackageReference Include="Nito.AsyncEx.Coordination" Version="[5,6)" />
+    <PackageReference Include="System.Interactive.Async" Version="[7.0.1,8)" />
+    <PackageReference Include="System.IO.Pipelines" Version="[8,9)" />
+  </ItemGroup>
 
-      They are internal and [Embedded], so a consumer never sees them: an embedded type is not imported by
-      a referencing compilation at all, which also stops this copy and the generator's own from ever being
-      ambiguous in a project that happens to reference both. EmbeddedAttribute itself comes from PolySharp,
-      wired up in the repository's Directory.Build.props.
-    -->
+  <ItemGroup Label="Marker attribute declarations">
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ActionRequirementsMarkerAttribute.cs" Link="Properties\ActionRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\DeliveryRequirementsMarkerAttribute.cs" Link="Properties\DeliveryRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MacroRequirementsMarkerAttribute.cs" Link="Properties\MacroRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterActionMarkerAttribute.cs" Link="Properties\MilterActionMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterCallbackMarkerAttribute.cs" Link="Properties\MilterCallbackMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterContextMarkerAttribute.cs" Link="Properties\MilterContextMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterDeliveryMarkerAttribute.cs" Link="Properties\MilterDeliveryMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterMacroSourceMarkerAttribute.cs" Link="Properties\MilterMacroSourceMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterMacroStageMarkerAttribute.cs" Link="Properties\MilterMacroStageMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\MilterUnobservableActionMarkerAttribute.cs" Link="Properties\MilterUnobservableActionMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\NoReplyRequirementsMarkerAttribute.cs" Link="Properties\NoReplyRequirementsMarkerAttribute.cs" />
     <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolRequirementsMarkerAttribute.cs" Link="Properties\ProtocolRequirementsMarkerAttribute.cs" />
+    <Compile Include="..\Josupeit.Mail.Milter.Generator\Markers\ProtocolVersionRequirementMarkerAttribute.cs" Link="Properties\ProtocolVersionRequirementMarkerAttribute.cs" />
+  </ItemGroup>
+
+  <ItemGroup Label="Additional Files">
+    <AdditionalFiles Include="PublicAPI.Shipped.txt" />
+    <AdditionalFiles Include="PublicAPI.Unshipped.txt" />
   </ItemGroup>
 
   <!--

@@ -34,7 +34,7 @@ public class RequestPacketFactory : IRequestPacketFactory
     private static readonly IReadOnlyDictionary<string, string> _emptyMacros = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(capacity: 0));
 
     /// <inheritdoc />
-    public RequestPacket CreateRequestPacket(RequestFrame frame)
+    public virtual RequestPacket CreateRequestPacket(RequestFrame frame)
     {
         try
         {
@@ -52,8 +52,11 @@ public class RequestPacketFactory : IRequestPacketFactory
                 CommandCode.OptionNegotiation => CreateOptionNegotiationRequestPacket(frame.Data),
                 CommandCode.Recipient => CreateRecipientRequestPacket(frame.Data),
                 CommandCode.Quit => CreateQuitRequestPacket(frame.Data),
+                CommandCode.MessageData => CreateMessageDataRequestPacket(frame.Data),
+                CommandCode.UnknownCommand => CreateUnknownCommandRequestPacket(frame.Data),
+                CommandCode.QuitForNewConnection => CreateQuitForNewConnectionRequestPacket(frame.Data),
 
-                _ => throw new ArgumentOutOfRangeException(nameof(frame))
+                _ => throw new ArgumentOutOfRangeException(nameof(frame)),
             };
         }
         catch
@@ -71,6 +74,149 @@ public class RequestPacketFactory : IRequestPacketFactory
             if (frame.CommandCode != CommandCode.BodyChunk)
                 frame.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Whether any bytes are left to read.
+    /// </summary>
+    /// <param name="remaining">The unread remainder of the payload.</param>
+    /// <returns><see langword="true"/> when at least one byte is left.</returns>
+    protected static bool HasNext(ReadOnlySpan<byte> remaining)
+    {
+        return !remaining.IsEmpty;
+    }
+
+    /// <summary>
+    /// Takes a fixed number of bytes off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="length">How many bytes to take.</param>
+    /// <param name="value">The bytes taken, or empty when there were too few.</param>
+    /// <returns><see langword="false"/> when fewer than <paramref name="length"/> bytes are left.</returns>
+    protected static bool TryGetNextBytes(ref ReadOnlySpan<byte> remaining, int length, out ReadOnlySpan<byte> value)
+    {
+        if (length < 0)
+            throw new ArgumentOutOfRangeException(nameof(length), length, message: null);
+
+        if (remaining.Length < length)
+        {
+            value = default;
+
+            return false;
+        }
+
+        value = remaining[..length];
+        remaining = remaining[length..];
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a single byte off the front of the payload and reads it as a character.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="value">The character read, or the default when nothing was left.</param>
+    /// <returns><see langword="false"/> when the payload is exhausted.</returns>
+    protected static bool TryGetNextChar(ref ReadOnlySpan<byte> remaining, out char value)
+    {
+        if (!TryGetNextBytes(ref remaining, length: 1, out var bytes))
+        {
+            value = default;
+
+            return false;
+        }
+
+        value = (char)bytes[0];
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a string of known length off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="length">How many bytes the string occupies.</param>
+    /// <param name="value">The string read, or <see langword="null"/> when there were too few bytes.</param>
+    /// <returns><see langword="false"/> when fewer than <paramref name="length"/> bytes are left.</returns>
+    protected static bool TryGetNextStringFixedLength(ref ReadOnlySpan<byte> remaining, int length, [NotNullWhen(true)] out string? value)
+    {
+        if (!TryGetNextBytes(ref remaining, length, out var bytes))
+        {
+            value = null;
+
+            return false;
+        }
+
+        value = Encoding.Latin1.GetString(bytes);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a NUL-terminated string off the front of the payload.
+    /// </summary>
+    /// <remarks>
+    /// The protocol's usual string form. A payload whose last string is unterminated is malformed, which is why
+    /// a missing terminator fails rather than yielding the rest.
+    /// </remarks>
+    /// <param name="remaining">The unread remainder, advanced past the string and its terminator.</param>
+    /// <param name="value">The string read, or <see langword="null"/> when no terminator was found.</param>
+    /// <returns><see langword="false"/> when the payload holds no NUL terminator.</returns>
+    protected static bool TryGetNextStringVariableLength(ref ReadOnlySpan<byte> remaining, [NotNullWhen(true)] out string? value)
+    {
+        var terminator = remaining.IndexOf((byte)0);
+
+        if (terminator < 0)
+        {
+            value = null;
+
+            return false;
+        }
+
+        value = Encoding.Latin1.GetString(remaining[..terminator]);
+        remaining = remaining[(terminator + 1)..];
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a big-endian unsigned 16-bit integer off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="value">The value read, or zero when there were too few bytes.</param>
+    /// <returns><see langword="false"/> when fewer than two bytes are left.</returns>
+    protected static bool TryGetNextUInt16(ref ReadOnlySpan<byte> remaining, out ushort value)
+    {
+        if (!TryGetNextBytes(ref remaining, sizeof(ushort), out var bytes))
+        {
+            value = default;
+
+            return false;
+        }
+
+        value = BinaryPrimitives.ReadUInt16BigEndian(bytes);
+
+        return true;
+    }
+
+    /// <summary>
+    /// Takes a big-endian unsigned 32-bit integer off the front of the payload.
+    /// </summary>
+    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
+    /// <param name="value">The value read, or zero when there were too few bytes.</param>
+    /// <returns><see langword="false"/> when fewer than four bytes are left.</returns>
+    protected static bool TryGetNextUInt32(ref ReadOnlySpan<byte> remaining, out uint value)
+    {
+        if (!TryGetNextBytes(ref remaining, sizeof(uint), out var bytes))
+        {
+            value = default;
+
+            return false;
+        }
+
+        value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
+
+        return true;
     }
 
     /// <summary>
@@ -245,6 +391,17 @@ public class RequestPacketFactory : IRequestPacketFactory
     }
 
     /// <summary>
+    /// Builds a <see cref="MessageDataRequestPacket"/> from the frame's payload. Override to change how it is
+    /// read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    protected virtual MessageDataRequestPacket CreateMessageDataRequestPacket(ReadOnlyMemory<byte> data)
+    {
+        return MessageDataRequestPacket.Instance;
+    }
+
+    /// <summary>
     /// Builds an <see cref="OptionNegotiationRequestPacket"/> from the frame's payload. Override to change how
     /// it is read.
     /// </summary>
@@ -288,6 +445,17 @@ public class RequestPacketFactory : IRequestPacketFactory
     protected virtual QuitRequestPacket CreateQuitRequestPacket(ReadOnlyMemory<byte> data)
     {
         return QuitRequestPacket.Instance;
+    }
+
+    /// <summary>
+    /// Builds a <see cref="QuitForNewConnectionRequestPacket"/> from the frame's payload. Override to change
+    /// how it is read.
+    /// </summary>
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    protected virtual QuitForNewConnectionRequestPacket CreateQuitForNewConnectionRequestPacket(ReadOnlyMemory<byte> data)
+    {
+        return QuitForNewConnectionRequestPacket.Instance;
     }
 
     /// <summary>
@@ -341,146 +509,25 @@ public class RequestPacketFactory : IRequestPacketFactory
     }
 
     /// <summary>
-    /// Whether any bytes are left to read.
+    /// Builds an <see cref="UnknownCommandRequestPacket"/> from the frame's payload. Override to change how it
+    /// is read.
     /// </summary>
-    /// <param name="remaining">The unread remainder of the payload.</param>
-    /// <returns><see langword="true"/> when at least one byte is left.</returns>
-    protected static bool HasNext(ReadOnlySpan<byte> remaining)
+    /// <param name="data">The frame's payload.</param>
+    /// <returns>The packet.</returns>
+    /// <exception cref="InvalidOperationException">The payload is not a well-formed Unknown frame.</exception>
+    protected virtual UnknownCommandRequestPacket CreateUnknownCommandRequestPacket(ReadOnlyMemory<byte> data)
     {
-        return !remaining.IsEmpty;
-    }
+        var remaining = data.Span;
+        var hasReadEverything = TryGetNextStringVariableLength(ref remaining, out var commandText);
 
-    /// <summary>
-    /// Takes a fixed number of bytes off the front of the payload.
-    /// </summary>
-    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
-    /// <param name="length">How many bytes to take.</param>
-    /// <param name="value">The bytes taken, or empty when there were too few.</param>
-    /// <returns><see langword="false"/> when fewer than <paramref name="length"/> bytes are left.</returns>
-    protected static bool TryGetNextBytes(ref ReadOnlySpan<byte> remaining, int length, out ReadOnlySpan<byte> value)
-    {
-        if (length < 0)
-            throw new ArgumentOutOfRangeException(nameof(length), length, message: null);
+        EnsureHasReadEverything(hasReadEverything);
 
-        if (remaining.Length < length)
+        var packet = new UnknownCommandRequestPacket
         {
-            value = default;
+            CommandText = commandText!,
+        };
 
-            return false;
-        }
-
-        value = remaining[..length];
-        remaining = remaining[length..];
-
-        return true;
-    }
-
-    /// <summary>
-    /// Takes a single byte off the front of the payload and reads it as a character.
-    /// </summary>
-    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
-    /// <param name="value">The character read, or the default when nothing was left.</param>
-    /// <returns><see langword="false"/> when the payload is exhausted.</returns>
-    protected static bool TryGetNextChar(ref ReadOnlySpan<byte> remaining, out char value)
-    {
-        if (!TryGetNextBytes(ref remaining, length: 1, out var bytes))
-        {
-            value = default;
-
-            return false;
-        }
-
-        value = (char)bytes[0];
-
-        return true;
-    }
-
-    /// <summary>
-    /// Takes a string of known length off the front of the payload.
-    /// </summary>
-    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
-    /// <param name="length">How many bytes the string occupies.</param>
-    /// <param name="value">The string read, or <see langword="null"/> when there were too few bytes.</param>
-    /// <returns><see langword="false"/> when fewer than <paramref name="length"/> bytes are left.</returns>
-    protected static bool TryGetNextStringFixedLength(ref ReadOnlySpan<byte> remaining, int length, [NotNullWhen(true)] out string? value)
-    {
-        if (!TryGetNextBytes(ref remaining, length, out var bytes))
-        {
-            value = null;
-
-            return false;
-        }
-
-        value = Encoding.Latin1.GetString(bytes);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Takes a NUL-terminated string off the front of the payload.
-    /// </summary>
-    /// <remarks>
-    /// The protocol's usual string form. A payload whose last string is unterminated is malformed, which is why
-    /// a missing terminator fails rather than yielding the rest.
-    /// </remarks>
-    /// <param name="remaining">The unread remainder, advanced past the string and its terminator.</param>
-    /// <param name="value">The string read, or <see langword="null"/> when no terminator was found.</param>
-    /// <returns><see langword="false"/> when the payload holds no NUL terminator.</returns>
-    protected static bool TryGetNextStringVariableLength(ref ReadOnlySpan<byte> remaining, [NotNullWhen(true)] out string? value)
-    {
-        var terminator = remaining.IndexOf((byte)0);
-
-        if (terminator < 0)
-        {
-            value = null;
-
-            return false;
-        }
-
-        value = Encoding.Latin1.GetString(remaining[..terminator]);
-        remaining = remaining[(terminator + 1)..];
-
-        return true;
-    }
-
-    /// <summary>
-    /// Takes a big-endian unsigned 16-bit integer off the front of the payload.
-    /// </summary>
-    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
-    /// <param name="value">The value read, or zero when there were too few bytes.</param>
-    /// <returns><see langword="false"/> when fewer than two bytes are left.</returns>
-    protected static bool TryGetNextUInt16(ref ReadOnlySpan<byte> remaining, out ushort value)
-    {
-        if (!TryGetNextBytes(ref remaining, sizeof(ushort), out var bytes))
-        {
-            value = default;
-
-            return false;
-        }
-
-        value = BinaryPrimitives.ReadUInt16BigEndian(bytes);
-
-        return true;
-    }
-
-    /// <summary>
-    /// Takes a big-endian unsigned 32-bit integer off the front of the payload.
-    /// </summary>
-    /// <param name="remaining">The unread remainder, advanced past what was taken.</param>
-    /// <param name="value">The value read, or zero when there were too few bytes.</param>
-    /// <returns><see langword="false"/> when fewer than four bytes are left.</returns>
-    protected static bool TryGetNextUInt32(ref ReadOnlySpan<byte> remaining, out uint value)
-    {
-        if (!TryGetNextBytes(ref remaining, sizeof(uint), out var bytes))
-        {
-            value = default;
-
-            return false;
-        }
-
-        value = BinaryPrimitives.ReadUInt32BigEndian(bytes);
-
-        return true;
+        return packet;
     }
 
     private static EndPoint? CreateEndPoint(ProtocolFamily protocolFamily, ushort port, string addressText)

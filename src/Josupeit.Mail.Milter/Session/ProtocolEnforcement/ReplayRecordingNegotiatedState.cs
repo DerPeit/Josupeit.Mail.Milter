@@ -10,7 +10,7 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
-internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine stateMachine) : ProtocolState
+internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine stateMachine, ProtocolNegotiationOutcome negotiation) : ProtocolState
 {
     private readonly List<RequestPacket> _packetReplayHistory = new(capacity: 8);
 
@@ -19,8 +19,7 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
     // replayed into the context that serves the next one.
     public override async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
 
@@ -29,55 +28,57 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnBodyChunk);
+        return ProcessRequest(request, static (ca, packet) => ca.OnBodyChunk(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnClientHello);
+        return ProcessRequest(request, static (ca, packet) => ca.OnClientHello(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessConnectionAttempt(ConnectRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         _packetReplayHistory.Add(request);
 
-        return ProcessRequestCore(request, static ca => ca.OnConnectionEstablished);
+        return ProcessRequestCore(request, static (ca, packet) => ca.OnConnectionEstablished(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfBody);
+        return ProcessRequest(request, static (ca, packet) => ca.OnEndOfBody(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfHeaders);
+        return ProcessRequest(request, static (ca, packet) => ca.OnEndOfHeaders(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnHeader);
+        return ProcessRequest(request, static (ca, packet) => ca.OnHeader(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         _packetReplayHistory.Add(request);
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
 
         return new(contextAdapter.OnDefineMacro(request));
     }
 
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static (ca, packet) => ca.OnMessageDataStarted(packet));
+    }
+
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
 
@@ -88,17 +89,42 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
         }
     }
 
+    // The SMTP connection is over but the milter connection is not: a different client follows on this
+    // socket. The context goes, because the message it was serving is over, and the machine returns to
+    // the state that precedes a connection rather than the one that follows it - ConnectedState does not
+    // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
+
+        async Task ToNegotiatedState()
+        {
+            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+            await stateMachine.TransitionTo(NegotiatedStateFactory.Create(stateMachine, stateMachine.Configuration, negotiation)).ConfigureAwait(false);
+        }
+    }
+
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnRecipient);
+        return ProcessRequest(request, static (ca, packet) => ca.OnRecipient(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnSender);
+        return ProcessRequest(request, static (ca, packet) => ca.OnSender(packet));
     }
 
-    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static (ca, packet) => ca.OnUnknownCommand(packet));
+    }
+
+    // The callback arrives as (adapter, packet) rather than as a method group off the adapter. A method
+    // group with a receiver cannot be cached, so the shorter `static ca => ca.OnHeader` allocated a
+    // delegate for every event that reached this state, and events are the hot path here.
+    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, TRequest, IAsyncEnumerable<ResponsePacket>> processor)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
@@ -106,13 +132,13 @@ internal sealed class ReplayRecordingNegotiatedState(IProtocolStateMachine state
         return ProcessRequestCore(request, processor);
     }
 
-    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequestCore<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor)
+    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequestCore<TRequest>(TRequest request, Func<ContextAdapter, TRequest, IAsyncEnumerable<ResponsePacket>> processor)
     {
-        var contextAdapter = stateMachine.EnsureContextAdapter();
-        var responses = processor(contextAdapter).Invoke(request);
+        var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
+        var responses = processor(contextAdapter, request);
 
         return new(responses.Finally(ToReplayingConnectedState));
 
-        async Task ToReplayingConnectedState() => await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, _packetReplayHistory)).ConfigureAwait(false);
+        async Task ToReplayingConnectedState() => await stateMachine.TransitionTo(new ReplayingConnectedState(stateMachine, negotiation, _packetReplayHistory)).ConfigureAwait(false);
     }
 }

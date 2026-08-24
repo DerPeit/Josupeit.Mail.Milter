@@ -10,7 +10,10 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class EndOfBodyRequestPacket : RequestPacket
 {
-    internal static readonly EndOfBodyRequestPacket Instance = new();
+    /// <summary>
+    /// The single shared instance. This packet carries nothing, so there is never a reason for another.
+    /// </summary>
+    public static readonly EndOfBodyRequestPacket Instance = new();
 
     private EndOfBodyRequestPacket()
     {
@@ -19,8 +22,7 @@ public sealed class EndOfBodyRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitEndOfBodyRequestPacket(this);
     }

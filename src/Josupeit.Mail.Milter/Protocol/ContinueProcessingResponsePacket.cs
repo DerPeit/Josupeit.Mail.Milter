@@ -10,7 +10,10 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class ContinueProcessingResponsePacket : ResponsePacket
 {
-    internal static readonly ContinueProcessingResponsePacket Instance = new();
+    /// <summary>
+    /// The single shared instance. This packet carries nothing, so there is never a reason for another.
+    /// </summary>
+    public static readonly ContinueProcessingResponsePacket Instance = new();
 
     private ContinueProcessingResponsePacket()
     {
@@ -19,8 +22,7 @@ public sealed class ContinueProcessingResponsePacket : ResponsePacket
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitContinueProcessingResponsePacket(this);
     }

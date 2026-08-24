@@ -24,12 +24,12 @@ internal abstract class MilterContextAdapter : IMilterContext
         return new(CommitActions.Continue);
     }
 
-    public virtual ValueTask<CommitAction> OnSender(SenderRecipientInformation info, CancellationToken cancellationToken)
+    public virtual ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
     }
 
-    public virtual ValueTask<CommitAction> OnRecipient(SenderRecipientInformation info, CancellationToken cancellationToken)
+    public virtual ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
     {
         return new(CommitActions.Continue);
     }

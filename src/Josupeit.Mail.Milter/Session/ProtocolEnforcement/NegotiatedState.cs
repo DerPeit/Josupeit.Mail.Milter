@@ -10,7 +10,7 @@ using Josupeit.Mail.Milter.Protocol;
 
 namespace Josupeit.Mail.Milter.Session.ProtocolEnforcement;
 
-internal sealed class NegotiatedState(IProtocolStateMachine stateMachine) : ProtocolState
+internal sealed class NegotiatedState(IProtocolStateMachine stateMachine, ProtocolNegotiationOutcome negotiation) : ProtocolState
 {
     // An MTA is in a transaction from the moment it begins a connection event, which is before it decides
     // whether to deliver one to us at all. So a filter that requires neither Connect nor ClientHello sits
@@ -19,8 +19,7 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine) : Prot
     // just dropping it; the state itself already is that point.
     public override async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
 
@@ -29,49 +28,52 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine) : Prot
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessBodyChunk(BodyChunkRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnBodyChunk);
+        return ProcessRequest(request, static (ca, packet) => ca.OnBodyChunk(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessClientHello(HeloRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnClientHello);
+        return ProcessRequest(request, static (ca, packet) => ca.OnClientHello(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessConnectionAttempt(ConnectRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnConnectionEstablished);
+        return ProcessRequest(request, static (ca, packet) => ca.OnConnectionEstablished(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfBody(EndOfBodyRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfBody);
+        return ProcessRequest(request, static (ca, packet) => ca.OnEndOfBody(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessEndOfHeaders(EndOfHeadersRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnEndOfHeaders);
+        return ProcessRequest(request, static (ca, packet) => ca.OnEndOfHeaders(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessHeader(HeaderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnHeader);
+        return ProcessRequest(request, static (ca, packet) => ca.OnHeader(packet));
     }
 
     // A macro definition carries no message content, so it neither starts the next message nor transitions.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
+        var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
 
         return new(contextAdapter.OnDefineMacro(request));
     }
 
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMessageDataStart(MessageDataRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static (ca, packet) => ca.OnMessageDataStarted(packet));
+    }
+
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
 
@@ -82,26 +84,51 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine) : Prot
         }
     }
 
+    // The SMTP connection is over but the milter connection is not: a different client follows on this
+    // socket. The context goes, because the message it was serving is over, and the machine returns to
+    // the state that precedes a connection rather than the one that follows it - ConnectedState does not
+    // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
+
+        async Task ToNegotiatedState()
+        {
+            await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
+            await stateMachine.TransitionTo(NegotiatedStateFactory.Create(stateMachine, stateMachine.Configuration, negotiation)).ConfigureAwait(false);
+        }
+    }
+
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRecipient(RecipientRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnRecipient);
+        return ProcessRequest(request, static (ca, packet) => ca.OnRecipient(packet));
     }
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessSender(SenderRequestPacket request, CancellationToken cancellationToken)
     {
-        return ProcessRequest(request, static ca => ca.OnSender);
+        return ProcessRequest(request, static (ca, packet) => ca.OnSender(packet));
     }
 
-    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, Func<TRequest, IAsyncEnumerable<ResponsePacket>>> processor)
+    public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessUnknownCommand(UnknownCommandRequestPacket request, CancellationToken cancellationToken)
+    {
+        return ProcessRequest(request, static (ca, packet) => ca.OnUnknownCommand(packet));
+    }
+
+    // The callback arrives as (adapter, packet) rather than as a method group off the adapter. A method
+    // group with a receiver cannot be cached, so the shorter `static ca => ca.OnHeader` allocated a
+    // delegate for every event that reached this state, and events are the hot path here.
+    private ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessRequest<TRequest>(TRequest request, Func<ContextAdapter, TRequest, IAsyncEnumerable<ResponsePacket>> processor)
     {
         if (request == null)
             throw new ArgumentNullException(nameof(request));
 
-        var contextAdapter = stateMachine.EnsureContextAdapter();
-        var responses = processor(contextAdapter).Invoke(request);
+        var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
+        var responses = processor(contextAdapter, request);
 
         return new(responses.Finally(ToConnectedState));
 
-        async Task ToConnectedState() => await stateMachine.TransitionTo(new ConnectedState(stateMachine)).ConfigureAwait(false);
+        async Task ToConnectedState() => await stateMachine.TransitionTo(new ConnectedState(stateMachine, negotiation)).ConfigureAwait(false);
     }
 }
