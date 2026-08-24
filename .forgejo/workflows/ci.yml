@@ -29,8 +29,11 @@ jobs:
       - name: Restore local tools
         run: dotnet tool restore
 
+      # -warnaserror here rather than TreatWarningsAsErrors in Directory.Build.props: the analyzers are
+      # a gate on what lands, not on what a working tree compiles, so a half-finished local edit still
+      # builds while an unaddressed warning never reaches a branch.
       - name: Build
-        run: dotnet build --configuration Release
+        run: dotnet build --configuration Release -warnaserror
 
       # The unit tests only. Josupeit.Mail.Milter.IntegrationTests drives a real Postfix through
       # Testcontainers and needs a Docker daemon of its own, which the shared runners do not hand out -
