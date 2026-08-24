@@ -19,8 +19,7 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine, Protoc
     // just dropping it; the state itself already is that point.
     public override async ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         await stateMachine.DisposeContextAdapter().ConfigureAwait(false);
 
@@ -60,8 +59,7 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine, Protoc
     // A macro definition carries no message content, so it neither starts the next message nor transitions.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
 
@@ -75,8 +73,7 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine, Protoc
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
 
@@ -93,8 +90,7 @@ internal sealed class NegotiatedState(IProtocolStateMachine stateMachine, Protoc
     // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
 

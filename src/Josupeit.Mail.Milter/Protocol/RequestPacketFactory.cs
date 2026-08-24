@@ -34,7 +34,7 @@ public class RequestPacketFactory : IRequestPacketFactory
     private static readonly IReadOnlyDictionary<string, string> _emptyMacros = new ReadOnlyDictionary<string, string>(new Dictionary<string, string>(capacity: 0));
 
     /// <inheritdoc />
-    public RequestPacket CreateRequestPacket(RequestFrame frame)
+    public virtual RequestPacket CreateRequestPacket(RequestFrame frame)
     {
         try
         {
@@ -56,7 +56,7 @@ public class RequestPacketFactory : IRequestPacketFactory
                 CommandCode.UnknownCommand => CreateUnknownCommandRequestPacket(frame.Data),
                 CommandCode.QuitForNewConnection => CreateQuitForNewConnectionRequestPacket(frame.Data),
 
-                _ => throw new ArgumentOutOfRangeException(nameof(frame))
+                _ => throw new ArgumentOutOfRangeException(nameof(frame)),
             };
         }
         catch

@@ -9,16 +9,23 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// <remarks>
 /// The layer above the wire: <see cref="RequestPacketFactory"/> builds these from
 /// <see cref="Link.RequestFrame"/>s, and everything past that point works with the typed packet rather
-/// than with bytes. Dispatch is by visitor - see <see cref="RequestPacketVisitor"/> - which is why the
-/// hierarchy is closed: the constructor is <see langword="private protected"/>, so the set of packets is
-/// exactly the set this assembly declares and a visitor can be sure it has covered all of them.
+/// than with bytes. Dispatch is by visitor - see <see cref="RequestPacketVisitor"/> - and the hierarchy
+/// is open, so a derived factory can introduce a packet type of its own.
+/// <para>
+/// A packet of one's own needs a visitor of one's own, which is the shape of the pattern rather than a
+/// restriction: a new kind of packet needs a new method to handle it, and no existing one would fit.
+/// Derive <see cref="RequestPacketVisitor"/>, give it that method, and have <see cref="Accept"/>
+/// recognise the visitor and call it - returning <see langword="false"/> for any other visitor, which is
+/// what that return value is for.
+/// </para>
+/// <para>
+/// A visitor of this library's meeting such a packet says so: the session controller throws rather than
+/// carrying on, because a packet nothing answered would otherwise leave the session waiting on a reply
+/// that was never composed.
+/// </para>
 /// </remarks>
 public abstract class RequestPacket
 {
-    private protected RequestPacket()
-    {
-    }
-
     /// <summary>
     /// Dispatches to the visitor method matching this packet's type.
     /// </summary>

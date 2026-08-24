@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Josupeit.Mail.Milter.Generator.Markers;
 
 namespace Josupeit.Mail.Milter;
@@ -17,6 +18,7 @@ namespace Josupeit.Mail.Milter;
 /// </remarks>
 [Flags]
 [ProtocolRequirementsMarker]
+[SuppressMessage("Design", "CA1008:Enums should have zero value", Justification = "EndOfBody is the zero member because that event cannot be excluded, so it has no flag to clear. Naming it None would claim the enum can request nothing.")]
 public enum ProtocolRequirements
 {
     /// <summary>

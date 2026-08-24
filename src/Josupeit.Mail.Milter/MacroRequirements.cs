@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Josupeit.Mail.Milter.Generator.Markers;
@@ -84,9 +85,7 @@ public sealed record MacroRequirements
     /// <see langword="null"/>.</exception>
     public MacroRequirements And(ProtocolStage stage, params string[] macroNames)
     {
-        if (macroNames == null)
-            throw new ArgumentNullException(nameof(macroNames));
-
+        ArgumentNullException.ThrowIfNull(macroNames);
         ArgumentException.ThrowIfInvalidMacroClass(stage);
 
         foreach (var macroName in macroNames)
@@ -96,7 +95,7 @@ public sealed record MacroRequirements
 
             // The wire carries one stage's names as a single space-separated string, so a name with a
             // space in it silently becomes two names the MTA will never match.
-            if (macroName.Contains(' '))
+            if (macroName.Contains(' ', StringComparison.Ordinal))
                 throw new ArgumentException("A macro name must not contain a space.", nameof(macroNames));
         }
 
@@ -167,6 +166,7 @@ public sealed record MacroRequirements
 // the wire that means something else. Only the guard lives here - the codes themselves belong to the
 // frame factory, which is the one place that writes them, so nothing outside it has to know that the
 // numbers are not ProtocolStage's own.
+[SuppressMessage("StyleCop.CSharp.MaintainabilityRules", "SA1402:File may only contain a single type", Justification = "A file-scoped guard for this file alone, so it has nowhere else to live.")]
 file static class MacroClass
 {
     extension(ArgumentException)

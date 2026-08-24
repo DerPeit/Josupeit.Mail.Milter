@@ -1,9 +1,10 @@
-// SPDX-License-Identifier: EUPL-1.2
+﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -114,7 +115,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             properties.Add(RenderProperty(deliveryProperty!, Combine(deliveryProperty!.Type, delivery)));
 
             if (delivery.Length > 0)
-                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(deliveryProperty!.Type, DeliveryRequirementsMarkerAttribute.IsDescribedBy, DeliveryRequirementsMarkerAttribute.GetMinimumProtocolVersion));
+                minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(deliveryProperty.Type, DeliveryRequirementsMarkerAttribute.IsDescribedBy, DeliveryRequirementsMarkerAttribute.GetMinimumProtocolVersion));
         }
 
         if (NeedsGenerating(contextType, noReplyProperty))
@@ -187,6 +188,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             Diagnostics: diagnostics);
     }
 
+    [SuppressMessage("ApiDesign", "RS0030:Do not use banned APIs", Justification = "The ban is about milter frames, and this is C# source. SourceText.From needs an encoding with a preamble or the sources cannot be embedded in the symbol package.")]
     private static void Emit(SourceProductionContext context, MilterContextEmission emission)
     {
         foreach (var diagnostic in emission.Diagnostics)
@@ -217,6 +219,7 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         source.Append(Indent(depth)).Append(emission.TypeDeclaration).AppendLine();
         source.Append(Indent(depth)).AppendLine("{");
 
+        // ReSharper disable once AccessToModifiedClosure, because it's instantly handled
         source.AppendLine(string.Join(NEW_LINE + NEW_LINE, emission.Properties.Select(property => Reindent(property, depth + 1))));
 
         source.Append(Indent(depth)).AppendLine("}");

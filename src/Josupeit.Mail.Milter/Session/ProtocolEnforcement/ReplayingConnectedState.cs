@@ -14,8 +14,7 @@ internal sealed class ReplayingConnectedState(IProtocolStateMachine stateMachine
 {
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToAbortedState));
 
@@ -63,8 +62,7 @@ internal sealed class ReplayingConnectedState(IProtocolStateMachine stateMachine
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
 
@@ -81,8 +79,7 @@ internal sealed class ReplayingConnectedState(IProtocolStateMachine stateMachine
     // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
 

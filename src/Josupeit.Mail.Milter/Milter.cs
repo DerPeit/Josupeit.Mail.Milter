@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Pipelines;
 using System.Net.Sockets;
 using System.Threading;
@@ -35,7 +36,9 @@ namespace Josupeit.Mail.Milter;
 /// The filter. One instance is built per message, either through the factory passed to the constructor
 /// or through <see cref="System.Activator"/>, which needs a public parameterless constructor.
 /// </typeparam>
-public sealed class Milter<TContext> where TContext : IMilterContext
+[SuppressMessage("Design", "CA1001:Types that own disposable fields should be disposable", Justification = "The cancellation source belongs to a run, not to the instance: Start creates it and Stop disposes it.")]
+public class Milter<TContext>
+    where TContext : IMilterContext
 {
     private readonly Socket _socket;
     private readonly MilterOptions _options;
@@ -48,26 +51,51 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     private AsyncMonitor? _monitor;
     private int _activeSessions;
 
+    // Four overloads and not an optional parameter among them, which is uglier than two and correct
+    // where two were not. Both of the old pair ended in an optional MilterOptions, so `new Milter<T>(
+    // socket, null)` could not be resolved at all, and giving either one a further optional parameter
+    // later would have silently rebound call sites that already compiled. RS0026 says so, and it is
+    // right.
+
     /// <summary>
-    /// Creates a milter that builds each context through <see cref="System.Activator"/>.
+    /// Creates a milter that builds each context through <see cref="System.Activator"/>, with the
+    /// default limits.
     /// </summary>
     /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
     /// it.</param>
-    /// <param name="options">Limits on frame size and session count, or <see langword="null"/> for the
-    /// defaults.</param>
     /// <exception cref="ArgumentNullException"><paramref name="socket"/> is <see langword="null"/>.</exception>
-    public Milter(Socket socket, MilterOptions? options = null)
+    public Milter(Socket socket)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
             contextFactory: null,
-            options,
+            options: null,
             timeout: null,
             timeProvider: null)
     {
     }
 
     /// <summary>
-    /// Creates a milter that builds each context through a factory. Use this when the filter has dependencies.
+    /// Creates a milter that builds each context through <see cref="System.Activator"/>.
+    /// </summary>
+    /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
+    /// it.</param>
+    /// <param name="options">Limits on frame size and session count.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="socket"/> or <paramref name="options"/> is <see langword="null"/>.
+    /// </exception>
+    public Milter(Socket socket, MilterOptions options)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory: null,
+            options ?? throw new ArgumentNullException(nameof(options)),
+            timeout: null,
+            timeProvider: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a milter that builds each context through a factory, with the default limits. Use this
+    /// when the filter has dependencies.
     /// </summary>
     /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
     /// it.</param>
@@ -75,16 +103,39 @@ public sealed class Milter<TContext> where TContext : IMilterContext
     /// Called once per message. It may be called from several sessions at once, so it has to be safe to
     /// call concurrently - the contexts it returns need not be.
     /// </param>
-    /// <param name="options">Limits on frame size and session count, or <see langword="null"/> for the
-    /// defaults.</param>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="socket"/> or <paramref name="contextFactory"/> is <see langword="null"/>.
     /// </exception>
-    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions? options = null)
+    public Milter(Socket socket, Func<TContext> contextFactory)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
             contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
-            options,
+            options: null,
+            timeout: null,
+            timeProvider: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a milter that builds each context through a factory. Use this when the filter has
+    /// dependencies.
+    /// </summary>
+    /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
+    /// it.</param>
+    /// <param name="contextFactory">
+    /// Called once per message. It may be called from several sessions at once, so it has to be safe to
+    /// call concurrently - the contexts it returns need not be.
+    /// </param>
+    /// <param name="options">Limits on frame size and session count.</param>
+    /// <exception cref="ArgumentNullException">
+    /// <paramref name="socket"/>, <paramref name="contextFactory"/> or <paramref name="options"/> is
+    /// <see langword="null"/>.
+    /// </exception>
+    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions options)
+        : this(
+            socket ?? throw new ArgumentNullException(nameof(socket)),
+            contextFactory ?? throw new ArgumentNullException(nameof(contextFactory)),
+            options ?? throw new ArgumentNullException(nameof(options)),
             timeout: null,
             timeProvider: null)
     {
@@ -169,6 +220,112 @@ public sealed class Milter<TContext> where TContext : IMilterContext
                 await _monitor.WaitAsync().ConfigureAwait(false);
     }
 
+    // The six pieces of the per-connection pipeline, each behind a method a derived milter can replace.
+    // Without these the wire layer is public and non-sealed for nothing: a consumer can subclass a packet
+    // factory or a link reader perfectly well, and has nowhere to hand the result to, because this class
+    // used to build them all with new. Constructing a Session by hand is the alternative, and it means
+    // rebuilding the accept loop, the pipes and both channels as well.
+    //
+    // Called once per connection rather than once per milter, so an override may return a fresh instance
+    // each time or a shared one - whichever it is has to be safe for the connections that share it.
+
+    /// <summary>
+    /// Creates the reader that turns the connection's bytes into frames.
+    /// </summary>
+    /// <param name="reader">The pipe over the connection's stream.</param>
+    /// <param name="maxFrameLength">The largest frame to accept, from the options this milter was given.</param>
+    /// <returns>The reader for one connection.</returns>
+    protected virtual ILinkReader CreateLinkReader(PipeReader reader, uint maxFrameLength)
+    {
+        return new LinkReader(reader, maxFrameLength);
+    }
+
+    /// <summary>
+    /// Creates the writer that puts frames back on the connection.
+    /// </summary>
+    /// <param name="writer">The pipe over the connection's stream.</param>
+    /// <returns>The writer for one connection.</returns>
+    protected virtual ILinkWriter CreateLinkWriter(PipeWriter writer)
+    {
+        return new LinkWriter(writer);
+    }
+
+    /// <summary>
+    /// Creates the worker that reads frames and puts them on the request channel.
+    /// </summary>
+    /// <param name="linkReader">The reader to take frames from.</param>
+    /// <param name="frameWriter">The channel the session reads its requests from.</param>
+    /// <param name="maxFrameLength">The largest frame to accept, from the options this milter was given.</param>
+    /// <returns>The parser for one connection.</returns>
+    protected virtual IRequestParser CreateRequestParser(ILinkReader linkReader, ChannelWriter<RequestFrame> frameWriter, uint maxFrameLength)
+    {
+        return new RequestParser(linkReader, frameWriter, maxFrameLength);
+    }
+
+    /// <summary>
+    /// Creates the worker that takes the session's responses and writes them out.
+    /// </summary>
+    /// <param name="frameReader">The channel the session writes its responses to.</param>
+    /// <param name="linkWriter">The writer to hand frames to.</param>
+    /// <returns>The formatter for one connection.</returns>
+    protected virtual IResponseFormatter CreateResponseFormatter(ChannelReader<ResponseFrame> frameReader, ILinkWriter linkWriter)
+    {
+        return new ResponseFormatter(frameReader, linkWriter);
+    }
+
+    /// <summary>
+    /// Creates the factory that turns request frames into typed packets.
+    /// </summary>
+    /// <returns>The factory for one connection.</returns>
+    protected virtual IRequestPacketFactory CreateRequestPacketFactory()
+    {
+        return new RequestPacketFactory();
+    }
+
+    /// <summary>
+    /// Creates the factory that turns response packets back into frames.
+    /// </summary>
+    /// <returns>The factory for one connection.</returns>
+    protected virtual IResponseFrameFactory CreateResponseFrameFactory()
+    {
+        return new ResponseFrameFactory();
+    }
+
+    /// <summary>
+    /// Creates the session that drives one connection's protocol state machine.
+    /// </summary>
+    /// <remarks>
+    /// The last of the pieces, and the one the other six are handed to. The read timeout and the time
+    /// source are deliberately not parameters: they exist so this library's own tests can drive a session
+    /// without waiting, and an override that wants different ones can construct a
+    /// <see cref="Session.Session{TContext}"/> with them directly.
+    /// </remarks>
+    /// <param name="requestFrameReader">The channel the parser publishes frames on.</param>
+    /// <param name="requestPacketFactory">The factory turning those frames into packets.</param>
+    /// <param name="responseFrameFactory">The factory turning answers back into frames.</param>
+    /// <param name="responseFrameWriter">The channel the formatter takes answers from.</param>
+    /// <param name="contextFactory">
+    /// How to build the filter for each message, or <see langword="null"/> to build it through
+    /// <see cref="System.Activator"/>.
+    /// </param>
+    /// <returns>The session for one connection.</returns>
+    protected virtual ISession CreateSession(
+        ChannelReader<RequestFrame> requestFrameReader,
+        IRequestPacketFactory requestPacketFactory,
+        IResponseFrameFactory responseFrameFactory,
+        ChannelWriter<ResponseFrame> responseFrameWriter,
+        Func<TContext>? contextFactory)
+    {
+        return new Session<TContext>(
+            requestFrameReader,
+            requestPacketFactory,
+            responseFrameFactory,
+            responseFrameWriter,
+            contextFactory,
+            _timeout,
+            _timeProvider);
+    }
+
     private async Task AcceptConnections()
     {
         var cancellationToken = _stopper!.Token;
@@ -228,22 +385,20 @@ public sealed class Milter<TContext> where TContext : IMilterContext
 
                     try
                     {
-                        var linkReader = new LinkReader(streamReader, _options.MaxFrameLength);
-                        var linkWriter = new LinkWriter(streamWriter);
+                        var linkReader = CreateLinkReader(streamReader, _options.MaxFrameLength);
+                        var linkWriter = CreateLinkWriter(streamWriter);
 
-                        var requestParser = new RequestParser(linkReader, requestFrameChannel.Writer, _options.MaxFrameLength);
-                        var responseFormatter = new ResponseFormatter(responseFrameChannel.Reader, linkWriter);
+                        var requestParser = CreateRequestParser(linkReader, requestFrameChannel.Writer, _options.MaxFrameLength);
+                        var responseFormatter = CreateResponseFormatter(responseFrameChannel.Reader, linkWriter);
 
-                        var requestPacketFactory = new RequestPacketFactory();
-                        var responseFrameFactory = new ResponseFrameFactory();
+                        var requestPacketFactory = CreateRequestPacketFactory();
+                        var responseFrameFactory = CreateResponseFrameFactory();
 
-                        var session = new Session<TContext>(
+                        var session = CreateSession(
                             requestFrameChannel.Reader,
                             requestPacketFactory,
                             responseFrameFactory,
                             responseFrameChannel.Writer,
-                            _timeout,
-                            _timeProvider,
                             _contextFactory);
 
                         requestParser.Start();

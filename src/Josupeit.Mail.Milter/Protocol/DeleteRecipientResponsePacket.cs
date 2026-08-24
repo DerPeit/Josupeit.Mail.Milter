@@ -10,7 +10,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class DeleteRecipientResponsePacket : ResponsePacket
 {
-    internal DeleteRecipientResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public DeleteRecipientResponsePacket()
     {
     }
 
@@ -22,8 +26,7 @@ public sealed class DeleteRecipientResponsePacket : ResponsePacket
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitDeleteRecipientResponsePacket(this);
     }

@@ -3,15 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Josupeit.Mail.Milter.Link;
 using Josupeit.Mail.Milter.Protocol;
+using Josupeit.Practices.Mixins.Disposable;
 
 namespace Josupeit.Mail.Milter.Session;
 
-internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, ProtocolNegotiationOutcome negotiation) : IAsyncDisposable
+[DisposableMixin]
+internal sealed partial class ContextAdapter(Func<IMilterCallbacks> contextFactory, ProtocolNegotiationOutcome negotiation)
 {
     private IMilterCallbacks? _context;
 
@@ -26,21 +29,6 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
     private bool _isSkippingRecipients;
     private bool _isSkippingHeaders;
     private bool _isSkippingBody;
-
-    public ValueTask DisposeAsync()
-    {
-        switch (_context)
-        {
-            case IAsyncDisposable asyncDisposable:
-                return asyncDisposable.DisposeAsync();
-
-            case IDisposable disposable:
-                disposable.Dispose();
-                break;
-        }
-
-        return new();
-    }
 
     public IAsyncEnumerable<ResponsePacket> OnDefineMacro(DefineMacroRequestPacket request)
     {
@@ -161,6 +149,8 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
             static adapter => adapter._isSkippingBody = true);
     }
 
+    [SuppressMessage("Reliability", "CA2016:Forward the CancellationToken parameter to methods that take one", Justification = "The overload taking one is protected on Action, so this call site cannot reach it. The token is forwarded through WithCancellation, which is where an IAsyncEnumerable receives it.")]
+    [SuppressMessage("StyleCop.CSharp.NamingRules", "SA1313:Parameter names should begin with lower-case letter", Justification = "The packet carries nothing this callback needs, and _ is how that is said.")]
     public IAsyncEnumerable<ResponsePacket> OnEndOfBody(EndOfBodyRequestPacket _)
     {
         var context = _context ??= contextFactory();
@@ -243,6 +233,26 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
                 + "The MTA is not waiting for a reply to that event, so the decision cannot be delivered.");
     }
 
+    private void DisposeManagedResources()
+    {
+        if (_context is IDisposable disposable)
+            disposable.Dispose();
+    }
+
+    private async ValueTask DisposeManagedResourcesAsync()
+    {
+        switch (_context)
+        {
+            case IAsyncDisposable asyncDisposable:
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                break;
+
+            case IDisposable disposable:
+                disposable.Dispose();
+                break;
+        }
+    }
+
     // The three events that repeat, and the only ones a skip means anything for.
     //
     // Two rules that differ on purpose. Skipping is an optimisation, so a skip the MTA never granted
@@ -250,12 +260,13 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
     // drop mail for nothing. Answering a skip from an event that happens once is a different matter -
     // there is nothing to skip, so the filter meant something the protocol cannot express, and that is a
     // programming error rather than a peer's shortfall.
+    [SuppressMessage("Reliability", "CA2016:Forward the CancellationToken parameter to methods that take one", Justification = "The overload taking one is protected on Action, so this call site cannot reach it. The token is forwarded through WithCancellation, which is where an IAsyncEnumerable receives it.")]
     private async IAsyncEnumerable<ResponsePacket> InvokeRepeatable<TInfo>(
         TInfo info,
         Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,
         bool isAnswered,
         bool isSkipping,
-        System.Action<ContextAdapter> markSkipping,
+        Action<ContextAdapter> markSkipping,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         // The filter asked not to hear about these again. Invoking the callback anyway would break the
@@ -291,6 +302,7 @@ internal sealed class ContextAdapter(Func<IMilterCallbacks> contextFactory, Prot
             yield return response;
     }
 
+    [SuppressMessage("Reliability", "CA2016:Forward the CancellationToken parameter to methods that take one", Justification = "The overload taking one is protected on Action, so this call site cannot reach it. The token is forwarded through WithCancellation, which is where an IAsyncEnumerable receives it.")]
     private async IAsyncEnumerable<ResponsePacket> Invoke<TInfo>(
         TInfo info,
         Func<IMilterCallbacks, TInfo, CancellationToken, ValueTask<CommitAction>> callback,

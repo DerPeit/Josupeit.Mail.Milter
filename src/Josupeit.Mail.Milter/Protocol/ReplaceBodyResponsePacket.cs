@@ -14,7 +14,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </remarks>
 public sealed class ReplaceBodyResponsePacket : ResponsePacket
 {
-    internal ReplaceBodyResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public ReplaceBodyResponsePacket()
     {
     }
 
@@ -31,8 +35,7 @@ public sealed class ReplaceBodyResponsePacket : ResponsePacket
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitReplaceBodyResponsePacket(this);
     }

@@ -14,8 +14,7 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine, ProtocolN
 {
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessAbortion(AbortRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>());
     }
@@ -49,8 +48,7 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine, ProtocolN
     // transition. The replaying counterpart cannot follow that rule: replaying is what moves it on.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessMacroDefinition(DefineMacroRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         var contextAdapter = stateMachine.EnsureContextAdapter(negotiation);
 
@@ -64,8 +62,7 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine, ProtocolN
 
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuitting(QuitRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToDisconnectedState));
 
@@ -82,8 +79,7 @@ internal sealed class AbortedState(IProtocolStateMachine stateMachine, ProtocolN
     // accept SMFIC_CONNECT, so landing there would make the next client's first packet a violation.
     public override ValueTask<IAsyncEnumerable<ResponsePacket>> ProcessQuittingForNewConnection(QuitForNewConnectionRequestPacket request, CancellationToken cancellationToken)
     {
-        if (request == null)
-            throw new ArgumentNullException(nameof(request));
+        ArgumentNullException.ThrowIfNull(request);
 
         return new(AsyncEnumerable.Empty<ResponsePacket>().Finally(ToNegotiatedState));
 

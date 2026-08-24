@@ -10,7 +10,10 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class SkipRemainingEventsResponsePacket : ResponsePacket
 {
-    internal static readonly SkipRemainingEventsResponsePacket Instance = new();
+    /// <summary>
+    /// The single shared instance. This packet carries nothing, so there is never a reason for another.
+    /// </summary>
+    public static readonly SkipRemainingEventsResponsePacket Instance = new();
 
     private SkipRemainingEventsResponsePacket()
     {
@@ -19,8 +22,7 @@ public sealed class SkipRemainingEventsResponsePacket : ResponsePacket
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitSkipRemainingEventsResponsePacket(this);
     }

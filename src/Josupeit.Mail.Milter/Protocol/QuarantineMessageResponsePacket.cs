@@ -10,7 +10,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class QuarantineMessageResponsePacket : ResponsePacket
 {
-    internal QuarantineMessageResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public QuarantineMessageResponsePacket()
     {
     }
 
@@ -22,8 +26,7 @@ public sealed class QuarantineMessageResponsePacket : ResponsePacket
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitQuarantineMessageResponsePacket(this);
     }

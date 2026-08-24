@@ -46,7 +46,7 @@ public interface IMilterCallbacks
     /// <returns>A task that completes when the values have been taken note of.</returns>
     ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
     {
-        return new();
+        return ValueTask.CompletedTask;
     }
 
     /// <summary>
@@ -145,7 +145,7 @@ public interface IMilterCallbacks
     [MilterCallbackMarker(nameof(ProtocolRequirements.Header), nameof(NoReplyRequirements.Header))]
     ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
     {
-        return new (CommitActions.Continue);
+        return new(CommitActions.Continue);
     }
 
     /// <summary>

@@ -15,7 +15,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </remarks>
 public sealed class DefineMacroRequestPacket : RequestPacket
 {
-    internal DefineMacroRequestPacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public DefineMacroRequestPacket()
     {
     }
 
@@ -32,8 +36,7 @@ public sealed class DefineMacroRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitDefineMacroRequestPacket(this);
     }

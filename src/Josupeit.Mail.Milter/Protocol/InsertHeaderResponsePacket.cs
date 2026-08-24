@@ -10,7 +10,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </summary>
 public sealed class InsertHeaderResponsePacket : ResponsePacket
 {
-    internal InsertHeaderResponsePacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public InsertHeaderResponsePacket()
     {
     }
 
@@ -36,8 +40,7 @@ public sealed class InsertHeaderResponsePacket : ResponsePacket
     /// <inheritdoc />
     protected internal override bool Accept(ResponsePacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitInsertHeaderResponsePacket(this);
     }

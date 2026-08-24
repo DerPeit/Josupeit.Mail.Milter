@@ -14,7 +14,11 @@ namespace Josupeit.Mail.Milter.Protocol;
 /// </remarks>
 public sealed class UnknownCommandRequestPacket : RequestPacket
 {
-    internal UnknownCommandRequestPacket()
+    /// <summary>
+    /// Creates the packet. Everything it carries is a required property, so an object initializer has to
+    /// supply all of them.
+    /// </summary>
+    public UnknownCommandRequestPacket()
     {
     }
 
@@ -30,8 +34,7 @@ public sealed class UnknownCommandRequestPacket : RequestPacket
     /// <inheritdoc />
     protected internal override bool Accept(RequestPacketVisitor visitor)
     {
-        if (visitor == null)
-            throw new ArgumentNullException(nameof(visitor));
+        ArgumentNullException.ThrowIfNull(visitor);
 
         return visitor.VisitUnknownCommandRequestPacket(this);
     }

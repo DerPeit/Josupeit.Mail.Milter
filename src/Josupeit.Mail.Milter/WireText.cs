@@ -9,11 +9,17 @@ namespace Josupeit.Mail.Milter;
 // Guards the strings a filter hands to the MTA. Each one ends up in a NUL-terminated field and, for
 // headers and replies, in the delivered message, so a stray control character either cuts the field
 // short or forges a line the sender never wrote.
-internal static class WireText
+internal static partial class WireText
 {
     private const char FIRST_CONTROL_CHARACTER = (char)0;
     private const char LAST_CONTROL_CHARACTER = (char)31;
+}
 
+// The extension block sits in a declaration of its own only because SA1201 has no rank for the C# 14
+// syntax kind and sorts it below a field, so the two consts above look like they arrive too late. Fold
+// the two declarations back together once StyleCop knows the kind.
+internal static partial class WireText
+{
     extension(ArgumentException)
     {
         public static void ThrowIfContainsControlCharacter(string text, [CallerArgumentExpression(nameof(text))] string? paramName = null)
@@ -25,7 +31,7 @@ internal static class WireText
         // RFC 5322 ftext: printable US-ASCII except the colon that separates the name from the value.
         public static void ThrowIfNotHeaderName(string name, [CallerArgumentExpression(nameof(name))] string? paramName = null)
         {
-            if (name.AsSpan().ContainsAnyExceptInRange('!', '~') || name.Contains(':'))
+            if (name.AsSpan().ContainsAnyExceptInRange('!', '~') || name.Contains(':', StringComparison.Ordinal))
                 throw new ArgumentException("A header name must consist of printable ASCII characters other than a colon.", paramName);
         }
     }

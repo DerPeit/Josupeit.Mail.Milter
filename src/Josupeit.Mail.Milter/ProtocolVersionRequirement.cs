@@ -1,6 +1,7 @@
 ﻿// SPDX-License-Identifier: EUPL-1.2
 // Copyright (c) Manuel Josupeit-Walter
 
+using System.Diagnostics.CodeAnalysis;
 using Josupeit.Mail.Milter.Generator.Markers;
 
 namespace Josupeit.Mail.Milter;
@@ -22,6 +23,7 @@ namespace Josupeit.Mail.Milter;
 /// </para>
 /// </remarks>
 [ProtocolVersionRequirementMarker]
+[SuppressMessage("Design", "CA1008:Enums should have zero value", Justification = "The members are the wire version numbers and the protocol has no version 0. A zero member would be a version no MTA can speak.")]
 public enum ProtocolVersionRequirement
 {
     /// <summary>

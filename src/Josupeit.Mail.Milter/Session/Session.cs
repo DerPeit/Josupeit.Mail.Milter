@@ -22,7 +22,8 @@ namespace Josupeit.Mail.Milter.Session;
 /// but never the transport.
 /// </remarks>
 /// <typeparam name="TContext">The filter this session runs. One instance is built per message.</typeparam>
-public partial class Session<TContext> : ISession where TContext : IMilterContext
+public partial class Session<TContext> : ISession
+    where TContext : IMilterContext
 {
     private readonly ProtocolStateMachineConfiguration _protocolStateMachineConfiguration = new(
         TContext.ProtocolRequirements,
@@ -50,14 +51,6 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
     /// <param name="requestPacketFactory">Turns those frames into typed packets.</param>
     /// <param name="responseFrameFactory">Turns the answers back into frames.</param>
     /// <param name="responseFrameWriter">The channel the answers are published to.</param>
-    /// <param name="timeout">
-    /// How long to wait for the next frame, and for an answer to reach the link, before giving up on the
-    /// connection. <see langword="null"/> means five minutes.
-    /// </param>
-    /// <param name="timeProvider">
-    /// The clock behind that timeout, or <see langword="null"/> for the system clock. Tests substitute
-    /// this to avoid waiting in real time.
-    /// </param>
     /// <param name="contextFactory">
     /// Builds the filter, once per message. <see langword="null"/> falls back to
     /// <see cref="Activator"/>, which needs a public parameterless constructor.
@@ -67,9 +60,26 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
         IRequestPacketFactory requestPacketFactory,
         IResponseFrameFactory responseFrameFactory,
         ChannelWriter<ResponseFrame> responseFrameWriter,
-        TimeSpan? timeout,
-        TimeProvider? timeProvider,
         Func<TContext>? contextFactory)
+        : this(
+            requestFrameReader,
+            requestPacketFactory,
+            responseFrameFactory,
+            responseFrameWriter,
+            contextFactory,
+            timeout: null,
+            timeProvider: null)
+    {
+    }
+
+    internal Session(
+        ChannelReader<RequestFrame> requestFrameReader,
+        IRequestPacketFactory requestPacketFactory,
+        IResponseFrameFactory responseFrameFactory,
+        ChannelWriter<ResponseFrame> responseFrameWriter,
+        Func<TContext>? contextFactory,
+        TimeSpan? timeout,
+        TimeProvider? timeProvider)
     {
         _requestFrameReader = requestFrameReader;
         _requestPacketFactory = requestPacketFactory;
@@ -152,16 +162,16 @@ public partial class Session<TContext> : ISession where TContext : IMilterContex
 
     internal ValueTask DisposeContextAdapter()
     {
-        return Interlocked.Exchange(ref _contextAdapter, null)?.DisposeAsync() ?? new();
+        return Interlocked.Exchange(ref _contextAdapter, null)?.DisposeAsync() ?? ValueTask.CompletedTask;
     }
 }
 
-partial class Session<TContext> : ISessionControlee
+public partial class Session<TContext> : ISessionControlee
 {
     IProtocolStateMachine ISessionControlee.ProtocolStateMachine => this;
 }
 
-partial class Session<TContext> : IProtocolStateMachine
+public partial class Session<TContext> : IProtocolStateMachine
 {
     IProtocolState IStateMachine<IProtocolState>.State => _protocolState!;
 
@@ -175,6 +185,6 @@ partial class Session<TContext> : IProtocolStateMachine
     {
         _protocolState = state;
 
-        return new();
+        return ValueTask.CompletedTask;
     }
 }
