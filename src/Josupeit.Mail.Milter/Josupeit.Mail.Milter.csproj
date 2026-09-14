@@ -38,7 +38,6 @@
   </ItemGroup>
 
   <ItemGroup Label="Regular Packages">
-    <PackageReference Include="Nito.AsyncEx.Coordination" Version="[5,6)" />
     <PackageReference Include="System.Interactive.Async" Version="[7.0.1,8)" />
     <PackageReference Include="System.IO.Pipelines" Version="[8,9)" />
   </ItemGroup>

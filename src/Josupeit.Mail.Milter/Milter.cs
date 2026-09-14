@@ -8,10 +8,10 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Josupeit.Mail.Milter.Coordination;
 using Josupeit.Mail.Milter.Link;
 using Josupeit.Mail.Milter.Protocol;
 using Josupeit.Mail.Milter.Session;
-using Nito.AsyncEx;
 
 namespace Josupeit.Mail.Milter;
 
