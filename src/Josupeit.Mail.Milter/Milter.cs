@@ -8,10 +8,10 @@ using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using Josupeit.Mail.Milter.Coordination;
 using Josupeit.Mail.Milter.Link;
 using Josupeit.Mail.Milter.Protocol;
 using Josupeit.Mail.Milter.Session;
-using Nito.AsyncEx;
 
 namespace Josupeit.Mail.Milter;
 
@@ -64,6 +64,8 @@ public class Milter<TContext>
     /// <param name="socket">A socket already bound and listening. The milter accepts on it but does not own
     /// it.</param>
     /// <exception cref="ArgumentNullException"><paramref name="socket"/> is <see langword="null"/>.</exception>
+    [RequiresUnreferencedCode("Building the context by reflection requires its parameterless constructor to survive trimming. Use the constructor that takes a Func<TContext> factory instead.")]
+    [RequiresDynamicCode("Building the context by reflection is not supported in AOT. Use the constructor that takes a Func<TContext> factory instead.")]
     public Milter(Socket socket)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
@@ -83,6 +85,8 @@ public class Milter<TContext>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="socket"/> or <paramref name="options"/> is <see langword="null"/>.
     /// </exception>
+    [RequiresUnreferencedCode("Building the context by reflection requires its parameterless constructor to survive trimming. Use the constructor that takes a Func<TContext> factory instead.")]
+    [RequiresDynamicCode("Building the context by reflection is not supported in AOT. Use the constructor that takes a Func<TContext> factory instead.")]
     public Milter(Socket socket, MilterOptions options)
         : this(
             socket ?? throw new ArgumentNullException(nameof(socket)),
