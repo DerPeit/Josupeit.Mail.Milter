@@ -9,6 +9,10 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <PackageReference Include="System.Interactive.Async" Version="7.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\..\src\Josupeit.Mail.Milter\Josupeit.Mail.Milter.csproj" />
     
     <!--

@@ -5,7 +5,7 @@
     <Description>An implementation of the Milter protocol, the mail filter protocol spoken by Postfix and Sendmail. Speaks wire version 6 and negotiates down to whatever the MTA offers, with a floor of version 2. Write the filter in C#: implement the callbacks for the SMTP events you care about and the library handles the framing, the option negotiation and the protocol state machine the MTA expects.</Description>
     <PackageTags>milter postfix sendmail smtp mail-filter mta email antispam</PackageTags>
     <PackageVersionTagPrefix>v</PackageVersionTagPrefix>
-    <NoWarn>$(NoWarn),CS9107</NoWarn>
+    <NoWarn>$(NoWarn),CS9107,SA1201</NoWarn>
   </PropertyGroup>
 
   <ItemGroup Label="InternalsVisibleTo Declarations">
@@ -38,7 +38,6 @@
   </ItemGroup>
 
   <ItemGroup Label="Regular Packages">
-    <PackageReference Include="System.Interactive.Async" Version="[7.0.1,8)" />
     <PackageReference Include="System.IO.Pipelines" Version="[8,9)" />
   </ItemGroup>
 
