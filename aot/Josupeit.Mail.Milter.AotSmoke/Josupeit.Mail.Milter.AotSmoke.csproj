@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Native AOT regression gate. This is not a usage sample: it is published with PublishAot and run
+    as a native binary in CI (see .forgejo/workflows/ci.yml). IlcTreatWarningsAsErrors turns any
+    reachable trim/AOT IL warning into a publish failure, and TrimmerSingleWarn=false keeps each
+    warning individually reported instead of collapsed. It exercises the library's primary public API
+    so the AOT compiler has to compile those paths natively.
+
+    It deliberately lives outside src/ and test/ so it inherits neither the packaging props nor the
+    NUnit/NSubstitute test harness, and it is kept out of the solution so the normal build, test, and
+    pack flow does not pull in the AOT toolchain. It targets net10.0 (the CI SDK) and consumes the
+    library's net8.0 assets, which are the AOT-marked ones.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+
+    <PublishAot>true</PublishAot>
+    <IlcTreatWarningsAsErrors>true</IlcTreatWarningsAsErrors>
+    <TrimmerSingleWarn>false</TrimmerSingleWarn>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter\Josupeit.Mail.Milter.csproj" />
+
+    <!--
+      What a consumer gets from the package as an analyzer asset. It has to be asked for by hand here
+      because analyzers do not flow across a ProjectReference the way they do across a PackageReference.
+    -->
+    <ProjectReference Include="..\..\src\Josupeit.Mail.Milter.Generator\Josupeit.Mail.Milter.Generator.csproj"
+                      OutputItemType="Analyzer"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+
+</Project>
