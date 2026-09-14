@@ -2,6 +2,7 @@
 // Copyright (c) Manuel Josupeit-Walter
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -72,6 +73,7 @@ public partial class Session<TContext> : ISession
     {
     }
 
+    [UnconditionalSuppressMessage("AOT", "IL2091", Justification = "The public Milter constructors that pass null here carry [RequiresUnreferencedCode] and [RequiresDynamicCode].")]
     internal Session(
         ChannelReader<RequestFrame> requestFrameReader,
         IRequestPacketFactory requestPacketFactory,

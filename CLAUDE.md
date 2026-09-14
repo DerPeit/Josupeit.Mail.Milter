@@ -52,15 +52,19 @@ All three import the repository-wide `Directory.Build.props` by hand, because MS
 
 **The generator is packed into the library as an analyzer, not depended on.** Its `ProjectReference` is `OutputItemType="Analyzer" ReferenceOutputAssembly="false" PrivateAssets="all"`, so nothing of it reaches this assembly's metadata or `deps.json`, and NuGet emits no dependency on a package that will never exist. `IncludeGeneratorAsAnalyzerInPackage` puts the assembly under `analyzers/dotnet/cs/` by hand. See the generator section at the bottom for how the library gets the marker attributes without referencing it.
 
-Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library and its `.xml` doc file **and nothing else**, `analyzers/dotnet/cs/` holding the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and dependencies on nothing but the three runtime packages.
+Verify a packaging change by unzipping the result, not by trusting a green `dotnet pack`: `dotnet pack src/Josupeit.Mail.Milter -c Release -o packages` should produce `lib/net8.0/` holding the library and its `.xml` doc file **and nothing else**, `analyzers/dotnet/cs/` holding the generator assembly, plus `README.md`, `LICENSE.md`, an `_manifest/` and a dependency on `System.IO.Pipelines` and nothing else.
 
 ## Branching & releasing
 
-`development` is the default branch and where feature branches land; `main` is the release branch. **Merge with `--no-ff` in both directions**, so a feature keeps its own commits and the merge commit stays a thing a release can be rewritten onto.
+`development` is the default branch and where feature branches land; `main` is the release branch.
+
+**Feature branches land on `development` through a Codeberg pull request**, not a local merge. The PR is the gate: CI runs the build, the unit tests and the AOT smoke test against the branch, and the merge only happens after the pipeline passes. Create the PR with `gh pr create --base development`, and merge it from the Codeberg UI or with `gh pr merge`. The merge strategy is merge commit (no squash, no rebase), so a feature keeps its own commits.
 
 **Every merge commit carries a written message, never the default.** `Merge branch 'x' into y` on its own repeats what the graph already shows. Say what the branch was for and why it was worth doing, exactly as for any other commit - and more so for a merge into `main`, whose message is the nearest thing to a release description the history holds. Pass it with `git merge -F <file>`: `git merge` does not read a message from stdin, so `-F -` fails.
 
 `main` is not merely a convention here. `version.json` sets `publicReleaseRefSpec` to `^refs/heads/main$`, so only a build off `main` produces a clean version - anywhere else Nerdbank.GitVersioning appends the commit id (`0.1.10-g3ec122c51c`). The Pack and Push steps in `.forgejo/workflows/ci.yml` are gated on the same ref, which is why nothing publishes from `development`. **A push to `main` therefore publishes**, as far as the pipeline is concerned - the only thing standing between a merge and nuget.org is the `NUGET_API_KEY` secret existing on the repository.
+
+The merge from `development` into `main` stays local - it is the release step, not a feature landing, and there is no pipeline to exercise that the `development` PR has not already run:
 
 After merging `development` into `main`:
 
@@ -160,8 +164,7 @@ Bridges protocol packets and the user's context. Lazily creates **one context in
 - **The `All` composites stay narrow.** `ContentBypassDiscriminator.All` means "every skippable event" and `ActionDiscriminator.All` means "every modification"; the no-reply family, skip, the delivery flags and `SetMacroList` are all deliberately outside them, because both composites are used as a stand-in for a permissive MTA. `NegotiationFlagTests` pins the membership.
 - **`main.cf` pins `milter_protocol = 6`.** The downshift to 2 is covered by the unit tests rather than by the container; run the integration suite against both by hand when touching negotiation.
 - `ProtocolRequirements.EndOfBody = 0` ("cannot be excluded") - it is always part of the protocol; the flag value being 0 is intentional.
-- Dependencies of note: `Nito.AsyncEx` (`AsyncMonitor` for session-count coordination in `Milter`), `System.IO.Pipelines`, `System.Interactive.Async` (`AsyncEnumerableEx.Return` and `Finally`, plus `ToAsyncEnumerable` through the dependency it carries).
-- **Ix is pinned to 7, not 6, and that matters.** Ix 6 depends on `System.Linq.Async`, which defines `System.Linq.AsyncEnumerable` - a type that is in the box from net10 on. A net10 consumer therefore got two definitions of it and an ambiguous call (CS0121) as soon as they wrote `ToAsyncEnumerable` in their own code. Ix 7 depends on Microsoft's `System.Linq.AsyncEnumerable` package instead, which resolves to nothing on net10. The same collision is what broke the generator tests in CI, because `GeneratorHarness` references the host runtime's assemblies alongside the output directory's.
+- Dependencies of note: `System.IO.Pipelines`. That is the only runtime dependency. `Nito.AsyncEx` and `System.Interactive.Async` were replaced with internal implementations (`Coordination/AsyncMonitor` and `Linq/AsyncEnumerableEx`) to remove unannotated dependencies that blocked Native AOT compatibility. The test projects and the sample take a direct Ix reference for their own use.
 
 ## Source generator (`Josupeit.Mail.Milter.Generator`)
 
