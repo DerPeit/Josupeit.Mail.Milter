@@ -134,6 +134,8 @@ Every callback except `OnEndOfBody` and `OnDefineMacro` returns exactly one **co
 
 Every action is built through those two factories, and there is no other way: the records have internal constructors and get-only properties, so neither `new` nor a `with` expression can get past the validation. Control characters are rejected in every outbound string, and header names must be RFC 5322 `ftext` - which is what stops a filter from splicing a second header, or a whole extra reply, into the message through an unsanitised value.
 
+Header values are the one exception, and a narrow one. A tab is allowed anywhere, and a value may be folded over several lines as long as every line break is followed by a space or a tab and the continuation line carries more than whitespace - so a header copied verbatim from SpamAssassin or a DKIM signer passes. A CRLF goes out as the bare LF the MTA expects. `AddHeader` and `InsertHeader` also take an empty value; `ChangeHeader` does not, because the protocol reads an empty change as a deletion, and `DeleteHeader` says that outright.
+
 ## Declaring requirements
 
 The six static properties on `IMilterContext` are part of the handshake with the MTA, not decoration:

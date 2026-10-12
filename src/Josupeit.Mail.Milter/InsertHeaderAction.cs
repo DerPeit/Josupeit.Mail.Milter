@@ -44,7 +44,8 @@ public sealed record InsertHeaderAction : ModificationAction
     public string Name { get; }
 
     /// <summary>
-    /// The value of the header to insert.
+    /// The value of the header to insert, as it goes to the MTA.
+    /// A folded value breaks its lines with bare LFs, even if it was handed over with CRLFs.
     /// </summary>
     public string Value { get; }
 
