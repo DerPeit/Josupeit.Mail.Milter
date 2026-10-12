@@ -121,6 +121,29 @@ public sealed class ResponseFrameFactoryTests
         Assert.That(GetData(frame), Is.EqualTo(Latin1("X-Test\0value\0")));
     }
 
+    // The fold travels as the bare LF libmilter asks for, and Postfix's cleanup splits the header into lines
+    // on exactly that byte.
+    [Test]
+    public void Adding_a_folded_header_sends_its_line_breaks_as_they_are()
+    {
+        var action = ModificationActions.AddHeader("X-Spam-Report", "\r\n\t* 0.1 TOO_MANY_PUNS Pun density\r\n\t*      exceeded");
+        var packet = new AddHeaderResponsePacket { Name = action.Name, Value = action.Value };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("X-Spam-Report\0\n\t* 0.1 TOO_MANY_PUNS Pun density\n\t*      exceeded\0")));
+    }
+
+    [Test]
+    public void Adding_a_header_with_an_empty_value_sends_an_empty_field()
+    {
+        var packet = new AddHeaderResponsePacket { Name = "X-Spam-Level", Value = string.Empty };
+
+        using var frame = new ResponseFrameFactory().CreateResponseFrame(packet);
+
+        Assert.That(GetData(frame), Is.EqualTo(Latin1("X-Spam-Level\0\0")));
+    }
+
     [Test]
     public void Adding_a_recipient_terminates_the_address()
     {

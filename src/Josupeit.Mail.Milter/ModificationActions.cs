@@ -13,10 +13,10 @@ namespace Josupeit.Mail.Milter;
 /// <para>
 /// Every string that leaves for the MTA is validated here, and the action records have internal
 /// constructors and get-only properties so there is no route around it - not even a
-/// <see langword="with"/> expression. Control characters are rejected everywhere, and header names must
-/// be RFC 5322 <c>ftext</c>: printable ASCII other than the colon. That is what stops a value taken from
-/// the message under inspection from splicing a second header, or an entire extra reply, into the
-/// outgoing one.
+/// <see langword="with"/> expression. Control characters are rejected everywhere, header names must be
+/// RFC 5322 <c>ftext</c> - printable ASCII other than the colon - and the one line break a header value
+/// may carry is a fold, which whitespace has to follow. That is what stops a value taken from the message
+/// under inspection from splicing a second header, or an entire extra reply, into the outgoing one.
 /// </para>
 /// <para>
 /// Every action here also needs the matching <see cref="ActionRequirements"/> flag on the context. The
@@ -98,11 +98,15 @@ public static class ModificationActions
     /// Appends a header to the message.
     /// </summary>
     /// <param name="name">The header name, without the separating colon.</param>
-    /// <param name="value">The header value.</param>
+    /// <param name="value">
+    /// The header value, which may be empty. It may be folded over several lines, each line break followed
+    /// by a space or a tab; a CRLF is sent as the bare LF the MTA expects.
+    /// </param>
     /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
     /// <exception cref="ArgumentException">
-    /// <paramref name="name"/> or <paramref name="value"/> is empty, <paramref name="name"/> is not RFC
-    /// 5322 <c>ftext</c>, or <paramref name="value"/> contains a control character.
+    /// <paramref name="name"/> is empty or is not RFC 5322 <c>ftext</c>, or <paramref name="value"/>
+    /// contains a control character other than a tab or a folding line break - a line break not followed by
+    /// whitespace, one at the very end, or one followed by nothing but whitespace.
     /// </exception>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="name"/> or <paramref name="value"/> is <see langword="null"/>.
@@ -110,11 +114,11 @@ public static class ModificationActions
     public static AddHeaderAction AddHeader(string name, string value)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
-        ArgumentException.ThrowIfNullOrEmpty(value);
+        ArgumentNullException.ThrowIfNull(value);
         ArgumentException.ThrowIfNotHeaderName(name);
-        ArgumentException.ThrowIfContainsControlCharacter(value);
+        ArgumentException.ThrowIfNotHeaderValue(value);
 
-        return new AddHeaderAction(name, value);
+        return new AddHeaderAction(name, WireText.ToWireLineBreaks(value));
     }
 
     /// <summary>
@@ -129,11 +133,15 @@ public static class ModificationActions
     /// existing header, which is what a filter adding a trace header usually wants.
     /// </param>
     /// <param name="name">The name of the header to insert, without the separating colon.</param>
-    /// <param name="value">The value of the header to insert.</param>
+    /// <param name="value">
+    /// The value of the header to insert, which may be empty. It may be folded over several lines, each
+    /// line break followed by a space or a tab; a CRLF is sent as the bare LF the MTA expects.
+    /// </param>
     /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
     /// <exception cref="ArgumentException">
-    /// <paramref name="name"/> or <paramref name="value"/> is empty, <paramref name="name"/> is not a
-    /// valid header name, or <paramref name="value"/> contains a control character.
+    /// <paramref name="name"/> is empty or is not RFC 5322 <c>ftext</c>, or <paramref name="value"/>
+    /// contains a control character other than a tab or a folding line break - a line break not followed by
+    /// whitespace, one at the very end, or one followed by nothing but whitespace.
     /// </exception>
     /// <exception cref="ArgumentNullException">
     /// <paramref name="name"/> or <paramref name="value"/> is <see langword="null"/>.
@@ -143,11 +151,11 @@ public static class ModificationActions
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
         ArgumentException.ThrowIfNullOrEmpty(name);
-        ArgumentException.ThrowIfNullOrEmpty(value);
+        ArgumentNullException.ThrowIfNull(value);
         ArgumentException.ThrowIfNotHeaderName(name);
-        ArgumentException.ThrowIfContainsControlCharacter(value);
+        ArgumentException.ThrowIfNotHeaderValue(value);
 
-        return new InsertHeaderAction(index, name, value);
+        return new InsertHeaderAction(index, name, WireText.ToWireLineBreaks(value));
     }
 
     /// <summary>
@@ -183,14 +191,20 @@ public static class ModificationActions
     /// Replaces the value of a header already on the message.
     /// </summary>
     /// <param name="name">The header name, without the separating colon.</param>
-    /// <param name="value">The value to put in its place.</param>
+    /// <param name="value">
+    /// The value to put in its place. It may be folded over several lines, each line break followed by a
+    /// space or a tab; a CRLF is sent as the bare LF the MTA expects. It may not be empty, because the
+    /// protocol reads an empty value as a deletion - <see cref="DeleteHeader"/> says that outright.
+    /// </param>
     /// <param name="index">
     /// Which occurrence of <paramref name="name"/> to change, counting from zero. Defaults to the first.
     /// </param>
     /// <returns>The action to yield from <see cref="IMilterCallbacks.OnEndOfBody"/>.</returns>
     /// <exception cref="ArgumentException">
     /// <paramref name="name"/> or <paramref name="value"/> is empty, <paramref name="name"/> is not RFC
-    /// 5322 <c>ftext</c>, or <paramref name="value"/> contains a control character.
+    /// 5322 <c>ftext</c>, or <paramref name="value"/> contains a control character other than a tab or a
+    /// folding line break - a line break not followed by whitespace, one at the very end, or one followed
+    /// by nothing but whitespace.
     /// </exception>
     /// <exception cref="ArgumentOutOfRangeException"><paramref name="index"/> is negative.</exception>
     /// <exception cref="ArgumentNullException">
@@ -202,9 +216,9 @@ public static class ModificationActions
         ArgumentException.ThrowIfNullOrEmpty(value);
         ArgumentOutOfRangeException.ThrowIfLessThan(index, 0);
         ArgumentException.ThrowIfNotHeaderName(name);
-        ArgumentException.ThrowIfContainsControlCharacter(value);
+        ArgumentException.ThrowIfNotHeaderValue(value);
 
-        return new ChangeHeaderAction(name, value, index);
+        return new ChangeHeaderAction(name, WireText.ToWireLineBreaks(value), index);
     }
 
     /// <summary>
