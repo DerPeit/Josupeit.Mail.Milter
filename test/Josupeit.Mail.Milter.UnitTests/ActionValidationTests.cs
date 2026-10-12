@@ -14,10 +14,97 @@ public sealed class ActionValidationTests
     [TestCase("plain\r\nX-Injected: yes")]
     [TestCase("plain\nX-Injected: yes")]
     [TestCase("plain\0truncated")]
-    [TestCase("plain\ttabbed")]
+    [TestCase("plain\rreturned")]
+    [TestCase("plain\r\tfolded with a bare CR")]
+    [TestCase("plain\n\r\tfolded behind a stray CR")]
+    [TestCase("plain\x1b[31mred")]
+    [TestCase("plain\n")]
+    [TestCase("plain\r\n")]
+    [TestCase("plain\n\t")]
+    [TestCase("plain\n \t \n\tmore")]
+    [TestCase("plain\n\n\tmore")]
+    [TestCase("plain\n\tfolded\nX-Injected: yes")]
     public void A_header_value_carrying_a_control_character_is_rejected(string value)
     {
-        Assert.That(() => ModificationActions.AddHeader("X-Test", value), Throws.ArgumentException);
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => ModificationActions.AddHeader("X-Test", value), Throws.ArgumentException);
+            Assert.That(() => ModificationActions.InsertHeader(0, "X-Test", value), Throws.ArgumentException);
+            Assert.That(() => ModificationActions.ChangeHeader("X-Test", value), Throws.ArgumentException);
+        });
+    }
+
+    // How SpamAssassin writes X-Spam-Report and OpenDKIM writes DKIM-Signature: the value starts on the line
+    // after the name, and every continuation line opens with whitespace.
+    [TestCase("plain\ttabbed")]
+    [TestCase("\n\t* -1.9 BAYES_00 BODY: Bayes spam probability is 0 to 1%\n\t*      [score: 0.0000]")]
+    [TestCase("v=1; a=rsa-sha256; d=example.com;\n s=gondola; h=from:to:subject")]
+    [TestCase("folded once\n  \tand indented generously")]
+    public void A_folded_header_value_is_accepted_as_it_was_written(string value)
+    {
+        var added = ModificationActions.AddHeader("X-Test", value);
+        var inserted = ModificationActions.InsertHeader(0, "X-Test", value);
+        var changed = ModificationActions.ChangeHeader("X-Test", value);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(added.Value, Is.EqualTo(value));
+            Assert.That(inserted.Value, Is.EqualTo(value));
+            Assert.That(changed.Value, Is.EqualTo(value));
+        });
+    }
+
+    // libmilter asks for a bare LF between the lines of a folded header and Postfix splits on nothing else,
+    // so a CR handed over with it would end up inside the delivered line.
+    [Test]
+    public void A_header_value_folded_with_CRLF_goes_out_with_bare_LF()
+    {
+        const string VALUE = "Gerda Gatekeeper\r\n\tand Fritz Fold";
+
+        var added = ModificationActions.AddHeader("X-Test", VALUE);
+        var inserted = ModificationActions.InsertHeader(0, "X-Test", VALUE);
+        var changed = ModificationActions.ChangeHeader("X-Test", VALUE);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(added.Value, Is.EqualTo("Gerda Gatekeeper\n\tand Fritz Fold"));
+            Assert.That(inserted.Value, Is.EqualTo("Gerda Gatekeeper\n\tand Fritz Fold"));
+            Assert.That(changed.Value, Is.EqualTo("Gerda Gatekeeper\n\tand Fritz Fold"));
+        });
+    }
+
+    // SpamAssassin writes X-Spam-Level with nothing in it when the score is below one, and libmilter's
+    // smfi_addheader takes that like any other value.
+    [Test]
+    public void An_empty_header_value_is_accepted_when_adding_or_inserting()
+    {
+        var added = ModificationActions.AddHeader("X-Spam-Level", string.Empty);
+        var inserted = ModificationActions.InsertHeader(0, "X-Spam-Level", string.Empty);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(added.Value, Is.Empty);
+            Assert.That(inserted.Value, Is.Empty);
+        });
+    }
+
+    // An empty value in SMFIR_CHGHEADER deletes the header, which is a different action wearing a change's
+    // name. DeleteHeader says it outright.
+    [Test]
+    public void An_empty_header_value_is_rejected_when_changing()
+    {
+        Assert.That(() => ModificationActions.ChangeHeader("X-Spam-Level", string.Empty), Throws.ArgumentException);
+    }
+
+    [Test]
+    public void A_missing_header_value_is_rejected()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => ModificationActions.AddHeader("X-Test", null!), Throws.ArgumentNullException);
+            Assert.That(() => ModificationActions.InsertHeader(0, "X-Test", null!), Throws.ArgumentNullException);
+            Assert.That(() => ModificationActions.ChangeHeader("X-Test", null!), Throws.ArgumentNullException);
+        });
     }
 
     [TestCase("X-Test: injected")]

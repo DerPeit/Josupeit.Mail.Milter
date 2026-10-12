@@ -563,6 +563,36 @@ public class MilterTests : MilterFixture
         Assert.That(await ReceiveMail(), Does.Contain("X-Filtered-By: Josupeit.Mail.Milter"));
     }
 
+    // SpamAssassin's report starts on the line after its name and folds every rule onto a line of its own.
+    // Handed over with CRLFs, as a .NET string often is, it has to arrive with the same lines and no CR
+    // left inside one: Postfix splits the value on LF alone.
+    [Test]
+    public async Task Adding_a_folded_header_reaches_the_delivered_mail_folded()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.AddHeaders,
+            ModificationActions.AddHeader(
+                "X-Spam-Report",
+                "\r\n\t* -1.9 BAYES_00 BODY: Bayes spam probability is 0 to 1%\r\n\t*      [score: 0.0000]"));
+
+        await SendMail(new("Ottilie.Overfold@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        Assert.That(
+            await ReceiveMail(),
+            Does.Contain("X-Spam-Report: \n\t* -1.9 BAYES_00 BODY: Bayes spam probability is 0 to 1%\n\t*      [score: 0.0000]\n"));
+    }
+
+    // SpamAssassin's X-Spam-Level when the score is below one.
+    [Test]
+    public async Task Adding_a_header_with_an_empty_value_reaches_the_delivered_mail()
+    {
+        RespondAtEndOfBody(ActionRequirements.AddHeaders, ModificationActions.AddHeader("X-Spam-Level", string.Empty));
+
+        await SendMail(new("Nora.Nullscore@example.com", "root@localhost.localdomain", "Subject", "Body"));
+
+        Assert.That(await ReceiveMail(), Does.Contain("\nX-Spam-Level: \n"));
+    }
+
     // Where an inserted header lands is the one thing about insertion the unit tests cannot see: they
     // assert the bytes that go out, and only a real MTA says what those bytes mean. Insertion counts from
     // zero on the wire while a header change counts occurrences from one, and writing the change's
@@ -608,6 +638,21 @@ public class MilterTests : MilterFixture
         var delivered = await ReceiveMail();
 
         Assert.That(delivered, Does.Contain("Subject: Rewritten by the filter"));
+        Assert.That(delivered, Does.Not.Contain("Original subject"));
+    }
+
+    [Test]
+    public async Task Changing_a_header_to_a_folded_value_reaches_the_delivered_mail_folded()
+    {
+        RespondAtEndOfBody(
+            ActionRequirements.ChangeHeaders,
+            ModificationActions.ChangeHeader("Subject", "Rewritten by the filter\n and folded for good measure"));
+
+        await SendMail(new("Ottilie.Overfold@example.com", "root@localhost.localdomain", "Original subject", "Body"));
+
+        var delivered = await ReceiveMail();
+
+        Assert.That(delivered, Does.Contain("Subject: Rewritten by the filter\n and folded for good measure\n"));
         Assert.That(delivered, Does.Not.Contain("Original subject"));
     }
 
