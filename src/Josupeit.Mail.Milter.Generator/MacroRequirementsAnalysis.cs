@@ -117,14 +117,14 @@ internal static class MacroRequirementsAnalysis
     }
 
     // The stage a read sits under, taken from the guard enclosing it. Only unambiguous shapes are
-    // recognised: an if comparing the stage to a constant, a switch over it, and a switch expression.
+    // recognised: an if comparing the stage to a constant, a switch over it, a switch expression, and
+    // the right-hand side of an && whose left-hand side compares the stage.
     private static string? StageOf(SyntaxNode node, SemanticModel model, CancellationToken cancellationToken)
     {
         for (var current = node; current != null; current = current.Parent)
         {
-            if (current.Parent is IfStatementSyntax ifStatement
-                && ifStatement.Statement == current
-                && StageOfCondition(ifStatement.Condition, model, cancellationToken) is { } guarded)
+            if (GuardingCondition(current) is { } condition
+                && StageOfConjunction(condition, model, cancellationToken) is { } guarded)
             {
                 return guarded;
             }
@@ -145,6 +145,39 @@ internal static class MacroRequirementsAnalysis
         }
 
         return null;
+    }
+
+    // The condition known to hold whenever the node runs: an if's condition for its body, and the left
+    // operand of && for its right one. The second is what lets the lookup share the if's condition -
+    // "stage == EndOfBody && info.Macros.TryGetValue(...)" is the shape C# leads to.
+    private static ExpressionSyntax? GuardingCondition(SyntaxNode node)
+    {
+        return node.Parent switch
+        {
+            IfStatementSyntax ifStatement when ifStatement.Statement == node => ifStatement.Condition,
+            BinaryExpressionSyntax conjunction when conjunction.IsKind(SyntaxKind.LogicalAndExpression) && conjunction.Right == node => conjunction.Left,
+            _ => null,
+        };
+    }
+
+    // A condition holds only when every operand of its && chain does, so a stage comparison anywhere in
+    // the chain pins the stage. Two comparisons naming different stages can never both hold, and are
+    // refused rather than resolved in favour of either.
+    private static string? StageOfConjunction(ExpressionSyntax condition, SemanticModel model, CancellationToken cancellationToken)
+    {
+        while (condition is ParenthesizedExpressionSyntax parenthesized)
+            condition = parenthesized.Expression;
+
+        if (condition is not BinaryExpressionSyntax binary || !binary.IsKind(SyntaxKind.LogicalAndExpression))
+            return StageOfCondition(condition, model, cancellationToken);
+
+        var left = StageOfConjunction(binary.Left, model, cancellationToken);
+        var right = StageOfConjunction(binary.Right, model, cancellationToken);
+
+        if (left != null && right != null)
+            return string.Equals(left, right, StringComparison.Ordinal) ? left : null;
+
+        return left ?? right;
     }
 
     private static string? StageOfCondition(ExpressionSyntax condition, SemanticModel model, CancellationToken cancellationToken)

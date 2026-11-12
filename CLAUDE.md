@@ -216,7 +216,7 @@ Decidable only as an over-approximation, and that is exactly what the negotiatio
 ### `DeliveryRequirements` and `MacroRequirements`
 
 - `DeliveryRequirements.RejectedRecipients` is a may-analysis over reads of the member carrying `[MilterDeliveryMarker]` - reading `IsRejectedByMta` is the whole evidence. `LeadingHeaderSpace` can never be derived, so a filter wanting it declares the property by hand and names both members itself.
-- `MacroRequirements` reads stage-guarded constant lookups of the member carrying `[MilterMacroSourceMarker]`, correlating each with the stage guard around it (`if`, `switch`, or a switch expression). Anything it cannot pin down reports **MILT003**. Strict like MILT002, and for the same reason: a list that leaves a macro out fails at runtime rather than at negotiation.
+- `MacroRequirements` reads stage-guarded constant lookups of the member carrying `[MilterMacroSourceMarker]`, correlating each with the stage guard around it (`if`, `switch`, a switch expression, or a stage comparison on the left of an `&&` - its right operand only runs once the left one held, so `stage == X && Macros.TryGetValue(...)` is guarded). Anything it cannot pin down reports **MILT003**. Strict like MILT002, and for the same reason: a list that leaves a macro out fails at runtime rather than at negotiation.
 - The `SMFIM_` stage codes are **not** `ProtocolStage`'s own numbers, and two stages have none at all, so the mappable ones carry `[MilterMacroStageMarker]` and the generator refuses to emit a call it would only compile to throw.
 
 ### `ProtocolVersionRequirement` - a fold, not a walk

@@ -594,14 +594,14 @@ Says which event the values in a `MacroDefinitionInformation` belong to. The mac
 
 The package contains a Roslyn incremental source generator that writes the six requirement properties into the filter's `partial class`. It writes nothing else. A property the filter declares itself is never touched.
 
-| Property                     | Derived from                                                                                                                                                                                                                                                            |
-| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ProtocolRequirements`       | Which callbacks the class implements (an explicit interface implementation counts)                                                                                                                                                                                      |
-| `ActionRequirements`         | Every `ModificationActions` call reachable from the class, across methods and classes in the same compilation, in every branch                                                                                                                                          |
-| `NoReplyRequirements`        | Callbacks proved to return only `Continue`; only for a **sealed** class or non-virtual callbacks                                                                                                                                                                        |
-| `DeliveryRequirements`       | `RejectedRecipients` if the code reads `RecipientInformation.IsRejectedByMta`; never `LeadingHeaderSpace`                                                                                                                                                               |
-| `MacroRequirements`          | Constant-key lookups in `OnDefineMacro` (`info.Macros["i"]`, `TryGetValue`, `ContainsKey`) nested under a stage guard: an `if` whose entire condition compares `info.ProtocolStage` to a constant, or a `switch` / switch expression over it with one label per section |
-| `ProtocolVersionRequirement` | The highest minimum version among the events, actions and delivery flags it derived                                                                                                                                                                                     |
+| Property                     | Derived from                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `ProtocolRequirements`       | Which callbacks the class implements (an explicit interface implementation counts)                                                                                                                                                                                                                                                                           |
+| `ActionRequirements`         | Every `ModificationActions` call reachable from the class, across methods and classes in the same compilation, in every branch                                                                                                                                                                                                                               |
+| `NoReplyRequirements`        | Callbacks proved to return only `Continue`; only for a **sealed** class or non-virtual callbacks                                                                                                                                                                                                                                                             |
+| `DeliveryRequirements`       | `RejectedRecipients` if the code reads `RecipientInformation.IsRejectedByMta`; never `LeadingHeaderSpace`                                                                                                                                                                                                                                                    |
+| `MacroRequirements`          | Constant-key lookups in `OnDefineMacro` (`info.Macros["i"]`, `TryGetValue`, `ContainsKey`) under a stage guard: inside an `if` whose condition compares `info.ProtocolStage` to a constant (alone or as one operand of an `&&` chain), to the right of such a comparison in an `&&`, or in a `switch` / switch expression over it with one label per section |
+| `ProtocolVersionRequirement` | The highest minimum version among the events, actions and delivery flags it derived                                                                                                                                                                                                                                                                          |
 
 `ActionRequirements` is a may-analysis: an action behind an `if` that never runs still counts, because a modification that might happen must be negotiated. To see what was generated, set `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` and look under `obj/`.
 
@@ -711,11 +711,8 @@ internal sealed partial class QueueIdStamper : IMilterContext
 
     public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
     {
-        if (info.ProtocolStage == ProtocolStage.EndOfBody)
-        {
-            if (info.Macros.TryGetValue("i", out var queueId))
-                _queueId = queueId;
-        }
+        if (info.ProtocolStage == ProtocolStage.EndOfBody && info.Macros.TryGetValue("i", out var queueId))
+            _queueId = queueId;
 
         return ValueTask.CompletedTask;
     }
@@ -730,7 +727,7 @@ internal sealed partial class QueueIdStamper : IMilterContext
 }
 ```
 
-The generator derives `MacroRequirements.For(ProtocolStage.EndOfBody, "i")` from the guarded lookup and `ActionRequirements.AddHeaders` from `InsertHeader`. The stage test must be the whole condition of its own `if` (or a `switch` / switch expression over `info.ProtocolStage` with one label per case): folding it into one condition, `if (info.ProtocolStage == ProtocolStage.EndOfBody && info.Macros.TryGetValue("i", out var queueId))`, is not recognised as a guard and reports MILT003.
+The generator derives `MacroRequirements.For(ProtocolStage.EndOfBody, "i")` from the guarded lookup and `ActionRequirements.AddHeaders` from `InsertHeader`. The lookup may share the condition with the stage test because the right operand of `&&` only runs once the left one held; the stage comparison has to come first. Nesting the lookup inside `if (info.ProtocolStage == ProtocolStage.EndOfBody) { ... }`, or a `switch` / switch expression over `info.ProtocolStage` with one label per case, works the same way.
 
 ### Long-running work in `OnEndOfBody`
 
@@ -895,7 +892,7 @@ Pipeline per connection: `NetworkStream` -> `PipeReader`/`PipeWriter` -> `LinkRe
 - **Assuming a per-connection context.** Fields are reset for every message. Store cross-message state outside the context.
 - **Indexer on macros.** `info.Macros["{auth_authen}"]` throws `KeyNotFoundException` when the MTA does not send it, which ends the session. Use `TryGetValue`.
 - **Storing the macro dictionary.** `_macros = info.Macros;` triggers MILT003. Read the values you need under a stage guard, or declare `MacroRequirements` by hand.
-- **Combining the stage test with the lookup.** `if (info.ProtocolStage == ProtocolStage.Sender && info.Macros.TryGetValue(...))` triggers MILT003; nest the lookup inside an `if` whose whole condition is the stage comparison.
+- **Looking a macro up before the stage test.** `if (info.Macros.TryGetValue("i", out var queueId) && info.ProtocolStage == ProtocolStage.EndOfBody)` triggers MILT003: the left operand of `&&` runs at every stage. Put the stage comparison first. An early return (`if (info.ProtocolStage != ProtocolStage.EndOfBody) return ...;`), `!=` and `||` are not recognised as guards either.
 - **`MacroRequirements.For(ProtocolStage.Header, ...)` or `ProtocolStage.Body`.** Throws `ArgumentException`: those stages have no macro class.
 - **`SkipRemainingEvents` from a one-time event** (`OnSender`, `OnEndOfHeaders`, ...) or from `OnEndOfBody` throws. Only headers, recipients and body chunks repeat.
 - **Hand-declaring `NoReplyRequirements` and then rejecting.** A listed callback that returns anything but `Continue` throws. Let the generator derive it.

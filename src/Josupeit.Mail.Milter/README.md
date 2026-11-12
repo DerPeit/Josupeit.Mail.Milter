@@ -30,15 +30,10 @@ internal sealed partial class RejectBigSenders : IMilterContext
             : new(CommitActions.Continue);
     }
 
-    public IAsyncEnumerable<Action> OnEndOfBody()
+    public async IAsyncEnumerable<Action> OnEndOfBody()
     {
-        var actions = new Action[]
-        {
-            ModificationActions.AddHeader("X-Filtered-By", "RejectBigSenders"),
-            CommitActions.Accept,
-        };
-
-        return actions.ToAsyncEnumerable();
+        yield return ModificationActions.AddHeader("X-Filtered-By", "RejectBigSenders");
+        yield return CommitActions.Accept;
     }
 }
 ```
@@ -128,7 +123,7 @@ Every callback except `OnEndOfBody` and `OnDefineMacro` returns exactly one **co
 | `ReplaceBody(stream, leaveOpen)`   | Replace the message body                                     |
 | `QuarantineMessage(reason)`        | Hold the message in the MTA's queue instead of delivering it |
 
-`InsertHeader`, the ESMTP overload of `AddRecipient` and `ChangeSender` all need an MTA speaking protocol version 6. A filter that builds one of them derives `ProtocolVersionRequirement.Version6`, and negotiation fails against an older MTA rather than letting the modification be refused silently.
+The ESMTP overload of `AddRecipient` and `ChangeSender` both need an MTA speaking protocol version 6. A filter that builds either of them derives `ProtocolVersionRequirement.Version6`, and negotiation fails against an older MTA rather than letting the modification be refused silently.
 
 `ProgressAction.Instance` decides nothing; it only tells the MTA that the filter is still working, so the reply timeout restarts. Yield it from a long-running `OnEndOfBody` to avoid being timed out.
 
@@ -153,7 +148,7 @@ The first two are `static abstract`, so a filter that somehow loses the generato
 
 It follows the actions across method and class boundaries, and it takes the union over every branch - a modification behind an `if` still has to be negotiated, whether or not that `if` is ever true. What it cannot follow is an action arriving from outside the compilation: from an interface, an abstract member, or another assembly. Rather than guess - too few makes the MTA refuse the modification, too many hands the filter rights over the message it does not need - it reports **MILT002** and leaves the property to you.
 
-**MILT003** is the same idea for macros. The derivation reads stage-guarded constant lookups in `OnDefineMacro`; anything it cannot pin to a stage and a name - a computed key, or the very common `_macros = info.Macros` stash - is reported rather than guessed, because a list that leaves a macro out fails at runtime instead of at negotiation. The way out is one line: `public static MacroRequirements MacroRequirements => MacroRequirements.None;`, which sends no list at all and lets the MTA use its own configuration.
+**MILT003** is the same idea for macros. The derivation reads stage-guarded constant lookups in `OnDefineMacro` - under an `if` or a `switch` on `info.ProtocolStage`, or to the right of a stage comparison in an `&&`; anything it cannot pin to a stage and a name - a computed key, or the very common `_macros = info.Macros` stash - is reported rather than guessed, because a list that leaves a macro out fails at runtime instead of at negotiation. The way out is one line: `public static MacroRequirements MacroRequirements => MacroRequirements.None;`, which sends no list at all and lets the MTA use its own configuration.
 
 Declaring any of the six by hand always wins, and is the way out of MILT002 and MILT003 as well as the way to narrow what was derived:
 

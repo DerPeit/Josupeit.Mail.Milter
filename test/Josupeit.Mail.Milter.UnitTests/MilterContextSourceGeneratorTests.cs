@@ -843,6 +843,81 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
+    // The shape C# leads to: TryGetValue in the condition, behind the stage test. The right operand of &&
+    // only runs once the left one held, so the stage test guards it as surely as an enclosing if would.
+    [Test]
+    public void A_lookup_sharing_the_condition_with_the_stage_test_is_derived()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (info.ProtocolStage == ProtocolStage.EndOfBody && info.Macros.TryGetValue("i", out var queueId))
+                    _queueId = queueId;
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratorErrorIds, Does.Not.Contain("MILT003"));
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\")"));
+        });
+    }
+
+    [Test]
+    public void A_stage_test_anywhere_in_an_and_chain_guards_the_body()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (_queueId == null && (info.ProtocolStage == ProtocolStage.EndOfBody && !cancellationToken.IsCancellationRequested))
+                    _queueId = info.Macros["i"];
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratorErrorIds, Does.Not.Contain("MILT003"));
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\")"));
+        });
+    }
+
+    // The left operand of && runs whatever the stage, so a lookup there is not guarded by a stage test to
+    // its right. And two comparisons naming different stages can never both hold, so picking either one
+    // would be a guess.
+    [TestCase("info.Macros.TryGetValue(\"i\", out var queueId) && info.ProtocolStage == ProtocolStage.EndOfBody", TestName = "A_lookup_ahead_of_the_stage_test_is_reported")]
+    [TestCase("info.ProtocolStage == ProtocolStage.EndOfBody && info.ProtocolStage == ProtocolStage.Sender && info.Macros.TryGetValue(\"i\", out var queueId)", TestName = "An_and_chain_naming_two_stages_is_reported")]
+    public void An_and_chain_that_does_not_pin_the_stage_is_reported(string condition)
+    {
+        var run = GeneratorHarness.Run(Context(
+            $$"""
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if ({{condition}})
+                    _queueId = queueId;
+
+                return new();
+            }
+            """));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
+        Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
+    }
+
     // The common stash. It genuinely cannot be analysed, and a list that leaves a macro out fails at
     // runtime rather than at negotiation - so it is refused rather than guessed.
     [Test]
