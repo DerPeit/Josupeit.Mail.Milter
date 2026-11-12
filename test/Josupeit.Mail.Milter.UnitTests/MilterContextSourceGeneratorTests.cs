@@ -333,6 +333,122 @@ public sealed class MilterContextSourceGeneratorTests
         Assert.Multiple(() =>
         {
             Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("the partial modifier on 'SeagullFilter'; declare 'ProtocolRequirements' and 'ActionRequirements' by hand"));
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // The four virtual properties fall back to their interface defaults in a class nothing can be
+    // generated into. For a filter that uses none of what they govern, those defaults are exactly what
+    // the generator would have written, so there is nothing to complain about.
+    [Test]
+    public void A_context_that_is_not_partial_but_needs_only_the_defaults_is_left_alone()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal sealed class PelicanFilter : IMilterContext
+            {
+                public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Header;
+
+                public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorDiagnostics, Is.Empty, "A provable no-reply is an optimisation; losing it is no reason to fail the build.");
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // The macro list is not an optimisation: it replaces the MTA's configured set for the stages it
+    // names. Without it the MTA sends only that set - Postfix sends nothing but "i" at end-of-body - and
+    // the filter finds any other key missing at runtime.
+    [Test]
+    public void A_context_that_is_not_partial_and_reads_macros_is_told_to_declare_them()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal sealed class CormorantFilter : IMilterContext
+            {
+                public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.EndOfBody;
+
+                public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                private string? _client;
+
+                public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+                {
+                    if (info.ProtocolStage == ProtocolStage.EndOfBody)
+                        _client = info.Macros["{client_name}"];
+
+                    return new();
+                }
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("declare 'MacroRequirements' by hand"));
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // Reading IsRejectedByMta derives RejectedRecipients, which in turn needs version 6. Without either,
+    // the MTA never reports a rejected recipient and the read is false for good.
+    [Test]
+    public void A_context_that_is_not_partial_and_reads_rejected_recipients_is_told_to_declare_them()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal sealed class PuffinFilter : IMilterContext
+            {
+                public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Recipient;
+
+                public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+                {
+                    return new(info.IsRejectedByMta ? CommitActions.Continue : CommitActions.Accept);
+                }
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("declare 'DeliveryRequirements' and 'ProtocolVersionRequirement' by hand"));
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // The class itself is partial here; the type around it is not, and the generator has to write both.
+    // The message has to name the one that is missing the modifier, not the one the author is looking at.
+    [Test]
+    public void A_context_inside_a_type_that_is_not_partial_names_that_type()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal static class Lighthouse
+            {
+                internal sealed partial class KeeperFilter : IMilterContext
+                {
+                }
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("the partial modifier on 'Lighthouse';"));
             Assert.That(run.GeneratedSources, Is.Empty);
         });
     }

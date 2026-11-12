@@ -41,6 +41,11 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
     // different file on Linux than on Windows would break deterministic builds.
     private const string NEW_LINE = "\r\n";
 
+    // The oldest protocol version the library speaks, and the interface default of
+    // ProtocolVersionRequirement: the version fold starts here, and a fold that never rose above it
+    // derived nothing a class without the generator would miss.
+    private const int PROTOCOL_FLOOR = 2;
+
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         var emissions = context.SyntaxProvider
@@ -78,23 +83,32 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         var properties = ImmutableArray.CreateBuilder<string>(initialCapacity: 6);
         var diagnostics = ImmutableArray.CreateBuilder<Diagnostic>();
 
+        // What a class that is not partial would have to declare by hand, because the generator cannot
+        // write into it. The two abstract properties always; the four virtual ones only where what was
+        // derived differs from the interface default, since that default is exactly what such a class
+        // gets. NoReplyRequirements never: its default costs a round trip per event and nothing else.
+        var declareByHand = new List<string>(capacity: 6);
+
         // The lowest protocol version this filter can work against, taken as the maximum over everything
         // the other four properties turned out to need. No separate walk: each marker already visited
         // carries the version its feature arrived in.
         //
         // Starts at the protocol floor rather than at zero: a filter that uses nothing newer still needs
         // an MTA that speaks version 2, and zero names no member of the enum.
-        var minimumProtocolVersion = 2;
+        var minimumProtocolVersion = PROTOCOL_FLOOR;
 
         if (NeedsGenerating(contextType, protocolProperty))
         {
             var requirements = DeriveProtocolRequirements(contextType, contextInterface, protocolProperty!.Type, ref minimumProtocolVersion);
 
             properties.Add(RenderProperty(protocolProperty, requirements));
+            declareByHand.Add(protocolProperty.Name);
         }
 
         if (NeedsGenerating(contextType, actionProperty))
         {
+            declareByHand.Add(actionProperty!.Name);
+
             var analysis = ActionRequirementsAnalysis.Run(contextType, context.SemanticModel.Compilation, cancellationToken);
 
             if (analysis.IsComplete)
@@ -115,7 +129,11 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             properties.Add(RenderProperty(deliveryProperty!, Combine(deliveryProperty!.Type, delivery)));
 
             if (delivery.Length > 0)
+            {
+                declareByHand.Add(deliveryProperty.Name);
+
                 minimumProtocolVersion = Math.Max(minimumProtocolVersion, VersionOfRequirementsEnum(deliveryProperty.Type, DeliveryRequirementsMarkerAttribute.IsDescribedBy, DeliveryRequirementsMarkerAttribute.GetMinimumProtocolVersion));
+            }
         }
 
         if (NeedsGenerating(contextType, noReplyProperty))
@@ -133,6 +151,11 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
         {
             var macros = MacroRequirementsAnalysis.Run(contextType, contextInterface, context.SemanticModel.Compilation, cancellationToken);
 
+            // A read that could not be followed is in the list too: MILT003 asks for a hand-written
+            // declaration either way.
+            if (!macros.IsComplete || macros.ByStage.Count > 0)
+                declareByHand.Add(macroProperty!.Name);
+
             if (!macros.IsComplete)
                 diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedMacro, macros.UntrackedLocation, contextType.Name, macros.UntrackedSource));
             else if (RenderMacroRequirements(macroProperty!.Type, macros.ByStage) is { } expression)
@@ -149,13 +172,28 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
 
         // Last, because it is a fold over what the four above turned out to need.
         if (NeedsGenerating(contextType, versionProperty))
+        {
             properties.Add(RenderProperty(versionProperty!, CombineByValue(versionProperty!.Type, minimumProtocolVersion)));
 
-        // Only worth complaining about once there is something to write. A context that declared both
-        // properties by hand has no reason to be partial.
-        if (properties.Count > 0 && !EnclosingDeclarations(declaration).All(IsPartial))
+            if (minimumProtocolVersion > PROTOCOL_FLOOR)
+                declareByHand.Add(versionProperty.Name);
+        }
+
+        // Nothing can be written into a class that is not partial. That only deserves an error where the
+        // defaults it falls back to would be wrong for it: a context that declared the two abstract
+        // properties and uses nothing the other four govern works as it is, and is left alone.
+        if (!EnclosingDeclarations(declaration).All(IsPartial))
         {
-            diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.ContextIsNotPartial, declaration.Identifier.GetLocation(), contextType.Name));
+            if (declareByHand.Count > 0)
+            {
+                var notPartial = EnclosingDeclarations(declaration)
+                    .Where(type => !IsPartial(type))
+                    .Reverse()
+                    .Select(type => type.Identifier.ValueText)
+                    .ToList();
+
+                diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.ContextIsNotPartial, declaration.Identifier.GetLocation(), contextType.Name, JoinNames(notPartial), JoinNames(declareByHand)));
+            }
 
             properties.Clear();
         }
@@ -420,6 +458,16 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
     {
         for (SyntaxNode? node = declaration; node is TypeDeclarationSyntax type; node = node.Parent)
             yield return type;
+    }
+
+    // 'A', 'A' and 'B', 'A', 'B' and 'C' - a diagnostic message reads as a sentence.
+    private static string JoinNames(IReadOnlyList<string> names)
+    {
+        var quoted = names.Select(name => $"'{name}'").ToList();
+
+        return quoted.Count == 1
+            ? quoted[0]
+            : $"{string.Join(", ", quoted.Take(quoted.Count - 1))} and {quoted[quoted.Count - 1]}";
     }
 
     private static bool IsPartial(TypeDeclarationSyntax declaration)
