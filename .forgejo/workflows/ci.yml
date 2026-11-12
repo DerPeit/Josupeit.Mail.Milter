@@ -26,6 +26,12 @@ jobs:
           git clone "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY.git" .
           git checkout "${GITHUB_HEAD_REF:-$GITHUB_REF_NAME}"
 
+      # First, because it needs nothing but a shell and fails in seconds: a public API change that
+      # llms-full.txt does not mention, or a link into the tree that no longer resolves, stops the run
+      # before the build is paid for. See CLAUDE.md, "LLM documentation".
+      - name: Check LLM documentation
+        run: bash scripts/check-llms-docs.sh
+
       - name: Restore local tools
         run: dotnet tool restore
 

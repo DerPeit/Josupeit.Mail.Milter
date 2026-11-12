@@ -1,0 +1,29 @@
+# Josupeit.Mail.Milter
+
+> .NET implementation of the Milter protocol, the mail filter protocol spoken by Postfix and Sendmail. Write a mail filter in C#: implement `IMilterContext` as a `partial class`, override the `On*` callbacks for the SMTP events you care about, return actions built by the `CommitActions` and `ModificationActions` factories, and host it with `Milter<TContext>` on a bound, listening socket. The library handles framing, option negotiation and the protocol state machine. A bundled source generator derives the six negotiation properties from the filter's own code. Speaks wire version 6 and negotiates down to version 2. Targets net8.0, Native AOT compatible, one runtime dependency (System.IO.Pipelines), namespace `Josupeit.Mail.Milter`, licensed EUPL-1.2.
+
+Install with `dotnet add package Josupeit.Mail.Milter`. Everything a filter touches lives in the `Josupeit.Mail.Milter` namespace; `.Link`, `.Protocol` and `.Session` hold the public wire layer, which a normal filter never needs. What exists:
+
+- `IMilterContext` - what a filter implements: the callbacks of `IMilterCallbacks` plus six static negotiation properties (`ProtocolRequirements`, `ActionRequirements` abstract; `NoReplyRequirements`, `DeliveryRequirements`, `MacroRequirements`, `ProtocolVersionRequirement` virtual), all written by the bundled source generator unless declared by hand
+- `IMilterCallbacks` - `OnConnectionEstablished`, `OnClientHello`, `OnSender`, `OnRecipient`, `OnMessageDataStarted`, `OnHeader`, `OnEndOfHeaders`, `OnBodyChunk`, `OnUnknownCommand` return `ValueTask<CommitAction>`; `OnEndOfBody()` returns `IAsyncEnumerable<Action>`; `OnDefineMacro` returns `ValueTask`. Every one has a default implementation answering `Continue`
+- `Milter<TContext>` - `new Milter<T>(socket, () => new T(...))`, `Start()`, `await Stop()`; the socket must already be bound and listening
+- `CommitActions` - `Continue`, `Accept`, `Reject`, `Defer`, `Discard`, `SkipRemainingEvents`, `Reply(code, text)`
+- `ModificationActions` - `AddHeader`, `InsertHeader`, `ChangeHeader`, `DeleteHeader`, `AddRecipient` (two overloads), `DeleteRecipient`, `ChangeSender`, `ReplaceBody`, `QuarantineMessage`; plus `ProgressAction.Instance`
+- event payloads `ConnectionInformation`, `ClientHelloInformation`, `SenderInformation`, `RecipientInformation`, `HeaderInformation`, `UnknownCommandInformation`, `MacroDefinitionInformation`; options `MilterOptions`; negotiation types `ProtocolRequirements`, `ActionRequirements`, `NoReplyRequirements`, `DeliveryRequirements`, `MacroRequirements`, `ProtocolVersionRequirement`, `ProtocolStage`
+
+A context instance serves one message, not one connection. `OnEndOfBody` is the only place a message can be modified, and must yield zero or more modifications and progress actions followed by exactly one commit action; write it as an `async IAsyncEnumerable<Action>` iterator, and alias `using Action = Josupeit.Mail.Milter.Action;` to avoid the clash with `System.Action`. Actions can only be built through the two factories. `SenderInformation.AddressString` keeps its angle brackets. Generator errors: MILT001 (context not `partial`), MILT002 (actions from code it cannot see), MILT003 (macro reads it cannot pin down); declaring the property by hand resolves the last two. There is no libmilter-style `smfi_*` API and no base class to derive from.
+
+## Documentation
+
+- [Complete reference](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/llms-full.txt): concepts, every public type with its exact C# declaration, the source generator and its diagnostics, runtime contract, usage recipes, a choosing guide, the wire layer, and common mistakes. Load this to write code against the package.
+- [PublicAPI.Shipped.txt](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/PublicAPI.Shipped.txt): analyzer-enforced inventory of every public member. `!` marks non-nullable and `?` nullable reference types; `abstract`/`virtual`/`override`/`static` prefixes mark member kind; accessibility is not shown.
+- [README](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/README.md): human-oriented package overview as shown on NuGet.
+
+## Optional
+
+- [Repository overview](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/README.md): building, testing, contributing.
+- [AOT.md](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/AOT.md): Native AOT compatibility statement and how CI verifies it.
+- [Example filter](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/src/branch/main/samples/Example): a runnable filter relying on the generator for all six properties.
+- [Source code](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/src/branch/main/src/Josupeit.Mail.Milter): the library on Codeberg.
+- [NuGet package](https://www.nuget.org/packages/Josupeit.Mail.Milter): release history.
+- [License](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/LICENSE.md): EUPL-1.2 full text.

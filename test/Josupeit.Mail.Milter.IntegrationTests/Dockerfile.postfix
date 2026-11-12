@@ -1,4 +1,7 @@
-FROM ubuntu
+# Pinned, so the test MTA changes only when someone changes it here. The unpinned image moved from
+# 24.04 to 26.04 underneath the suite, and Postfix 3.8 to 3.10 with it, which flipped a default the
+# tests relied on (see smtpd_forbid_unauth_pipelining in main.cf).
+FROM ubuntu:26.04
 
 RUN export DEBIAN_FRONTEND=noninteractive \
  && apt -yq update \

@@ -16,14 +16,17 @@ namespace Josupeit.Mail.Milter;
 /// </summary>
 /// <remarks>
 /// <para>
-/// The MTA sends a configured set of macros before each event whether the filter reads them or not.
-/// Naming the ones actually wanted (<c>SMFIF_SETSYMLIST</c>) trims that to what is used - which needs
-/// an MTA speaking protocol version 6.
+/// Without a list, the MTA sends the macros it is configured to send before each event - for Postfix
+/// the <c>milter_*_macros</c> parameters, whose defaults carry nothing but the queue id <c>i</c> from
+/// <c>DATA</c> onwards. Naming the macros wanted (<c>SMFIF_SETSYMLIST</c>) replaces that set for every
+/// stage the list names: the MTA then sends exactly those, including ones its configuration leaves out.
+/// That needs an MTA speaking protocol version 6.
 /// </para>
 /// <para>
 /// <see cref="None"/> means no list is sent at all, and the MTA falls back to its own configuration.
-/// That is the safe answer and the one a filter gets when it declares nothing: fewer macros is an
-/// optimisation, so failing to ask for it costs bandwidth rather than correctness.
+/// That is what a filter gets when it declares nothing, and what it gets from an MTA below version 6
+/// whatever it declares. A filter that reads only what the MTA sends anyway loses nothing by it; one
+/// that reads a macro outside that set finds the key missing.
 /// </para>
 /// </remarks>
 [MacroRequirementsMarker]

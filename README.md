@@ -14,6 +14,10 @@ Targets `net8.0` and speaks **wire version 6** of the protocol, negotiating down
 
 A runnable filter lives in [`samples/Example`](samples/Example), declaring none of the six requirement properties and leaving all of them to the generator - which makes it the readable proof that the derivation works.
 
+## Documentation for LLMs
+
+The package ships an `llms.txt` index and a self-contained `llms-full.txt` reference ([llmstxt.org](https://llmstxt.org/) format), inside the NuGet package and next to its README in [`src/Josupeit.Mail.Milter`](src/Josupeit.Mail.Milter). The root [`llms.txt`](llms.txt) is the index for the repository, and [`context7.json`](context7.json) configures [Context7](https://context7.com/), which indexes the released documentation on `main`. Point a coding agent at `llms-full.txt` before letting it write a filter: it carries every public declaration, the generator's rules and diagnostics, and the mistakes an agent predictably makes against this library.
+
 ## Building and testing
 
 ```bash
