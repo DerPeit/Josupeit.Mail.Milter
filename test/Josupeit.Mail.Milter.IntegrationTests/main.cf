@@ -9,3 +9,7 @@ milter_protocol = 6
 smtpd_milters = inet:host.docker.internal:34000
 non_smtpd_milters = inet:host.docker.internal:34000
 smtpd_authorized_xclient_hosts = static:all
+# On by default since Postfix 3.9. The unknown-family test pipes a whole SMTP session into
+# `sendmail -bs` at once, which stand-alone smtpd then drops as unauthorised pipelining before the
+# first command is read.
+smtpd_forbid_unauth_pipelining = no
