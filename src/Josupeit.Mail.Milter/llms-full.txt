@@ -546,7 +546,7 @@ public sealed record MacroRequirements
 }
 ```
 
-Names the macros wanted at each stage, so the MTA sends only those (needs protocol 6; an older MTA or `None` means the MTA sends its own configured set). Immutable: `And` returns a new instance. Names are spelled as the MTA spells them, `{client_addr}` with braces, `i` without. A name that is empty, contains a space or a control character, and `ProtocolStage.Header` or `ProtocolStage.Body` (stages without a macro class in the protocol), throw `ArgumentException`. Equality is by value, order-sensitive within a stage.
+Names the macros wanted at each stage. For every stage it names, the MTA sends exactly those instead of its configured set, including macros its configuration leaves out (needs protocol 6). With `None`, or against an older MTA, the MTA sends its own configured set; Postfix's defaults carry nothing but the queue id `i` from `DATA` onwards, so a filter reading anything else there depends on the list. Immutable: `And` returns a new instance. Names are spelled as the MTA spells them, `{client_addr}` with braces, `i` without. A name that is empty, contains a space or a control character, and `ProtocolStage.Header` or `ProtocolStage.Body` (stages without a macro class in the protocol), throw `ArgumentException`. Equality is by value, order-sensitive within a stage.
 
 ```csharp
 public static MacroRequirements MacroRequirements =>
@@ -569,7 +569,7 @@ public enum ProtocolVersionRequirement
 }
 ```
 
-The lowest protocol version the MTA must speak. If the MTA offers less (Postfix offers what `milter_protocol` says, 6 by default), negotiation fails with `NotSupportedException` and the connection is dropped; Postfix then applies `milter_default_action`. The generator computes it from what the filter uses: `OnUnknownCommand` needs 3; `OnMessageDataStarted` needs 4; `ChangeSender`, `AddRecipient(recipient, eSmtpArguments)`, `SkipRemainingEvents` and reading `IsRejectedByMta` need 6. Every other action, `InsertHeader` included, works from version 2. `NoReplyRequirements` and `MacroRequirements` contribute nothing either: an older MTA simply waits for every answer and sends its own macro set. A hand-declared property contributes nothing to that computation.
+The lowest protocol version the MTA must speak. If the MTA offers less (Postfix offers what `milter_protocol` says, 6 by default), negotiation fails with `NotSupportedException` and the connection is dropped; Postfix then applies `milter_default_action`. The generator computes it from what the filter uses: `OnUnknownCommand` needs 3; `OnMessageDataStarted` needs 4; `ChangeSender`, `AddRecipient(recipient, eSmtpArguments)`, `SkipRemainingEvents` and reading `IsRejectedByMta` need 6. Every other action, `InsertHeader` included, works from version 2. `NoReplyRequirements` and `MacroRequirements` contribute nothing either: an older MTA simply waits for every answer and sends its configured macro set instead of the list, so a macro outside that set is missing at runtime rather than refused at negotiation. A hand-declared property contributes nothing to that computation.
 
 ### `ProtocolStage`
 

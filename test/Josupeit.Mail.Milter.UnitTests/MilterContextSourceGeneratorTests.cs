@@ -865,10 +865,11 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
-    // Neither of these may raise the floor. Both degrade into behaviour the filter already copes with -
-    // an MTA below version 6 sends its own, larger macro set and waits for every answer - so demanding
-    // version 6 would refuse an MTA the filter works perfectly well against. Reading one macro at
-    // end-of-body is the commonest thing a filter does, and it used to derive Version6.
+    // Neither of these may raise the floor. Below version 6 the MTA waits for every answer, which costs
+    // a round trip, and sends its configured macro set instead of the list, which may lack a macro the
+    // filter reads. Demanding version 6 would close that gap only by refusing every older MTA to a filter
+    // reading "i" at end-of-body - the commonest read of all, which Postfix sends by default, and which
+    // used to derive Version6.
     [Test]
     public void Reading_macros_and_answering_quietly_leave_the_version_floor_alone()
     {

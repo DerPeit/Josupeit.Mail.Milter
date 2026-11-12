@@ -163,11 +163,14 @@ public sealed class MilterContextSourceGenerator : IIncrementalGenerator
             else
                 diagnostics.Add(Diagnostic.Create(GeneratorDiagnostics.UntrackedMacro, contextType.Locations.FirstOrDefault(), contextType.Name, "a macro read at a stage the protocol gives no macro class"));
 
-            // No contribution to the version fold either, and for the same reason as the no-reply family.
-            // Below version 6 the list is simply not sent and the MTA falls back to its configured macro
-            // set, which is larger rather than smaller - the filter's reads all still succeed. Reading
-            // one macro is the commonest thing a filter does, and demanding version 6 for it would lock
-            // out every MTA the library was written against.
+            // No contribution to the version fold either, and not because leaving the list out is
+            // harmless. Below version 6 the list is not sent and the MTA sends its configured set instead,
+            // which holds what MTAs are commonly configured with (Postfix by default: nothing but the
+            // queue id "i" from DATA onwards), not necessarily what this filter reads. Raising the floor
+            // would turn a missing macro into a failed negotiation, but it would also refuse every older
+            // MTA to a filter reading only "i", the commonest read of all - and telling the two apart
+            // takes the MTA's configuration, which the generator cannot see. MacroRequirements documents
+            // the gap instead.
         }
 
         // Last, because it is a fold over what the four above turned out to need.
