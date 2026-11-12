@@ -1,0 +1,41 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "url": "https://context7.com/git_codeberg_org/derpeit_josupeit.mail.milter",
+  "public_key": "pk_wvFRsoyy9eT9HlocS6LH6",
+  "projectTitle": "Josupeit.Mail.Milter",
+  "description": "A .NET implementation of the Milter protocol for writing Postfix and Sendmail mail filters in C#: callbacks per SMTP event, validated actions, a source generator that derives the protocol negotiation, Native AOT compatible.",
+  "branch": "main",
+  "folders": [],
+  "excludeFolders": [
+    "test",
+    "aot",
+    "artifacts",
+    "scripts",
+    "assets",
+    ".forgejo",
+    ".githooks",
+    ".config",
+    ".claude",
+    ".idea",
+    ".vs",
+    "src/Josupeit.Mail.Milter.Generator"
+  ],
+  "excludeFiles": [
+    "CLAUDE.md",
+    "CONTRIBUTING.md",
+    "AnalyzerReleases.Shipped.md",
+    "AnalyzerReleases.Unshipped.md",
+    "PublicAPI.Shipped.txt",
+    "PublicAPI.Unshipped.txt",
+    "BannedSymbols.txt"
+  ],
+  "rules": [
+    "Implement IMilterContext as a partial class and override only the callbacks you need; there is no base class, no attribute and no libmilter-style smfi_* API.",
+    "Callbacks return ValueTask<CommitAction> built by CommitActions; OnEndOfBody returns IAsyncEnumerable<Action>: ModificationActions, then exactly one commit action.",
+    "Modify a message only from OnEndOfBody. Build every action through CommitActions or ModificationActions; the action records cannot be constructed directly.",
+    "Leave the six requirement properties to the bundled source generator; declare one by hand only after MILT002 or MILT003, or to override what it derived.",
+    "A context instance serves one message, not one connection. Pass a Func<TContext> factory to Milter<TContext>; it is AOT-safe and must be thread-safe.",
+    "Write OnEndOfBody as an async iterator and alias Action: using Action = Josupeit.Mail.Milter.Action; net8.0 has no built-in ToAsyncEnumerable.",
+    "Read src/Josupeit.Mail.Milter/llms-full.txt for exact signatures before writing code; do not infer members that are not listed there."
+  ]
+}

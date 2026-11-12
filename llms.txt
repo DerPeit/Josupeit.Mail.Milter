@@ -1,0 +1,25 @@
+# Josupeit.Mail.Milter
+
+> A .NET implementation of the Milter protocol, so a Postfix or Sendmail mail filter can be written in C# instead of C. One NuGet package, `Josupeit.Mail.Milter`, targeting net8.0 and Native AOT compatible: implement `IMilterContext` as a `partial class`, override the callbacks for the SMTP events you care about, and host it with `Milter<TContext>`. A source generator bundled in the package derives the protocol negotiation from the filter's code. Licensed under EUPL-1.2. The package ships its own `llms.txt` and `llms-full.txt`; this file is the index for the repository.
+
+Install with `dotnet add package Josupeit.Mail.Milter`. Facts LLMs predictably get wrong about this library:
+
+- It is not a binding to libmilter and has no `smfi_*` functions, `SMFIS_*` return codes, base class, attribute or registration call. A filter is a `partial class` implementing `IMilterContext`; callbacks return `ValueTask<CommitAction>`, built by the `CommitActions` factory.
+- Message modifications are only possible from `OnEndOfBody`, which returns `IAsyncEnumerable<Action>`: modifications from `ModificationActions`, then exactly one commit action.
+- The six negotiation properties (`ProtocolRequirements`, `ActionRequirements` and four optional ones) are generated from the filter's code; do not write them unless the generator reports MILT002 or MILT003, or you need to override what it derived.
+- One context instance per message, not per connection.
+- Load the package's `llms-full.txt` before writing code; do not infer members that are not listed there.
+
+## Package
+
+- [Josupeit.Mail.Milter](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/llms-full.txt): the complete reference - `IMilterContext`, `IMilterCallbacks`, `Milter<TContext>`, `MilterOptions`, the event payloads, `CommitActions`, `ModificationActions`, the requirement types, the source generator and its diagnostics MILT001 to MILT003, and the public wire layer.
+
+## Optional
+
+- [Repository README](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/README.md): human-oriented overview, building and testing.
+- [Package README](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/README.md): the guide shown on NuGet.
+- [AOT.md](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/AOT.md): what Native AOT compatibility means here and how CI verifies it.
+- [Example filter](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/src/branch/main/samples/Example): a runnable filter that leaves every negotiation property to the generator.
+- [Source code](https://codeberg.org/DerPeit/Josupeit.Mail.Milter): the repository on Codeberg.
+- [NuGet package](https://www.nuget.org/packages/Josupeit.Mail.Milter): release history.
+- [License](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/LICENSE.md): EUPL-1.2 full text.

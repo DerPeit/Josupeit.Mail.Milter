@@ -31,8 +31,10 @@ internal sealed class AwaitingNegotiationState(IProtocolStateMachine stateMachin
         // the message goes out unchanged.
         //
         // Naming macros is the exception, and the only one, because it changes nothing about the message.
-        // An MTA that will not grant SMFIF_SETSYMLIST sends its own configured macro set instead, which
-        // is what every filter got before it could ask.
+        // An MTA that will not grant SMFIF_SETSYMLIST sends its own configured macro set instead. That is
+        // what every filter got before it could ask, but not necessarily what this one reads: a macro
+        // outside that set is missing at runtime. Failing here would refuse an older MTA to every filter
+        // that names a macro, including the many that read only what the MTA sends anyway.
         ThrowIfUnsupportedActionRequirements(grantedActions, requestedActions & ~ActionDiscriminator.SetMacroList);
 
         var actionRequirements = requestedActions & grantedActions;

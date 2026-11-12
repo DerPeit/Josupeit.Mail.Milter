@@ -333,6 +333,122 @@ public sealed class MilterContextSourceGeneratorTests
         Assert.Multiple(() =>
         {
             Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("the partial modifier on 'SeagullFilter'; declare 'ProtocolRequirements' and 'ActionRequirements' by hand"));
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // The four virtual properties fall back to their interface defaults in a class nothing can be
+    // generated into. For a filter that uses none of what they govern, those defaults are exactly what
+    // the generator would have written, so there is nothing to complain about.
+    [Test]
+    public void A_context_that_is_not_partial_but_needs_only_the_defaults_is_left_alone()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal sealed class PelicanFilter : IMilterContext
+            {
+                public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Header;
+
+                public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken) => new(CommitActions.Continue);
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorDiagnostics, Is.Empty, "A provable no-reply is an optimisation; losing it is no reason to fail the build.");
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // The macro list is not an optimisation: it replaces the MTA's configured set for the stages it
+    // names. Without it the MTA sends only that set - Postfix sends nothing but "i" at end-of-body - and
+    // the filter finds any other key missing at runtime.
+    [Test]
+    public void A_context_that_is_not_partial_and_reads_macros_is_told_to_declare_them()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal sealed class CormorantFilter : IMilterContext
+            {
+                public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.EndOfBody;
+
+                public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                private string? _client;
+
+                public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+                {
+                    if (info.ProtocolStage == ProtocolStage.EndOfBody)
+                        _client = info.Macros["{client_name}"];
+
+                    return new();
+                }
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("declare 'MacroRequirements' by hand"));
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // Reading IsRejectedByMta derives RejectedRecipients, which in turn needs version 6. Without either,
+    // the MTA never reports a rejected recipient and the read is false for good.
+    [Test]
+    public void A_context_that_is_not_partial_and_reads_rejected_recipients_is_told_to_declare_them()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal sealed class PuffinFilter : IMilterContext
+            {
+                public static ProtocolRequirements ProtocolRequirements => ProtocolRequirements.Recipient;
+
+                public static ActionRequirements ActionRequirements => ActionRequirements.None;
+
+                public ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken)
+                {
+                    return new(info.IsRejectedByMta ? CommitActions.Continue : CommitActions.Accept);
+                }
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("declare 'DeliveryRequirements' and 'ProtocolVersionRequirement' by hand"));
+            Assert.That(run.GeneratedSources, Is.Empty);
+        });
+    }
+
+    // The class itself is partial here; the type around it is not, and the generator has to write both.
+    // The message has to name the one that is missing the modifier, not the one the author is looking at.
+    [Test]
+    public void A_context_inside_a_type_that_is_not_partial_names_that_type()
+    {
+        var run = GeneratorHarness.Run(
+            PREAMBLE +
+            """
+            internal static class Lighthouse
+            {
+                internal sealed partial class KeeperFilter : IMilterContext
+                {
+                }
+            }
+            """);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.GeneratorErrorIds, Is.EqualTo(new[] { "MILT001" }));
+            Assert.That(run.GeneratorDiagnostics[0].GetMessage(), Contains.Substring("the partial modifier on 'Lighthouse';"));
             Assert.That(run.GeneratedSources, Is.Empty);
         });
     }
@@ -749,10 +865,11 @@ public sealed class MilterContextSourceGeneratorTests
         });
     }
 
-    // Neither of these may raise the floor. Both degrade into behaviour the filter already copes with -
-    // an MTA below version 6 sends its own, larger macro set and waits for every answer - so demanding
-    // version 6 would refuse an MTA the filter works perfectly well against. Reading one macro at
-    // end-of-body is the commonest thing a filter does, and it used to derive Version6.
+    // Neither of these may raise the floor. Below version 6 the MTA waits for every answer, which costs
+    // a round trip, and sends its configured macro set instead of the list, which may lack a macro the
+    // filter reads. Demanding version 6 would close that gap only by refusing every older MTA to a filter
+    // reading "i" at end-of-body - the commonest read of all, which Postfix sends by default, and which
+    // used to derive Version6.
     [Test]
     public void Reading_macros_and_answering_quietly_leave_the_version_floor_alone()
     {
@@ -841,6 +958,81 @@ public sealed class MilterContextSourceGeneratorTests
             Assert.That(run.Errors, Is.Empty);
             Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\")"));
         });
+    }
+
+    // The shape C# leads to: TryGetValue in the condition, behind the stage test. The right operand of &&
+    // only runs once the left one held, so the stage test guards it as surely as an enclosing if would.
+    [Test]
+    public void A_lookup_sharing_the_condition_with_the_stage_test_is_derived()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (info.ProtocolStage == ProtocolStage.EndOfBody && info.Macros.TryGetValue("i", out var queueId))
+                    _queueId = queueId;
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratorErrorIds, Does.Not.Contain("MILT003"));
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\")"));
+        });
+    }
+
+    [Test]
+    public void A_stage_test_anywhere_in_an_and_chain_guards_the_body()
+    {
+        var run = GeneratorHarness.Run(Context(
+            """
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if (_queueId == null && (info.ProtocolStage == ProtocolStage.EndOfBody && !cancellationToken.IsCancellationRequested))
+                    _queueId = info.Macros["i"];
+
+                return new();
+            }
+            """));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(run.Errors, Is.Empty);
+            Assert.That(run.GeneratorErrorIds, Does.Not.Contain("MILT003"));
+            Assert.That(run.GeneratedSource, Contains.Substring("MacroRequirements.For(Josupeit.Mail.Milter.ProtocolStage.EndOfBody, \"i\")"));
+        });
+    }
+
+    // The left operand of && runs whatever the stage, so a lookup there is not guarded by a stage test to
+    // its right. And two comparisons naming different stages can never both hold, so picking either one
+    // would be a guess.
+    [TestCase("info.Macros.TryGetValue(\"i\", out var queueId) && info.ProtocolStage == ProtocolStage.EndOfBody", TestName = "A_lookup_ahead_of_the_stage_test_is_reported")]
+    [TestCase("info.ProtocolStage == ProtocolStage.EndOfBody && info.ProtocolStage == ProtocolStage.Sender && info.Macros.TryGetValue(\"i\", out var queueId)", TestName = "An_and_chain_naming_two_stages_is_reported")]
+    public void An_and_chain_that_does_not_pin_the_stage_is_reported(string condition)
+    {
+        var run = GeneratorHarness.Run(Context(
+            $$"""
+            private string? _queueId;
+
+            public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+            {
+                if ({{condition}})
+                    _queueId = queueId;
+
+                return new();
+            }
+            """));
+
+        Assert.That(run.Errors, Is.Empty, "The generated code has to compile, not merely read correctly.");
+
+        Assert.That(run.GeneratorErrorIds, Does.Contain("MILT003"));
     }
 
     // The common stash. It genuinely cannot be analysed, and a list that leaves a macro out fails at

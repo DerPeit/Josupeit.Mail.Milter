@@ -16,11 +16,11 @@ internal static class GeneratorDiagnostics
     public static readonly DiagnosticDescriptor ContextIsNotPartial = new(
         id: "MILT001",
         title: "Milter context is not partial",
-        messageFormat: "'{0}' implements IMilterContext but is not declared partial, so its requirement properties cannot be generated",
+        messageFormat: "'{0}' implements IMilterContext, but its requirement properties cannot be generated without the partial modifier on {1}; declare {2} by hand, or add partial",
         category: "Josupeit.Mail.Milter",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "The generator emits the six requirement properties into a second part of the class. Declare the class partial, or declare ProtocolRequirements and ActionRequirements by hand - the other four have a safe default.");
+        description: "The generator emits the requirement properties into a second part of the class, which needs the class and every type enclosing it to be partial. Without that, declare by hand every property the message names: ProtocolRequirements and ActionRequirements always, and any of the other four whose derived value differs from its default, because the default is what the class would otherwise negotiate. NoReplyRequirements is never named - its default costs a round trip per event and nothing else.");
 
     public static readonly DiagnosticDescriptor UntrackedAction = new(
         id: "MILT002",

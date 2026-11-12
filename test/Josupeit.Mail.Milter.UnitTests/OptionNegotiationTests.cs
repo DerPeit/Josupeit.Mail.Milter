@@ -260,8 +260,9 @@ public sealed class OptionNegotiationTests
         });
     }
 
-    // Degrades rather than failing, unlike every other action right: the MTA simply carries on sending
-    // its own configured macro set, which is larger than the one that was asked for.
+    // Degrades rather than failing, unlike every other action right: the MTA carries on sending its own
+    // configured macro set. That set may lack a macro that was asked for, which the filter finds out at
+    // runtime - refusing the MTA would cost every filter that reads only what it sends anyway.
     [TestCase(2, TestName = "An_mta_below_the_version_that_defines_it")]
     public void A_macro_list_the_negotiation_cannot_place_is_dropped_without_failing(int offeredVersion)
     {
