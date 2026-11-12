@@ -1,0 +1,921 @@
+# Josupeit.Mail.Milter
+
+> .NET implementation of the Milter protocol, the mail filter protocol spoken by Postfix and Sendmail. Write a mail filter in C#: implement `IMilterContext` as a `partial class`, override the `On*` callbacks for the SMTP events you care about, return actions built by the `CommitActions` and `ModificationActions` factories, and host it with `Milter<TContext>` on a bound, listening socket. The library handles framing, option negotiation and the protocol state machine. A bundled source generator derives the six negotiation properties from the filter's own code. Speaks wire version 6 and negotiates down to version 2. Targets net8.0, Native AOT compatible, one runtime dependency (System.IO.Pipelines), namespace `Josupeit.Mail.Milter`, licensed EUPL-1.2.
+
+## At a glance
+
+- **Package:** `Josupeit.Mail.Milter`
+- **Namespace:** `Josupeit.Mail.Milter` for everything a filter touches. The wire layer lives in `Josupeit.Mail.Milter.Link`, `Josupeit.Mail.Milter.Protocol` and `Josupeit.Mail.Milter.Session`; a normal filter never imports those.
+- **Target framework:** `net8.0` only. Requires C# 11 or later, because `IMilterContext` has `static abstract` members.
+- **Protocol:** Milter wire version 6, negotiated down to whatever the MTA offers, with a floor of version 2. There is no version 5.
+- **Native AOT and trimming:** compatible. Built with `IsAotCompatible`, verified by a native smoke-test binary published and run in CI. The two `Milter<TContext>` constructors without a `Func<TContext>` factory use `Activator.CreateInstance` and carry `[RequiresUnreferencedCode]` and `[RequiresDynamicCode]`; the factory constructors are clean. See [AOT.md](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/AOT.md).
+- **Dependencies:** `System.IO.Pipelines` and nothing else at runtime.
+- **Source generator:** bundled inside the package as an analyzer (`analyzers/dotnet/cs/`). It runs automatically for any project that references the package; there is no second package to install and no attribute to apply.
+- **Contents:** the filter contract (`IMilterContext`, `IMilterCallbacks`), the host (`Milter<TContext>`, `MilterOptions`), the event payloads (`*Information` record structs), the action hierarchy and its two factories, the negotiation types (`ProtocolRequirements`, `ActionRequirements`, `NoReplyRequirements`, `DeliveryRequirements`, `MacroRequirements`, `ProtocolVersionRequirement`, `ProtocolStage`), and a public, non-sealed wire layer for consumers who need to reach below the callbacks.
+- **Nullability:** every declaration in this document is shown as compiled under `#nullable enable`. An unannotated reference type is non-nullable; nullable members carry `?`.
+- **Authoritative inventory:** [PublicAPI.Shipped.txt](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/PublicAPI.Shipped.txt) is the analyzer-enforced list of every public member, kept in sync with the compiled assembly by RS0016/RS0017. Format key: `!` marks a non-nullable and `?` a nullable reference type; members are prefixed with `abstract`, `virtual`, `override` or `static` where applicable; accessibility is not shown, so public and protected members look alike.
+- **This document:** ships inside the NuGet package as `llms-full.txt` and is published at https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/llms-full.txt. The packaged copy matches its package version; the published copy describes the latest release.
+- **License:** EUPL-1.2
+
+Install:
+
+```
+dotnet add package Josupeit.Mail.Milter
+```
+
+## Concepts
+
+An MTA (Postfix, Sendmail) connects to a milter over a socket and streams the SMTP conversation to it as it happens: the client connecting, `HELO`/`EHLO`, `MAIL FROM`, each `RCPT TO`, `DATA`, every header, the end of the headers, the body in chunks, and the end of the message. After each event the filter answers, and the answer decides what the MTA does next. At the end of the message the filter may also modify it.
+
+The library maps that onto three ideas:
+
+- **Callbacks.** `IMilterCallbacks` has one method per event. Every method has a default implementation that answers `Continue`, so a filter overrides only the events it cares about. Callbacks are ordinary interface method implementations, not `override`s of a base class: there is no base class.
+- **Actions.** A callback answers with a `CommitAction` (continue, accept, reject, defer, discard, custom reply, or skip the rest of a repeating event). `OnEndOfBody`, the last callback, instead returns a sequence: any number of `ModificationAction`s (header, recipient, sender, body, quarantine changes) and `ProgressAction`s, then exactly one `CommitAction`. Actions are only ever built through the `CommitActions` and `ModificationActions` static factories.
+- **Negotiation.** When the MTA connects, filter and MTA agree which events will be sent, which modifications are allowed, which events need no answer, which macros are wanted, and which protocol version applies. The filter's side comes from six static properties on the context type. The bundled source generator writes them from the filter's own code; a property declared by hand always wins.
+
+A context instance serves **one message, not one connection**. Postfix keeps a connection open across several messages, and the library creates a fresh context per message (after `ABORT`, `QUIT` or `QUIT_NC`). Per-message state in fields is safe; state that must survive across messages must live elsewhere, for example in a singleton passed through the factory. When the filter implements `OnConnectionEstablished`, the connect event is replayed into each new context; HELO is never replayed (see "Contract expectations").
+
+Each event blocks the MTA until it is answered: a slow callback is a slow mail server. Long work belongs in `OnEndOfBody`, which can yield `ProgressAction.Instance` to keep the MTA from timing out.
+
+An exception thrown from any callback ends the session and drops that one connection; other connections are unaffected. Nothing is logged by the library. What the MTA then does with the message is its own configuration; Postfix applies `milter_default_action`, which defaults to `tempfail`.
+
+## Quick start
+
+A complete filter: reject one sender domain, stamp a header on everything else.
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Josupeit.Mail.Milter;
+using Action = Josupeit.Mail.Milter.Action; // Josupeit.Mail.Milter.Action collides with System.Action
+
+internal sealed partial class RejectBigSenders : IMilterContext
+{
+    public ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken)
+    {
+        // AddressString is the raw envelope argument, angle brackets included: "<horace.hoax@spam.example.com>".
+        return info.AddressString.EndsWith("@spam.example.com>", StringComparison.OrdinalIgnoreCase)
+            ? new(CommitActions.Reject)
+            : new(CommitActions.Continue);
+    }
+
+    public async IAsyncEnumerable<Action> OnEndOfBody()
+    {
+        yield return ModificationActions.AddHeader("X-Filtered-By", "RejectBigSenders");
+        yield return CommitActions.Accept;
+    }
+}
+```
+
+The class declares none of the six requirement properties. The generator emits `ProtocolRequirements => ProtocolRequirements.Sender` (because `OnSender` is implemented) and `ActionRequirements => ActionRequirements.AddHeaders` (because `AddHeader` is called), plus safe values for the other four.
+
+Host it:
+
+```csharp
+using System.Net;
+using System.Net.Sockets;
+using Josupeit.Mail.Milter;
+
+using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+socket.Bind(new IPEndPoint(IPAddress.Loopback, 8894));
+socket.Listen();
+
+var milter = new Milter<RejectBigSenders>(socket, () => new RejectBigSenders());
+
+milter.Start();     // returns immediately; the accept loop runs in the background
+
+// ... run until shutdown ...
+
+await milter.Stop(); // stops accepting and waits for in-flight sessions to finish
+```
+
+Point the MTA at it. Postfix, `main.cf`:
+
+```
+smtpd_milters = inet:127.0.0.1:8894
+non_smtpd_milters = inet:127.0.0.1:8894
+milter_default_action = tempfail
+```
+
+Sendmail, `.mc`:
+
+```
+INPUT_MAIL_FILTER(`dotnet-milter', `S=inet:8894@127.0.0.1, F=T')
+```
+
+## Type catalog
+
+| Type                                                                                                                                                                           | Kind                        | Role                                                                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------ |
+| `IMilterCallbacks`                                                                                                                                                             | interface                   | The eleven event callbacks, all with default implementations                   |
+| `IMilterContext`                                                                                                                                                               | interface                   | What a filter implements: the callbacks plus six static negotiation properties |
+| `Milter<TContext>`                                                                                                                                                             | class                       | Hosts a filter on a socket, one session per connection                         |
+| `MilterOptions`                                                                                                                                                                | sealed record               | Frame-size and concurrent-session limits                                       |
+| `ConnectionInformation`, `ClientHelloInformation`, `SenderInformation`, `RecipientInformation`, `HeaderInformation`, `UnknownCommandInformation`, `MacroDefinitionInformation` | readonly record structs     | Event payloads                                                                 |
+| `CommitActions`                                                                                                                                                                | static class                | Factory for the actions that decide a message's fate                           |
+| `ModificationActions`                                                                                                                                                          | static class                | Factory for the actions that change a message                                  |
+| `Action`, `CommitAction`, `ModificationAction`, `ProgressAction` and the concrete `*Action` records                                                                            | abstract and sealed records | The action hierarchy                                                           |
+| `ProtocolRequirements`                                                                                                                                                         | `[Flags]` enum              | Which events the filter wants                                                  |
+| `ActionRequirements`                                                                                                                                                           | `[Flags]` enum              | Which modifications the filter may perform                                     |
+| `NoReplyRequirements`                                                                                                                                                          | `[Flags]` enum              | Which events the MTA need not wait for an answer to                            |
+| `DeliveryRequirements`                                                                                                                                                         | `[Flags]` enum              | Rejected recipients and leading header space                                   |
+| `MacroRequirements`                                                                                                                                                            | sealed record               | Which macros are wanted at which stage                                         |
+| `ProtocolVersionRequirement`                                                                                                                                                   | enum                        | Lowest protocol version the MTA must speak                                     |
+| `ProtocolStage`                                                                                                                                                                | enum                        | Which event a set of macros belongs to                                         |
+
+### `IMilterCallbacks`
+
+Implement only the methods you need; the rest answer `Continue`. Order below is the order of the SMTP conversation, except `OnUnknownCommand` (it can arrive at any point) and `OnDefineMacro` (it precedes the event it describes).
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public interface IMilterCallbacks
+{
+    ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnConnectionEstablished(ConnectionInformation info, CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnClientHello(ClientHelloInformation info, CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnRecipient(RecipientInformation info, CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnMessageDataStarted(CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnEndOfHeaders(CancellationToken cancellationToken);
+
+    ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken);
+
+    IAsyncEnumerable<Action> OnEndOfBody();
+
+    ValueTask<CommitAction> OnUnknownCommand(UnknownCommandInformation info, CancellationToken cancellationToken);
+}
+```
+
+| Callback                  | SMTP event                           | Needs `ProtocolRequirements` | Min. protocol | Notes                                                                |
+| ------------------------- | ------------------------------------ | ---------------------------- | ------------- | -------------------------------------------------------------------- |
+| `OnDefineMacro`           | macro values ahead of an event       | (none)                       | 2             | Returns `ValueTask`, decides nothing; the MTA expects no reply       |
+| `OnConnectionEstablished` | client connected                     | `Connect`                    | 2             | Sent once per connection; replayed into each later message's context |
+| `OnClientHello`           | `HELO` / `EHLO`                      | `ClientHello`                | 2             | Repeats after `STARTTLS`; not replayed into later messages' contexts |
+| `OnSender`                | `MAIL FROM`                          | `Sender`                     | 2             | Envelope sender, not the `From` header                               |
+| `OnRecipient`             | `RCPT TO`                            | `Recipient`                  | 2             | Once per recipient; rejecting refuses only that recipient            |
+| `OnMessageDataStarted`    | `DATA`                               | `MessageData`                | 4             | Whole envelope known, no content yet                                 |
+| `OnHeader`                | one header                           | `Header`                     | 2             | Read-only; modify headers from `OnEndOfBody`                         |
+| `OnEndOfHeaders`          | end of the header block              | `EndOfHeaders`               | 2             | All headers seen, no body yet                                        |
+| `OnBodyChunk`             | one body chunk                       | `Body`                       | 2             | Chunks, not the whole body; Postfix caps each at 64 KiB              |
+| `OnEndOfBody`             | message complete                     | `EndOfBody` (always on)      | 2             | The only place modifications can be made; no `CancellationToken`     |
+| `OnUnknownCommand`        | SMTP verb the MTA does not recognise | `UnknownCommand`             | 3             | No fixed place in the conversation                                   |
+
+Against an MTA below the minimum version, `OnMessageDataStarted` and `OnUnknownCommand` simply never fire, unless the filter's `ProtocolVersionRequirement` demands that version, in which case negotiation fails instead.
+
+`OnBodyChunk` receives a `ReadOnlySpan<byte>` that is only valid during the call; copy anything that must outlive it. A pattern can straddle two chunks.
+
+`OnEndOfBody` takes no `CancellationToken`: it returns the sequence itself and the enumeration is what gets cancelled. The sequence must be zero or more `ModificationAction`/`ProgressAction` items followed by **exactly one** `CommitAction`. Yielding nothing, ending without a commit action, or yielding anything after it throws `InvalidOperationException` (which ends the session). `SkipRemainingEvents` is not allowed here.
+
+### `IMilterContext`
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public interface IMilterContext : IMilterCallbacks
+{
+    static abstract ProtocolRequirements ProtocolRequirements { get; }
+
+    static abstract ActionRequirements ActionRequirements { get; }
+
+    static virtual DeliveryRequirements DeliveryRequirements => DeliveryRequirements.None;
+
+    static virtual NoReplyRequirements NoReplyRequirements => NoReplyRequirements.None;
+
+    static virtual ProtocolVersionRequirement ProtocolVersionRequirement => ProtocolVersionRequirement.Version2;
+
+    static virtual MacroRequirements MacroRequirements => MacroRequirements.None;
+}
+```
+
+Implement it as a `partial class` and let the generator write all six properties (see "The source generator"). `ProtocolRequirements` and `ActionRequirements` are `static abstract` because no default is safe: if the generator does not run, the build fails with CS0535 instead of negotiating something wrong. The other four are `static virtual` and default to what a version 2 filter always negotiated.
+
+To declare one by hand, write it as a `public static` property on the class; it replaces the generated one:
+
+```csharp
+internal sealed partial class HeaderStamper : IMilterContext
+{
+    public static ActionRequirements ActionRequirements => ActionRequirements.AddHeaders | ActionRequirements.ChangeHeaders;
+}
+```
+
+### `Milter<TContext>`
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public class Milter<TContext>
+    where TContext : IMilterContext
+{
+    [RequiresUnreferencedCode("...")]
+    [RequiresDynamicCode("...")]
+    public Milter(Socket socket);
+
+    [RequiresUnreferencedCode("...")]
+    [RequiresDynamicCode("...")]
+    public Milter(Socket socket, MilterOptions options);
+
+    public Milter(Socket socket, Func<TContext> contextFactory);
+
+    public Milter(Socket socket, Func<TContext> contextFactory, MilterOptions options);
+
+    public void Start();
+
+    public Task Stop();
+
+    protected virtual ILinkReader CreateLinkReader(PipeReader reader, uint maxFrameLength);
+
+    protected virtual ILinkWriter CreateLinkWriter(PipeWriter writer);
+
+    protected virtual IRequestParser CreateRequestParser(ILinkReader linkReader, ChannelWriter<RequestFrame> frameWriter, uint maxFrameLength);
+
+    protected virtual IResponseFormatter CreateResponseFormatter(ChannelReader<ResponseFrame> frameReader, ILinkWriter linkWriter);
+
+    protected virtual IRequestPacketFactory CreateRequestPacketFactory();
+
+    protected virtual IResponseFrameFactory CreateResponseFrameFactory();
+
+    protected virtual ISession CreateSession(
+        ChannelReader<RequestFrame> requestFrameReader,
+        IRequestPacketFactory requestPacketFactory,
+        IResponseFrameFactory responseFrameFactory,
+        ChannelWriter<ResponseFrame> responseFrameWriter,
+        Func<TContext>? contextFactory);
+}
+```
+
+- The socket is passed **already bound and listening**; the milter accepts on it but does not own or dispose it. TCP (`IPEndPoint`) and Unix domain sockets (`UnixDomainSocketEndPoint`) both work.
+- `contextFactory` is called once per message, possibly from several sessions at once, so it must be thread-safe; the contexts it returns need not be. Without a factory the context is built by `Activator.CreateInstance`, which needs a public parameterless constructor and is not AOT-safe.
+- `Start()` returns immediately. Calling it twice without `Stop()` throws `InvalidOperationException`.
+- `Stop()` cancels the accept loop and then waits, without a time limit, until every running session has ended. Calling it when not running throws `InvalidOperationException`. The milter can be started again afterwards.
+- There is no `StartAsync`, `Run`, `ListenAsync`, `Dispose` or hosted-service integration; wrap `Start`/`Stop` in your own `IHostedService` if you use the generic host.
+- The `protected virtual Create*` methods build the per-connection pipeline; override one to substitute a wire-layer component (see "Wire layer").
+
+### `MilterOptions`
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public sealed record MilterOptions
+{
+    public static readonly uint DefaultMaxFrameLength;       // 1024 * 1024
+
+    public static readonly int DefaultMaxConcurrentSessions; // 1024
+
+    public uint MaxFrameLength { get; init; }                // >= 1, else ArgumentOutOfRangeException
+
+    public int MaxConcurrentSessions { get; init; }          // >= 1, else ArgumentOutOfRangeException
+}
+```
+
+`MaxFrameLength` bounds a single frame's length prefix; a larger frame ends the session. `MaxConcurrentSessions` bounds simultaneous connections; connections past the limit are closed immediately, not queued.
+
+```csharp
+var milter = new Milter<RejectBigSenders>(socket, () => new RejectBigSenders(), new MilterOptions
+{
+    MaxFrameLength = 256 * 1024,
+    MaxConcurrentSessions = 64,
+});
+```
+
+### Event payloads
+
+All are `public readonly record struct` types in `Josupeit.Mail.Milter`, with public constructors (useful in unit tests).
+
+```csharp
+public readonly record struct ConnectionInformation(string Hostname, EndPoint? EndPoint);
+
+public readonly record struct ClientHelloInformation(string Hostname);
+
+public readonly record struct SenderInformation(string AddressString, IReadOnlyList<string> ESmtpArguments);
+
+public readonly record struct RecipientInformation(string AddressString, IReadOnlyList<string> ESmtpArguments, bool IsRejectedByMta);
+
+public readonly record struct HeaderInformation(string Name, string Value);
+
+public readonly record struct UnknownCommandInformation(string CommandText);
+
+public readonly record struct MacroDefinitionInformation(ProtocolStage ProtocolStage, IReadOnlyDictionary<string, string> Macros);
+```
+
+- `ConnectionInformation.EndPoint` is an `IPEndPoint` for a remote client, a `UnixDomainSocketEndPoint` for local submission, or `null` when the MTA reported no address. `Hostname` is what the MTA resolved.
+- `ClientHelloInformation.Hostname` is the client's unverified claim.
+- `SenderInformation.AddressString` and `RecipientInformation.AddressString` are the raw envelope argument **with angle brackets**: `<penny.packet@example.com>`, not `penny.packet@example.com`. A null sender arrives as `<>`. Parse it yourself if you need parts. `ESmtpArguments` holds each ESMTP parameter (`SIZE=1234`, `NOTIFY=NEVER`) as an unparsed string, empty when there are none.
+- `RecipientInformation.IsRejectedByMta` is only ever `true` when `DeliveryRequirements.RejectedRecipients` was negotiated; reading it is what makes the generator ask for that flag. The rejection reason arrives in the recipient-stage macros.
+- `HeaderInformation.Value` arrives unfolded. Whether it starts with the space after the colon depends on `DeliveryRequirements.LeadingHeaderSpace` (without it: `hello`; with it: ` hello`).
+- `UnknownCommandInformation.CommandText` is the raw command line, verb and arguments, unparsed and attacker-controlled.
+- `MacroDefinitionInformation.Macros` keys are macro names as the MTA spells them: `i`, `j`, `{client_addr}`, `{auth_authen}`. Any macro may be absent; prefer `TryGetValue` over the indexer, which throws `KeyNotFoundException` and so ends the session.
+
+### `CommitActions`
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public static class CommitActions
+{
+    public static ContinueAction Continue { get; }
+
+    public static AcceptAction Accept { get; }
+
+    public static RejectAction Reject { get; }
+
+    public static DeferAction Defer { get; }
+
+    public static DiscardAction Discard { get; }
+
+    public static SkipRemainingEventsAction SkipRemainingEvents { get; }
+
+    public static ReplyAction Reply(int code, string text);
+}
+```
+
+| Member                | Effect                                                                                             |
+| --------------------- | -------------------------------------------------------------------------------------------------- |
+| `Continue`            | Carry on with the next event. The only answer allowed for an event listed in `NoReplyRequirements` |
+| `Accept`              | Accept the message and stop calling the filter for it                                              |
+| `Reject`              | Permanent rejection (5xx). From `OnRecipient` it refuses only that recipient                       |
+| `Defer`               | Temporary rejection (4xx), so the sender retries                                                   |
+| `Discard`             | Accept on the wire, then silently drop the message                                                 |
+| `Reply(code, text)`   | Reject with your own reply; `code` must be 400-599, `text` non-blank without control characters    |
+| `SkipRemainingEvents` | Stop sending the rest of the current repeating event; decides nothing about the message            |
+
+`Reply` throws `ArgumentOutOfRangeException` for a code outside 400-599 (a 2xx "success" reply is not possible) and `ArgumentException` for empty, whitespace or control-character text. The text is the SMTP reply text only; do not include the code in it.
+
+`SkipRemainingEvents` is valid only from `OnHeader`, `OnRecipient` and `OnBodyChunk`, the three events that repeat. From any other callback, or yielded from `OnEndOfBody`, it throws `InvalidOperationException`. Against an MTA that did not grant skipping (below protocol 6) it degrades to `Continue`. `OnEndOfBody` still runs after a skip. The generator counts a skip as needing protocol version 6.
+
+The returned actions are cached singletons (`ContinueAction.Instance` and so on are also public), so returning one allocates nothing. Wrap them for `ValueTask<CommitAction>` with `new(CommitActions.Continue)` or `ValueTask.FromResult<CommitAction>(CommitActions.Continue)`.
+
+### `ModificationActions`
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public static class ModificationActions
+{
+    public static AddHeaderAction AddHeader(string name, string value);
+
+    public static InsertHeaderAction InsertHeader(int index, string name, string value);
+
+    public static ChangeHeaderAction ChangeHeader(string name, string value, int index = 0);
+
+    public static DeleteHeaderAction DeleteHeader(string name, int index = 0);
+
+    public static AddRecipientAction_V2 AddRecipient(string recipient);
+
+    public static AddRecipientAction_V6 AddRecipient(string recipient, string eSmtpArguments);
+
+    public static DeleteRecipientAction DeleteRecipient(string recipient);
+
+    public static ChangeSenderAction ChangeSender(string sender, string? eSmtpArguments = null);
+
+    public static ReplaceBodyAction ReplaceBody(Stream stream, bool leaveOpen = false);
+
+    public static QuarantineAction QuarantineMessage(string reason);
+}
+```
+
+| Factory method                                | Needs `ActionRequirements`    | Min. protocol | Notes                                                                                     |
+| --------------------------------------------- | ----------------------------- | ------------- | ----------------------------------------------------------------------------------------- |
+| `AddHeader(name, value)`                      | `AddHeaders`                  | 2             | Appends; `value` may be empty                                                             |
+| `InsertHeader(index, name, value)`            | `AddHeaders`                  | 2             | `index` = how many headers to place it after; `0` puts it first. `value` may be empty     |
+| `ChangeHeader(name, value, index = 0)`        | `ChangeHeaders`               | 2             | Replaces the `index`-th occurrence, zero-based; `value` must not be empty                 |
+| `DeleteHeader(name, index = 0)`               | `DeleteHeaders`               | 2             | Removes the `index`-th occurrence, zero-based                                             |
+| `AddRecipient(recipient)`                     | `AddRecipients`               | 2             | Adds an envelope recipient                                                                |
+| `AddRecipient(recipient, eSmtpArguments)`     | `AddRecipientsWithParameters` | 6             | A separate right from `AddRecipients`, not an extension of it                             |
+| `DeleteRecipient(recipient)`                  | `DeleteRecipients`            | 2             | Spell the address as `OnRecipient` received it                                            |
+| `ChangeSender(sender, eSmtpArguments = null)` | `ChangeSender`                | 6             | Envelope sender; `null` or empty arguments mean none                                      |
+| `ReplaceBody(stream, leaveOpen = false)`      | `ChangeBody`                  | 2             | Stream is read when the action is sent, after it was yielded; disposed unless `leaveOpen` |
+| `QuarantineMessage(reason)`                   | `QuarantineMessage`           | 2             | Holds the message in the MTA's queue                                                      |
+
+Header indexes are **zero-based** in this API; the library translates to the protocol's one-based field on the way out. Do not add 1 yourself.
+
+Validation, enforced by every factory (violations throw `ArgumentException`, `ArgumentNullException` or `ArgumentOutOfRangeException` at the call):
+
+- No control characters in any string.
+- Header names must be non-empty RFC 5322 `ftext`: printable ASCII except `:`. Pass the name without the colon.
+- Header values may contain tabs and may be folded: every line break (LF or CRLF) must be followed by a space or tab and by more than whitespace, and the value must not end with a line break. CRLF is sent as bare LF, which is what Postfix expects.
+- Indexes must not be negative.
+- Recipients, senders, ESMTP arguments (when given) and quarantine reasons must not be empty.
+
+These modifications are only possible from `OnEndOfBody`. The MTA refuses any modification not granted during negotiation, and this library does not check that at runtime, which is why the generator derives `ActionRequirements` from every action the code mentions.
+
+### The action hierarchy
+
+```csharp
+namespace Josupeit.Mail.Milter;
+
+public abstract record Action;                          // private protected constructor
+public abstract record CommitAction : Action;
+public abstract record ModificationAction : Action;
+public sealed record ProgressAction : Action { public static ProgressAction Instance { get; } }
+
+public sealed record ContinueAction : CommitAction { public static ContinueAction Instance { get; } }
+public sealed record AcceptAction : CommitAction { public static AcceptAction Instance { get; } }
+public sealed record RejectAction : CommitAction { public static RejectAction Instance { get; } }
+public sealed record DeferAction : CommitAction { public static DeferAction Instance { get; } }
+public sealed record DiscardAction : CommitAction { public static DiscardAction Instance { get; } }
+public sealed record SkipRemainingEventsAction : CommitAction;
+public sealed record ReplyAction : CommitAction { public int Code { get; } public string Text { get; } }
+
+public sealed record AddHeaderAction : ModificationAction { public string Name { get; } public string Value { get; } }
+public sealed record InsertHeaderAction : ModificationAction { public int Index { get; } public string Name { get; } public string Value { get; } }
+public sealed record ChangeHeaderAction : ModificationAction { public string Name { get; } public string Value { get; } public int Index { get; } }
+public sealed record DeleteHeaderAction : ModificationAction { public string Name { get; } public int Index { get; } }
+public record AddRecipientAction_V2 : ModificationAction { public string Recipient { get; } }
+public sealed record AddRecipientAction_V6 : AddRecipientAction_V2 { public string ESmtpArguments { get; } }
+public sealed record DeleteRecipientAction : ModificationAction { public string Recipient { get; } }
+public sealed record ChangeSenderAction : ModificationAction { public string Sender { get; } public string? ESmtpArguments { get; } }
+public sealed record ReplaceBodyAction : ModificationAction { public Stream Body { get; } public bool LeaveOpen { get; } }
+public sealed record QuarantineAction : ModificationAction { public string Reason { get; } }
+```
+
+Every concrete action has an internal or private constructor and get-only properties: `new ReplyAction(...)` and `CommitActions.Reply(451, "busy") with { Code = 200 }` do not compile. The factories are the only way to obtain an action. `Action` also declares `protected abstract IAsyncEnumerable<ResponsePacket> CreateResponsePackets(CancellationToken cancellationToken)`, which each record overrides to produce its wire packets; with no accessible constructor, consumers cannot add new action types.
+
+`ProgressAction.Instance` is not on either factory. Yield it from a long-running `OnEndOfBody` to restart the MTA's reply timeout; it decides nothing.
+
+### `ProtocolRequirements`
+
+```csharp
+[Flags]
+public enum ProtocolRequirements
+{
+    Connect = 1,
+    ClientHello = 2,
+    Sender = 4,
+    Recipient = 8,
+    Header = 16,
+    EndOfHeaders = 32,
+    Body = 64,
+    EndOfBody = 0,          // cannot be excluded, so it has no bit
+    MessageData = 128,      // needs protocol 4
+    UnknownCommand = 256,   // needs protocol 3
+    All = Connect | ClientHello | Sender | Recipient | MessageData | Header | EndOfHeaders | Body | UnknownCommand | EndOfBody,
+}
+```
+
+The events to deliver. The MTA skips everything not listed, so a filter that only looks at senders never has the body streamed to it. There is no `None` member: `EndOfBody` is always delivered. An event that is not listed never reaches its callback, however it is implemented.
+
+### `ActionRequirements`
+
+```csharp
+[Flags]
+public enum ActionRequirements
+{
+    None = 0,
+    AddRecipients = 1,
+    DeleteRecipients = 2,
+    AddHeaders = 4,                     // AddHeader and InsertHeader
+    ChangeHeaders = 8,
+    DeleteHeaders = 16,
+    ChangeBody = 32,
+    QuarantineMessage = 64,
+    ChangeSender = 128,                 // needs protocol 6
+    AddRecipientsWithParameters = 256,  // needs protocol 6
+    All = AddRecipients | DeleteRecipients | AddHeaders | ChangeHeaders | DeleteHeaders | ChangeBody | QuarantineMessage | ChangeSender | AddRecipientsWithParameters,
+}
+```
+
+The modifications the filter intends to perform. Declaring more than needed grants rights the filter does not use; declaring less makes the MTA refuse the modification. If the MTA does not grant every requested modification (for example `ChangeSender` against a version 2 MTA), negotiation fails and the connection is dropped, rather than the modification silently disappearing later.
+
+### `NoReplyRequirements`
+
+```csharp
+[Flags]
+public enum NoReplyRequirements
+{
+    None = 0,
+    Connect = 1,
+    ClientHello = 2,
+    Sender = 4,
+    Recipient = 8,
+    Header = 16,
+    EndOfHeaders = 32,
+    Body = 64,
+    MessageData = 128,
+    UnknownCommand = 256,
+    All = Connect | ClientHello | Sender | Recipient | Header | EndOfHeaders | Body | MessageData | UnknownCommand,
+}
+```
+
+Events the MTA need not wait for an answer to, saving a round trip each. Needs protocol 6; an older MTA simply waits for every answer (negotiation does not fail). There is no member for end-of-body, which is always answered. A callback for an event listed here must return `Continue`; anything else throws `InvalidOperationException` and ends the session. Leave it to the generator: it sets a flag only after proving the callback can return nothing but `Continue`.
+
+### `DeliveryRequirements`
+
+```csharp
+[Flags]
+public enum DeliveryRequirements
+{
+    None = 0,
+    LeadingHeaderSpace = 1,     // SMFIP_HDR_LEADSPC
+    RejectedRecipients = 2,     // SMFIP_RCPT_REJ
+    All = LeadingHeaderSpace | RejectedRecipients,
+}
+```
+
+Both need protocol 6.
+
+- `RejectedRecipients`: `OnRecipient` also fires for recipients the MTA has already rejected, with `IsRejectedByMta = true`. Derived by the generator from reads of `IsRejectedByMta`.
+- `LeadingHeaderSpace`: header values keep the space after the colon on the way in, and the MTA stops inserting one on the way out, for byte-exact header work such as DKIM re-signing. Never derived; declare `DeliveryRequirements` by hand to get it, and then name `RejectedRecipients` yourself too if you need it. If the MTA does not grant it, negotiation fails.
+
+### `MacroRequirements`
+
+```csharp
+public sealed record MacroRequirements
+{
+    public static readonly MacroRequirements None;
+
+    public IReadOnlyDictionary<ProtocolStage, IReadOnlyList<string>> ByStage { get; }
+
+    public bool IsEmpty { get; }
+
+    public static MacroRequirements For(ProtocolStage stage, params string[] macroNames);
+
+    public MacroRequirements And(ProtocolStage stage, params string[] macroNames);
+}
+```
+
+Names the macros wanted at each stage, so the MTA sends only those (needs protocol 6; an older MTA or `None` means the MTA sends its own configured set). Immutable: `And` returns a new instance. Names are spelled as the MTA spells them, `{client_addr}` with braces, `i` without. A name that is empty, contains a space or a control character, and `ProtocolStage.Header` or `ProtocolStage.Body` (stages without a macro class in the protocol), throw `ArgumentException`. Equality is by value, order-sensitive within a stage.
+
+```csharp
+public static MacroRequirements MacroRequirements =>
+    MacroRequirements.For(ProtocolStage.Connect, "{client_addr}", "{client_name}")
+        .And(ProtocolStage.Sender, "{auth_authen}")
+        .And(ProtocolStage.EndOfBody, "i");
+```
+
+Asking for a macro does not make the MTA know it. If Postfix has no value (for example `{auth_authen}` on an unauthenticated session), the key is absent.
+
+### `ProtocolVersionRequirement`
+
+```csharp
+public enum ProtocolVersionRequirement
+{
+    Version2 = 2,
+    Version3 = 3,
+    Version4 = 4,
+    Version6 = 6,
+}
+```
+
+The lowest protocol version the MTA must speak. If the MTA offers less (Postfix offers what `milter_protocol` says, 6 by default), negotiation fails with `NotSupportedException` and the connection is dropped; Postfix then applies `milter_default_action`. The generator computes it from what the filter uses: `OnUnknownCommand` needs 3; `OnMessageDataStarted` needs 4; `ChangeSender`, `AddRecipient(recipient, eSmtpArguments)`, `SkipRemainingEvents` and reading `IsRejectedByMta` need 6. Every other action, `InsertHeader` included, works from version 2. `NoReplyRequirements` and `MacroRequirements` contribute nothing either: an older MTA simply waits for every answer and sends its own macro set. A hand-declared property contributes nothing to that computation.
+
+### `ProtocolStage`
+
+```csharp
+public enum ProtocolStage
+{
+    Connect,
+    ClientHello,
+    Sender,
+    Recipient,
+    MessageData,
+    Header,         // no macro class: not valid in MacroRequirements
+    EndOfHeaders,
+    Body,           // no macro class: not valid in MacroRequirements
+    EndOfBody,
+}
+```
+
+Says which event the values in a `MacroDefinitionInformation` belong to. The macros arrive in `OnDefineMacro` just before that event's callback.
+
+## The source generator
+
+The package contains a Roslyn incremental source generator that writes the six requirement properties into the filter's `partial class`. It writes nothing else. A property the filter declares itself is never touched.
+
+| Property                     | Derived from                                                                                                                                                                                                                                                            |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ProtocolRequirements`       | Which callbacks the class implements (an explicit interface implementation counts)                                                                                                                                                                                      |
+| `ActionRequirements`         | Every `ModificationActions` call reachable from the class, across methods and classes in the same compilation, in every branch                                                                                                                                          |
+| `NoReplyRequirements`        | Callbacks proved to return only `Continue`; only for a **sealed** class or non-virtual callbacks                                                                                                                                                                        |
+| `DeliveryRequirements`       | `RejectedRecipients` if the code reads `RecipientInformation.IsRejectedByMta`; never `LeadingHeaderSpace`                                                                                                                                                               |
+| `MacroRequirements`          | Constant-key lookups in `OnDefineMacro` (`info.Macros["i"]`, `TryGetValue`, `ContainsKey`) nested under a stage guard: an `if` whose entire condition compares `info.ProtocolStage` to a constant, or a `switch` / switch expression over it with one label per section |
+| `ProtocolVersionRequirement` | The highest minimum version among the events, actions and delivery flags it derived                                                                                                                                                                                     |
+
+`ActionRequirements` is a may-analysis: an action behind an `if` that never runs still counts, because a modification that might happen must be negotiated. To see what was generated, set `<EmitCompilerGeneratedFiles>true</EmitCompilerGeneratedFiles>` and look under `obj/`.
+
+Diagnostics (all errors):
+
+| Id      | Cause                                                                                                                                    | Fix                                                                                                                            |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| MILT001 | The class implementing `IMilterContext` (or an enclosing type) is not `partial`, and at least one property is left to generate           | Add `partial`. A non-partial class compiles only if it declares all six properties by hand                                     |
+| MILT002 | An action comes from code with no body in this compilation: an interface member, an abstract member, or another assembly                 | Declare `public static ActionRequirements ActionRequirements => ...;` by hand (CS0535 for it accompanies MILT002 until you do) |
+| MILT003 | A macro read in `OnDefineMacro` cannot be pinned to a constant name under a known stage, e.g. `_macros = info.Macros;` or a computed key | Declare `MacroRequirements` by hand; `MacroRequirements.None` asks for no list                                                 |
+
+The generator follows calls only into code compiled in the same project. Helpers in another project of your own solution count as "another assembly" and trigger MILT002.
+
+## Contract expectations
+
+What the library guarantees and what it expects:
+
+1. **Event order** follows the SMTP conversation; only `OnUnknownCommand` can come at any point. Macros for an event arrive in `OnDefineMacro` just before it.
+2. **One context per message.** The context is thrown away when a message ends with `ABORT`, `QUIT` or `QUIT_NC` (Postfix sends `ABORT` between messages on a reused connection), and the next message gets a fresh one. When the filter implements `OnConnectionEstablished`, the library records the connect event and the macros sent with it and replays them into every later context on the same connection, so `OnConnectionEstablished` runs once per message. `OnClientHello` is **not** replayed: only the context that was current when the client greeted sees it. A filter that needs the HELO name in every message should keep it outside the context or read a macro that carries it.
+3. **Disposal.** If the context implements `IDisposable` or `IAsyncDisposable`, it is disposed when the message ends by `ABORT`, `QUIT` or `QUIT_NC`.
+4. **Exceptions** from a callback end that session and drop its connection; other sessions continue. Nothing is reported or logged.
+5. **Negotiation failures** (MTA below `ProtocolVersionRequirement`, a requested modification not granted, `LeadingHeaderSpace` requested but not granted) throw `NotSupportedException` inside the session and drop the connection. Events and `NoReplyRequirements` degrade silently instead: an event the MTA will not suppress simply arrives and the default callback answers `Continue`.
+6. **`OnEndOfBody` shape** is enforced: modifications and progress, then exactly one commit action.
+7. **`NoReplyRequirements` is a promise**: listed events must be answered `Continue`.
+8. **`SkipRemainingEvents`** only from `OnHeader`, `OnRecipient`, `OnBodyChunk`.
+9. **The factory** passed to `Milter<TContext>` must be safe to call concurrently.
+10. **`Stop()`** waits for every in-flight session without a time limit; bound it yourself if a callback can hang.
+
+## Usage
+
+### Inspecting headers without delaying the MTA
+
+Collect in `OnHeader`, decide in `OnEndOfHeaders`. Because `OnHeader` only ever returns `Continue` and the class is sealed, the generator adds `NoReplyRequirements.Header`, and the MTA stops waiting for an answer per header.
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
+using Josupeit.Mail.Milter;
+using Action = Josupeit.Mail.Milter.Action;
+
+internal sealed partial class SubjectGuard : IMilterContext
+{
+    private string? _subject;
+
+    public ValueTask<CommitAction> OnHeader(HeaderInformation info, CancellationToken cancellationToken)
+    {
+        if (string.Equals(info.Name, "Subject", StringComparison.OrdinalIgnoreCase))
+            _subject = info.Value;
+
+        return new(CommitActions.Continue);
+    }
+
+    public ValueTask<CommitAction> OnEndOfHeaders(CancellationToken cancellationToken)
+    {
+        return _subject?.Contains("free cruise", StringComparison.OrdinalIgnoreCase) == true
+            ? new(CommitActions.Reply(550, "5.7.1 No cruises, thank you"))
+            : new(CommitActions.Continue);
+    }
+}
+```
+
+### Scanning the body and stopping early
+
+```csharp
+using System;
+using System.Collections.Generic;
+using System.Text;
+using System.Threading;
+using System.Threading.Tasks;
+using Josupeit.Mail.Milter;
+using Action = Josupeit.Mail.Milter.Action;
+
+internal sealed partial class BodyScanner : IMilterContext
+{
+    private static readonly byte[] _marker = Encoding.ASCII.GetBytes("EICAR");
+
+    private bool _infected;
+
+    public ValueTask<CommitAction> OnBodyChunk(ReadOnlySpan<byte> chunk, CancellationToken cancellationToken)
+    {
+        _infected |= chunk.IndexOf(_marker) >= 0;
+
+        // Seen enough: ask the MTA to stop sending chunks. Degrades to Continue on an MTA below version 6.
+        return new(_infected ? CommitActions.SkipRemainingEvents : CommitActions.Continue);
+    }
+
+    public async IAsyncEnumerable<Action> OnEndOfBody()
+    {
+        if (_infected)
+            yield return ModificationActions.QuarantineMessage("body matched the test signature");
+
+        yield return CommitActions.Continue;
+    }
+}
+```
+
+A marker split across two chunks is missed by this simple scan; carry the last `marker.Length - 1` bytes over between chunks if that matters.
+
+### Reading macros
+
+```csharp
+internal sealed partial class QueueIdStamper : IMilterContext
+{
+    private string? _queueId;
+
+    public ValueTask OnDefineMacro(MacroDefinitionInformation info, CancellationToken cancellationToken)
+    {
+        if (info.ProtocolStage == ProtocolStage.EndOfBody)
+        {
+            if (info.Macros.TryGetValue("i", out var queueId))
+                _queueId = queueId;
+        }
+
+        return ValueTask.CompletedTask;
+    }
+
+    public async IAsyncEnumerable<Action> OnEndOfBody()
+    {
+        if (_queueId != null)
+            yield return ModificationActions.InsertHeader(0, "X-Queue-Id", _queueId);
+
+        yield return CommitActions.Continue;
+    }
+}
+```
+
+The generator derives `MacroRequirements.For(ProtocolStage.EndOfBody, "i")` from the guarded lookup and `ActionRequirements.AddHeaders` from `InsertHeader`. The stage test must be the whole condition of its own `if` (or a `switch` / switch expression over `info.ProtocolStage` with one label per case): folding it into one condition, `if (info.ProtocolStage == ProtocolStage.EndOfBody && info.Macros.TryGetValue("i", out var queueId))`, is not recognised as a guard and reports MILT003.
+
+### Long-running work in `OnEndOfBody`
+
+`OnEndOfBody` is the place for slow work (a virus scanner, an HTTP call). Yield `ProgressAction.Instance` before each slow step so the MTA restarts its timeout.
+
+```csharp
+public async IAsyncEnumerable<Action> OnEndOfBody()
+{
+    yield return ProgressAction.Instance;
+
+    var verdict = await _scanner.ScanAsync(_body.ToArray()); // _scanner injected through the factory
+
+    if (verdict.IsSpam)
+        yield return ModificationActions.AddHeader("X-Spam-Flag", "YES");
+
+    yield return CommitActions.Continue;
+}
+```
+
+### Rewriting the body
+
+```csharp
+public async IAsyncEnumerable<Action> OnEndOfBody()
+{
+    var replacement = new MemoryStream(Encoding.UTF8.GetBytes("This message was sanitised.\r\n"));
+
+    yield return ModificationActions.ReplaceBody(replacement); // disposed after it has been sent
+    yield return CommitActions.Accept;
+}
+```
+
+### Dependencies through the factory
+
+```csharp
+internal sealed partial class AuditingFilter : IMilterContext
+{
+    private readonly ILogger<AuditingFilter> _logger;
+
+    public AuditingFilter(ILogger<AuditingFilter> logger) => _logger = logger;
+
+    public ValueTask<CommitAction> OnSender(SenderInformation info, CancellationToken cancellationToken)
+    {
+        _logger.LogInformation("Envelope sender {Sender}", info.AddressString);
+
+        return new(CommitActions.Continue);
+    }
+}
+
+var milter = new Milter<AuditingFilter>(socket, () => new AuditingFilter(loggerFactory.CreateLogger<AuditingFilter>()));
+```
+
+With a DI container, resolve inside the lambda: `() => services.GetRequiredService<AuditingFilter>()`, registered as transient (one instance per message).
+
+### Hosting on a Unix domain socket
+
+```csharp
+using System.IO;
+using System.Net.Sockets;
+
+const string path = "/var/spool/postfix/milter/dotnet.sock";
+
+File.Delete(path); // a stale socket file makes Bind fail
+
+using var socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
+
+socket.Bind(new UnixDomainSocketEndPoint(path));
+socket.Listen();
+
+var milter = new Milter<RejectBigSenders>(socket, () => new RejectBigSenders());
+
+milter.Start();
+```
+
+Postfix: `smtpd_milters = unix:/milter/dotnet.sock` (path relative to the Postfix chroot when `smtpd` is chrooted, otherwise absolute). Postfix must be able to write to the socket file.
+
+### Declaring requirements by hand
+
+Needed after MILT002 or MILT003, or to override what was derived. Each hand-declared property is `public static` on the class.
+
+```csharp
+internal sealed partial class PolicyFilter : IMilterContext
+{
+    // MILT002 escape hatch: actions come from an IRuleEngine in another assembly.
+    public static ActionRequirements ActionRequirements => ActionRequirements.AddHeaders | ActionRequirements.QuarantineMessage;
+
+    // MILT003 escape hatch: the macro dictionary is stored and read later.
+    public static MacroRequirements MacroRequirements => MacroRequirements.None;
+
+    // Never derived.
+    public static DeliveryRequirements DeliveryRequirements => DeliveryRequirements.LeadingHeaderSpace;
+}
+```
+
+### Native AOT
+
+Use a `Func<TContext>` constructor and publish with `-p:PublishAot=true`. The constructors without a factory warn (IL2026/IL3050) because they use `Activator.CreateInstance`.
+
+## Choosing a callback and an action
+
+- Decide on the client (IP, reverse DNS)? `OnConnectionEstablished`; `Reject` there refuses the whole connection.
+- Decide on the envelope sender? `OnSender`.
+- Per-recipient policy? `OnRecipient`; `Reject` refuses just that recipient.
+- Decide on the whole envelope before any content is transferred? `OnMessageDataStarted` (protocol 4+).
+- Decide on headers only? Collect in `OnHeader`, decide in `OnEndOfHeaders`; the body is never needed.
+- Need the body? `OnBodyChunk` to accumulate or scan, `OnEndOfBody` to decide.
+- Need to change the message? Only from `OnEndOfBody`.
+- Temporary problem (dependency down, rate limit)? `Defer` or `Reply(451, "...")`, so the sender retries. Permanent policy refusal? `Reject` or `Reply(550, "...")`.
+- Want the message kept for review instead of delivered? `QuarantineMessage`, then `Continue` or `Accept`.
+- Want it gone without telling the sender? `Discard`.
+- Done with a filter's interest in this message early? `Accept` stops all further callbacks for it; `SkipRemainingEvents` stops only the current repeating event.
+
+## Wire layer
+
+Public and non-sealed on purpose, for consumers who need to reach below the callbacks: substitute a component by overriding one of `Milter<TContext>`'s `Create*` methods and inherit the rest. A normal filter never needs any of this. Signatures are in [PublicAPI.Shipped.txt](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/PublicAPI.Shipped.txt).
+
+Pipeline per connection: `NetworkStream` -> `PipeReader`/`PipeWriter` -> `LinkReader`/`LinkWriter` (length-prefixed frames) -> `RequestParser` puts `RequestFrame`s on a bounded channel -> `Session<TContext>` turns frames into packets with an `IRequestPacketFactory`, runs the protocol state machine, calls the context, and hands `ResponseFrame`s produced by an `IResponseFrameFactory` to the `ResponseFormatter`.
+
+### `Josupeit.Mail.Milter.Link`
+
+- `ILinkReader` (`ReadUInt32`, `ReadCommandCode`, `ReadData`) and `LinkReader(PipeReader pipeReader, uint maxDataLength)`, whose three methods are `virtual`.
+- `ILinkWriter` (`WriteUInt32`, `WriteResponseCode`, `WriteData`) and `LinkWriter(PipeWriter pipeWriter)`, likewise `virtual`.
+- `IRequestParser` (`Start`, `Stop`) and `RequestParser(ILinkReader linkReader, ChannelWriter<RequestFrame> outputWriter, uint maxFrameLength)` with `virtual` `ProcessFrames` and `ProcessFrame`.
+- `IResponseFormatter` (`Start`, `Stop`) and `ResponseFormatter(ChannelReader<ResponseFrame> inputReader, ILinkWriter linkWriter)` with `virtual` `ProcessFrames` and `ProcessFrame`.
+- `RequestFrame(CommandCode CommandCode, IMemoryOwner<byte>? Memory, Range DataRange)`: a disposable `readonly record struct` holding pooled memory; `Dispose` returns it.
+- `ResponseFrame(ResponseCode ResponseCode, IMemoryOwner<byte>? Memory = null, Range DataRange = default)`: disposable and awaitable. `GetAwaiter()` and `ConfigureAwait(bool continueOnCapturedContext)` complete once the formatter has written the frame. Always construct it; `default(ResponseFrame)` has no completion source and cannot be awaited.
+- `CommandCode` (`SMFIC_*`, byte): `Unspecified`, `Abort`, `BodyChunk`, `Connect`, `Macro`, `EndOfBody`, `Helo`, `QuitForNewConnection`, `Header`, `Sender`, `EndOfHeaders`, `OptionNegotiation`, `Quit`, `Recipient`, `MessageData`, `UnknownCommand`.
+- `ResponseCode` (`SMFIR_*`, byte): `Unspecified`, `AddRecipient`, `DeleteRecipient`, `AddRecipientWithParameters`, `OptionNegotiation`, `AcceptMessage`, `ReplaceBody`, `ContinueProcessing`, `DiscardMessage`, `ChangeSender`, `AddHeader`, `InsertHeader`, `SetMacroList`, `ChangeOrDeleteHeader`, `Progress`, `QuarantineMessage`, `RejectMessage`, `Skip`, `DeferMessage`, `ReplyWithCode`.
+- `ActionDiscriminator` (`SMFIF_*` flags, uint): `None`, `AddHeaders`, `ChangeBodyChunks`, `AddRecipients`, `DeleteRecipients`, `ChangeOrDeleteHeaders`, `QuarantineMessage`, `ChangeSender`, `AddRecipientsWithParameters`, `SetMacroList`, and `All` (every modification; `SetMacroList` excluded).
+- `ContentBypassDiscriminator` (`SMFIP_*` flags, uint): `None`, `NoConnect`, `NoHelo`, `NoSender`, `NoRecipient`, `NoBody`, `NoHeader`, `NoEndOfHeaders`, `NoReplyToHeader`, `NoUnknownCommand`, `NoMessageData`, `SkipRemainingEvents`, `RejectedRecipients`, `NoReplyToConnect`, `NoReplyToClientHello`, `NoReplyToSender`, `NoReplyToRecipient`, `NoReplyToMessageData`, `NoReplyToUnknownCommand`, `NoReplyToEndOfHeaders`, `NoReplyToBody`, `LeadingHeaderSpace`, and `All` (every skippable event only).
+- `ProtocolFamily` (byte): `Unspecified`, `Unknown`, `UnixSocket`, `Ip4`, `Ip6`.
+
+### `Josupeit.Mail.Milter.Protocol`
+
+- `RequestPacket` (abstract, `Accept(RequestPacketVisitor visitor)`) with sealed subclasses: `OptionNegotiationRequestPacket` (`MtaProtocolVersion`, `MtaSupportedActions`, `MtaSupportedContentBypass`), `ConnectRequestPacket` (`HostName`, `EndPoint`), `HeloRequestPacket` (`HeloString`), `SenderRequestPacket` (`Sender`, `ESmtpArguments`), `RecipientRequestPacket` (`Recipient`, `ESmtpArguments`), `DefineMacroRequestPacket` (`CommandCode`, `Macros`), `HeaderRequestPacket` (`Name`, `Value`), `BodyChunkRequestPacket` (`Data`, `DataSpan`, `Dispose`), `UnknownCommandRequestPacket` (`CommandText`), and the payload-free singletons `AbortRequestPacket`, `MessageDataRequestPacket`, `EndOfHeadersRequestPacket`, `EndOfBodyRequestPacket`, `QuitRequestPacket`, `QuitForNewConnectionRequestPacket`, each with a static `Instance`.
+- `ResponsePacket` (abstract, `Accept(ResponsePacketVisitor visitor)`) with sealed subclasses: `OptionNegotiationResponsePacket` (`MilterProtocolVersion`, `MilterRequiredActions`, `MilterUndesiredProtocolContent`, `MilterRequestedMacros`), `AddHeaderResponsePacket` (`Name`, `Value`), `InsertHeaderResponsePacket` (`Index`, `Name`, `Value`), `ChangeOrDeleteHeaderResponsePacket` (`Index`, zero-based, `Name`, `Value`), `AddRecipientResponsePacket` (`Recipient`, `ESmtpArguments`), `DeleteRecipientResponsePacket` (`Recipient`), `ChangeSenderResponsePacket` (`Sender`, `ESmtpArguments`), `ReplaceBodyResponsePacket` (`Memory`, `BodyRange`), `QuarantineMessageResponsePacket` (`Reason`), `ReplyWithCodeResponsePacket` (`SmtpCode`, `Text`), and the singletons `ContinueProcessingResponsePacket`, `AcceptMessageResponsePacket`, `RejectMessageResponsePacket`, `DeferMessageResponsePacket`, `DiscardMessageResponsePacket`, `ProgressResponsePacket`, `SkipRemainingEventsResponsePacket`, each with a static `Instance`.
+- `RequestPacketVisitor` (abstract): public `VisitRequestPacket` dispatches to `protected internal virtual` methods returning `bool` (`true` = handled/carry on), each defaulting to `true`: `VisitOptionsNegotiationRequestPacket`, `VisitConnectRequestPacket`, `VisitHeloRequestPacket`, `VisitMailFromRequestPacket`, `VisitRcptToRequestPacket`, `VisitDefineMacroRequestPacket`, `VisitHeaderRequestPacket`, `VisitEndOfHeadersRequestPacket`, `VisitBodyChunkRequestPacket`, `VisitEndOfBodyRequestPacket`, `VisitMessageDataRequestPacket`, `VisitUnknownCommandRequestPacket`, `VisitAbortRequestPacket`, `VisitQuitRequestPacket`, `VisitQuitForNewConnectionRequestPacket`.
+- `ResponsePacketVisitor` (abstract): public `VisitResponsePacket` and one `protected internal virtual bool Visit*ResponsePacket` per response packet: `VisitOptionNegotiationResponsePacket`, `VisitContinueProcessingResponsePacket`, `VisitAcceptMessageResponsePacket`, `VisitRejectMessageResponsePacket`, `VisitDeferMessageResponsePacket`, `VisitDiscardMessageResponsePacket`, `VisitReplyWithCodeResponsePacket`, `VisitSkipRemainingEventsResponsePacket`, `VisitProgressResponsePacket`, `VisitAddHeaderResponsePacket`, `VisitInsertHeaderResponsePacket`, `VisitChangeOrDeleteHeaderResponsePacket`, `VisitAddRecipientResponsePacket`, `VisitDeleteRecipientResponsePacket`, `VisitChangeSenderResponsePacket`, `VisitReplaceBodyResponsePacket`, `VisitQuarantineMessageResponsePacket`.
+- `IRequestPacketFactory.CreateRequestPacket(RequestFrame frame)` and `RequestPacketFactory`, whose `virtual` `CreateRequestPacket` dispatches on the command code to `virtual` per-command methods: `CreateOptionNegotiationRequestPacket`, `CreateConnectRequestPacket`, `CreateHeloRequestPacket`, `CreateSenderRequestPacket`, `CreateRecipientRequestPacket`, `CreateDefineMacroRequestPacket`, `CreateHeaderRequestPacket`, `CreateEndOfHeadersRequestPacket`, `CreateBodyChunkRequestPacket`, `CreateEndOfBodyRequestPacket`, `CreateMessageDataRequestPacket`, `CreateUnknownCommandRequestPacket`, `CreateAbortRequestPacket`, `CreateQuitRequestPacket`, `CreateQuitForNewConnectionRequestPacket`. Static parsing helpers for overrides: `HasNext`, `TryGetNextBytes`, `TryGetNextChar`, `TryGetNextUInt16`, `TryGetNextUInt32`, `TryGetNextStringFixedLength`, `TryGetNextStringVariableLength`.
+- `IResponseFrameFactory.CreateResponseFrame(ResponsePacket response)` and `ResponseFrameFactory`, whose `virtual` `CreateResponseFrame` delegates to a fresh visitor from `protected virtual CreateVisitor()`. The nested `protected class ResponseFrameCreatingVisitor : ResponsePacketVisitor` overrides every response `Visit*` method, reports its output through the `protected` `Result` property, exposes `CreateResponseFrame(ResponsePacket responsePacket)`, and offers static helpers `GetByteCountWithDoubledPercentSigns`, `WriteWithDoubledPercentSigns` (reply text escapes `%` as `%%`), `GetMacroStageCode(ProtocolStage stage)` and `ToMacroLists(MacroRequirements? macroRequirements)`.
+
+### `Josupeit.Mail.Milter.Session`
+
+- `ISession` with `Task Run(CancellationToken cancellationToken)`.
+- `Session<TContext>` with a public constructor `(ChannelReader<RequestFrame> requestFrameReader, IRequestPacketFactory requestPacketFactory, IResponseFrameFactory responseFrameFactory, ChannelWriter<ResponseFrame> responseFrameWriter, Func<TContext>? contextFactory)` and `Run`, for an override of `Milter<TContext>.CreateSession` that wraps or replaces the session.
+
+## Common mistakes
+
+- **Not `partial`.** A context that leaves any property to the generator must be `partial`, or the build fails with MILT001 (plus CS0535 if the two abstract properties are missing).
+- **`Action` ambiguity.** With `using System;` in scope, `Action` is ambiguous between `System.Action` and `Josupeit.Mail.Milter.Action` (CS0104). Add `using Action = Josupeit.Mail.Milter.Action;` or write `IAsyncEnumerable<Josupeit.Mail.Milter.Action>`.
+- **`ToAsyncEnumerable()` without a package.** On net8.0 there is no built-in `ToAsyncEnumerable`; the library's own helper is internal. Write `OnEndOfBody` as an `async IAsyncEnumerable<Action>` iterator with `yield return` (no package needed), or reference `System.Linq.Async`.
+- **libmilter / pymilter vocabulary.** There is no `smfi_*` API, no `SMFIS_CONTINUE`-style return codes, no `Milter` base class to derive from, no `[Milter]` attribute, no `Register`, `RunAsync` or `ListenAsync`. Implement `IMilterContext`, return actions from the factories, host with `new Milter<T>(socket, factory).Start()`.
+- **`Task` instead of `ValueTask`.** Callbacks return `ValueTask<CommitAction>` (and `OnDefineMacro` returns `ValueTask`). A method returning `Task<CommitAction>` is a new method, not an implementation of the callback, and never runs.
+- **Wrong signature, silently ignored.** A method that does not match the interface exactly (missing `CancellationToken`, `byte[]` instead of `ReadOnlySpan<byte>`, a different parameter type) is just another method: the interface default runs and the generator does not request the event. Copy the signature from the declaration above.
+- **Modifying from the wrong callback.** `ModificationActions` results can only be yielded from `OnEndOfBody`; other callbacks return a single `CommitAction`. To add a header based on something seen in `OnSender`, keep it in a field and yield the modification from `OnEndOfBody`.
+- **Bad `OnEndOfBody` sequence.** Forgetting the final commit action, yielding two commit actions, or yielding a modification after the commit action throws at runtime. End every path with exactly one `yield return CommitActions.X;`.
+- **Constructing actions.** `new AddHeaderAction(...)`, `new ReplyAction(...)` and `with` expressions do not compile. Use `CommitActions` and `ModificationActions`; use `ProgressAction.Instance` for progress.
+- **Stripping angle brackets that are there, or adding ones that are not.** `AddressString` includes them (`<rita.relay@example.com>`); compare accordingly.
+- **One-based header indexes.** `ChangeHeader` and `DeleteHeader` take a zero-based occurrence index; `0` is the first. The library converts to the protocol's one-based field.
+- **Empty value in `ChangeHeader`.** Throws; use `DeleteHeader` to remove a header.
+- **Colon in a header name.** `AddHeader("X-Spam:", ...)` throws; pass the name without the colon.
+- **Unfolded multi-line values.** A header value with a bare line break not followed by whitespace throws. Fold with `"\r\n\t"` or `"\n "`.
+- **Assuming a per-connection context.** Fields are reset for every message. Store cross-message state outside the context.
+- **Indexer on macros.** `info.Macros["{auth_authen}"]` throws `KeyNotFoundException` when the MTA does not send it, which ends the session. Use `TryGetValue`.
+- **Storing the macro dictionary.** `_macros = info.Macros;` triggers MILT003. Read the values you need under a stage guard, or declare `MacroRequirements` by hand.
+- **Combining the stage test with the lookup.** `if (info.ProtocolStage == ProtocolStage.Sender && info.Macros.TryGetValue(...))` triggers MILT003; nest the lookup inside an `if` whose whole condition is the stage comparison.
+- **`MacroRequirements.For(ProtocolStage.Header, ...)` or `ProtocolStage.Body`.** Throws `ArgumentException`: those stages have no macro class.
+- **`SkipRemainingEvents` from a one-time event** (`OnSender`, `OnEndOfHeaders`, ...) or from `OnEndOfBody` throws. Only headers, recipients and body chunks repeat.
+- **Hand-declaring `NoReplyRequirements` and then rejecting.** A listed callback that returns anything but `Continue` throws. Let the generator derive it.
+- **Unsealed context with virtual callbacks** gets no `NoReplyRequirements` derived; seal the class to get them.
+- **Over-narrow hand-declared `ActionRequirements`.** The MTA refuses an undeclared modification; the library does not catch this at runtime.
+- **A 2xx code in `Reply`.** Only 400-599 is accepted; to accept, return `CommitActions.Accept` or `Continue`.
+- **Expecting `OnBodyChunk` to see the whole body.** Chunks arrive separately (64 KiB max each from Postfix); accumulate if you need the whole body, and copy the span, which is only valid during the call.
+- **Expecting `OnClientHello` in every message.** HELO is seen once per connection, by the first message's context; only the connect event is replayed into later contexts.
+- **Not calling `Listen()`** before handing the socket over. The socket must be bound and listening.
+- **Expecting logs.** The library logs nothing; a failed session just drops the connection. Log inside your callbacks.
+- **Activator constructor under AOT.** `new Milter<T>(socket)` warns IL2026/IL3050; pass a factory.
+
+## Related links
+
+- **[Repository README](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/README.md)** - overview, build and test instructions.
+- **[Package README](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/src/Josupeit.Mail.Milter/README.md)** - the human-oriented guide as shown on NuGet.
+- **[Example filter](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/src/branch/main/samples/Example)** - a runnable filter that declares none of the six properties and relies on the generator for all of them.
+- **[AOT.md](https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/AOT.md)** - what Native AOT compatibility means here and how CI verifies it.
+- **[NuGet package](https://www.nuget.org/packages/Josupeit.Mail.Milter)** - release history.
+
+## License
+
+EUPL-1.2. Full text: https://codeberg.org/DerPeit/Josupeit.Mail.Milter/raw/branch/main/LICENSE.md
