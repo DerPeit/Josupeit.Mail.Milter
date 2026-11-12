@@ -92,6 +92,14 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" Condition="Exists('README.md')" />
+
+    <!--
+      The documentation written for coding agents rather than people, in llmstxt.org form. Packed beside
+      the README so the copy in a consumer's package cache describes exactly the version they installed;
+      the copy on main describes the latest release. scripts/check-llms-docs.sh keeps it honest.
+    -->
+    <None Include="llms.txt" Pack="true" PackagePath="\" Condition="Exists('llms.txt')" />
+    <None Include="llms-full.txt" Pack="true" PackagePath="\" Condition="Exists('llms-full.txt')" />
     <None Include="$(MSBuildThisFileDirectory)..\LICENSE.md" Pack="true" PackagePath="\" Link="LICENSE.md" Visible="false" />
 
     <!-- 256x256, not the 1254x1254 master beside it: NuGet caps a package icon at 1 MB. -->
