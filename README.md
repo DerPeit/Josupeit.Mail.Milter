@@ -1,5 +1,9 @@
 # Josupeit.Mail.Milter
 
+> [!NOTE]
+> Development happens on [Codeberg](https://codeberg.org/DerPeit/Josupeit.Mail.Milter).
+> Copies elsewhere (e.g. GitHub) are read-only mirrors; please open issues and pull requests on Codeberg.
+
 A .NET implementation of the **Milter protocol** - the mail filter protocol spoken by Postfix and Sendmail - so a mail filter can be written in C# instead of in the C the protocol was designed around.
 
 An MTA connects to a milter over a socket and streams the SMTP conversation to it as it happens. After each event the filter answers, and the answer decides what the MTA does next: continue, accept, reject, defer or discard. At the end of the message the filter may also rewrite it - headers, recipients, the envelope sender, the body - or quarantine it.
